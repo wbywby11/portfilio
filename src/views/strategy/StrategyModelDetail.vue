@@ -39,8 +39,13 @@
                   {{ getStatusLabel(model.status) }}
                 </el-tag>
               </el-descriptions-item>
-              <el-descriptions-item label="算法模板">{{ model.template_code }}</el-descriptions-item>
+              <el-descriptions-item label="算法模板">
+                {{ model.template_name || model.template_code }}
+              </el-descriptions-item>
               <el-descriptions-item label="调仓频率">{{ model.rebalance_frequency }}</el-descriptions-item>
+              <el-descriptions-item label="业绩基准" v-if="model.benchmark_name">
+                {{ model.benchmark_name }}
+              </el-descriptions-item>
               <el-descriptions-item label="创建时间" :span="2">
                 {{ formatDate(model.created_at) }}
               </el-descriptions-item>
@@ -53,13 +58,13 @@
           <!-- 策略参数 -->
           <el-card shadow="never" class="info-card">
             <div slot="header">策略参数</div>
-            <el-descriptions :column="2" border v-if="model.parameters">
+            <el-descriptions :column="2" border v-if="model.parameters && Object.keys(model.parameters).length > 0">
               <el-descriptions-item
                 v-for="(value, key) in model.parameters"
                 :key="key"
-                :label="key"
+                :label="getParameterLabel(key)"
               >
-                {{ value }}
+                <div style="white-space: pre-wrap;">{{ formatParameterValue(value) }}</div>
               </el-descriptions-item>
             </el-descriptions>
             <div v-else style="color: #909399; text-align: center; padding: 20px;">
@@ -75,7 +80,7 @@
               :key="code"
               style="margin-right: 10px; margin-bottom: 10px;"
             >
-              {{ code }}
+              {{ code }} - {{ model.asset_names && model.asset_names[code] || '未知资产' }}
             </el-tag>
             <div v-if="!model.asset_codes || model.asset_codes.length === 0" style="color: #909399; text-align: center; padding: 20px;">
               未选择资产
@@ -163,6 +168,18 @@
               </el-col>
             </el-row>
 
+            <el-row :gutter="20" class="metrics-row" style="margin-top: 15px;" v-if="latestBacktest.benchmark_name">
+              <el-col :span="12">
+                <div class="metric-card">
+                  <div class="metric-label">业绩基准</div>
+                  <div class="metric-value">
+                    {{ latestBacktest.benchmark_code ? latestBacktest.benchmark_code + ' - ' + latestBacktest.benchmark_name : latestBacktest.benchmark_name }}
+                  </div>
+                </div>
+              </el-col>
+              <el-col :span="12"></el-col>
+            </el-row>
+
             <!-- 回测图表区域 -->
             <div v-if="latestBacktest.result.equity_curve" style="margin-top: 20px;">
               <div ref="equityChart" style="width: 100%; height: 400px;"></div>
@@ -173,7 +190,12 @@
         <el-col :span="8">
           <!-- 历史回测记录 -->
           <el-card shadow="never" class="history-card">
-            <div slot="header">历史回测记录</div>
+            <div slot="header">
+              <span>历史回测记录</span>
+              <span style="float: right; font-size: 12px; color: #909399;">
+                共 {{ backtestPagination.total }} 条
+              </span>
+            </div>
             <el-timeline v-if="backtestHistory.length > 0">
               <el-timeline-item
                 v-for="record in backtestHistory"
@@ -215,6 +237,19 @@
             </el-timeline>
             <div v-else style="color: #909399; text-align: center; padding: 20px;">
               暂无回测记录
+            </div>
+            
+            <!-- 分页 -->
+            <div v-if="backtestPagination.total > backtestPagination.limit" style="text-align: center; margin-top: 20px;">
+              <el-pagination
+                small
+                layout="prev, pager, next"
+                :current-page="currentPage"
+                :page-size="backtestPagination.limit"
+                :total="backtestPagination.total"
+                @current-change="handleBacktestPageChange"
+              >
+              </el-pagination>
             </div>
           </el-card>
         </el-col>
@@ -262,6 +297,11 @@ export default {
         created_at: null
       },
       backtestHistory: [],
+      backtestPagination: {
+        skip: 0,
+        limit: 10,
+        total: 0
+      },
       loading: false,
       backtesting: false,
       equityChart: null,
@@ -283,6 +323,9 @@ export default {
     },
     latestBacktest() {
       return this.backtestHistory[0] || null;
+    },
+    currentPage() {
+      return Math.floor(this.backtestPagination.skip / this.backtestPagination.limit) + 1;
     }
   },
   created() {
@@ -319,13 +362,38 @@ export default {
         this.loading = false;
       }
     },
-    async loadBacktestHistory() {
+    async loadBacktestHistory(keepPosition = false) {
       try {
-        const res = await this.$store.dispatch('strategy/fetchBacktestHistory', this.modelId);
+        // 如果不保持位置，重置到第一页
+        if (!keepPosition) {
+          this.backtestPagination.skip = 0;
+        }
+        
+        const res = await this.$store.dispatch('strategy/fetchBacktestHistory', {
+          modelId: this.modelId,
+          skip: this.backtestPagination.skip,
+          limit: this.backtestPagination.limit
+        });
+        
         this.backtestHistory = res;
+        
+        // 获取总数：先查询一次大limit的请求来估算总数
+        // 或者后端返回 total 字段
+        if (res.length === this.backtestPagination.limit) {
+          // 如果返回条数等于 limit，可能还有更多
+          // 这里估算总数：当前 skip + limit + 1
+          this.backtestPagination.total = this.backtestPagination.skip + this.backtestPagination.limit + 1;
+        } else {
+          // 如果返回条数少于 limit，说明已经是最后一页
+          this.backtestPagination.total = this.backtestPagination.skip + res.length;
+        }
       } catch (error) {
         console.error('加载回测历史失败:', error);
       }
+    },
+    handleBacktestPageChange(page) {
+      this.backtestPagination.skip = (page - 1) * this.backtestPagination.limit;
+      this.loadBacktestHistory(true);
     },
     async handleBacktest() {
       this.backtestDialogVisible = true;
@@ -450,6 +518,31 @@ export default {
     },
     getReturnColor(value) {
       return value >= 0 ? '#67c23a' : '#f56c6c';
+    },
+    // 获取参数的中文标签
+    getParameterLabel(key) {
+      // 如果后端返回了 parameter_labels，使用中文标签
+      if (this.model.parameter_labels && this.model.parameter_labels[key]) {
+        return this.model.parameter_labels[key];
+      }
+      // 否则返回原始 key
+      return key;
+    },
+    // 格式化参数值
+    formatParameterValue(value) {
+      if (value === null || value === undefined) {
+        return '-';
+      }
+      if (typeof value === 'boolean') {
+        return value ? '是' : '否';
+      }
+      if (Array.isArray(value)) {
+        return value.join(', ');
+      }
+      if (typeof value === 'object') {
+        return JSON.stringify(value, null, 2);
+      }
+      return value;
     },
     formatDate(date) {
       return date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-';

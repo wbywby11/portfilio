@@ -68,3 +68,53 @@ export function getAssetKline(assetCode, params) {
     }
   });
 }
+
+// 下载资产导入模板
+export function downloadAssetTemplate() {
+  return request({
+    url: '/api/v1/assets/template/download',
+    method: 'get',
+    responseType: 'blob'
+  });
+}
+
+// 批量从Excel导入资产
+export function importAssetsFromExcel(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request({
+    url: '/api/v1/assets/import/excel',
+    method: 'post',
+    data: formData,
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+}
+
+// 下载资产行情导入模板
+export function downloadPriceTemplate() {
+  return request({
+    url: '/api/v1/assets/prices/template/download',
+    method: 'get',
+    responseType: 'blob'
+  });
+}
+
+// 从Excel导入资产行情数据
+export function importPricesFromExcel(assetCode, file, replaceExisting = false) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request({
+    url: '/api/v1/assets/prices/import/excel',
+    method: 'post',
+    params: {
+      asset_code: assetCode,
+      replace_existing: replaceExisting
+    },
+    data: formData,
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+}

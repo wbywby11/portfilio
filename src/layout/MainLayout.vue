@@ -39,6 +39,7 @@
             </template>
             <el-menu-item index="/strategy/template">算法模板库</el-menu-item>
             <el-menu-item index="/strategy/model">我的策略</el-menu-item>
+            <el-menu-item index="/strategy/benchmark">业绩基准管理</el-menu-item>
           </el-submenu>
 
           <el-submenu index="portfolio">
@@ -50,6 +51,11 @@
             <el-menu-item index="/portfolio/create">创建组合</el-menu-item>
             <el-menu-item index="/portfolio/compare">多组合对比</el-menu-item>
           </el-submenu>
+
+          <el-menu-item index="/analysis">
+            <i class="el-icon-data-line"></i>
+            <span slot="title">资产分析</span>
+          </el-menu-item>
 
           <el-submenu index="system" v-if="isAdmin">
             <template slot="title">

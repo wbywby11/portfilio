@@ -104,6 +104,12 @@ const routes = [
             name: 'StrategyModelDetail',
             component: () => import('@/views/strategy/StrategyModelDetail.vue'),
             meta: { title: '策略详情', hidden: true }
+          },
+          {
+            path: 'benchmark',
+            name: 'BenchmarkList',
+            component: () => import('@/views/strategy/BenchmarkList.vue'),
+            meta: { title: '业绩基准管理' }
           }
         ]
       },
@@ -163,6 +169,13 @@ const routes = [
             meta: { title: '多组合对比' }
           }
         ]
+      },
+      // 数据分析模块
+      {
+        path: 'analysis',
+        name: 'Analysis',
+        component: () => import('@/views/analysis/AssetAnalysis.vue'),
+        meta: { title: '资产分析', icon: 'el-icon-data-analysis' }
       },
       // 系统管理
       {

@@ -4,6 +4,7 @@ import user from './modules/user';
 import asset from './modules/asset';
 import strategy from './modules/strategy';
 import portfolio from './modules/portfolio';
+import benchmark from './modules/benchmark';
 
 Vue.use(Vuex);
 
@@ -12,7 +13,8 @@ export default new Vuex.Store({
     user,
     asset,
     strategy,
-    portfolio
+    portfolio,
+    benchmark
   },
   state: {
     loading: false,

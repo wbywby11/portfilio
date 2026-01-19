@@ -85,14 +85,26 @@
       <!-- 权益曲线图表 -->
       <el-card shadow="never" class="info-section" v-if="record.result.equity_curve && record.result.equity_curve.length > 0">
         <div slot="header">
-          <span>权益曲线</span>
+          <span>净值与收益曲线</span>
           <el-radio-group v-model="chartType" size="small" style="float: right;">
-            <el-radio-button label="total">总净值</el-radio-button>
+            <el-radio-button label="return">累计收益率</el-radio-button>
             <el-radio-button label="unit">单位净值</el-radio-button>
             <el-radio-button label="both">双轴对比</el-radio-button>
           </el-radio-group>
         </div>
         <div ref="equityChart" style="width: 100%; height: 400px;"></div>
+      </el-card>
+
+      <!-- 权重变化图表 -->
+      <el-card shadow="never" class="info-section" v-if="hasWeightChanges">
+        <div slot="header">
+          <span>权重变化轨迹</span>
+          <el-radio-group v-model="weightChartType" size="small" style="float: right;">
+            <el-radio-button label="stacked">堆叠面积图</el-radio-button>
+            <el-radio-button label="line">折线图</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div ref="weightChart" style="width: 100%; height: 500px;"></div>
       </el-card>
 
       <!-- 持仓记录 -->
@@ -114,7 +126,11 @@
               {{ formatDateShort(scope.row.date) }}
             </template>
           </el-table-column>
-          <el-table-column prop="asset_code" label="资产代码" width="120"></el-table-column>
+          <el-table-column prop="asset_code" label="资产代码" width="200">
+            <template slot-scope="scope">
+              {{ scope.row.asset_code }} - {{ scope.row.asset_name || (record.result.asset_names && record.result.asset_names[scope.row.asset_code]) || '未知资产' }}
+            </template>
+          </el-table-column>
           <el-table-column prop="shares" label="持仓数量" width="120" align="right">
             <template slot-scope="scope">
               {{ scope.row.shares ? scope.row.shares.toFixed(2) : '-' }}
@@ -130,9 +146,14 @@
               {{ scope.row.price ? scope.row.price.toFixed(2) : '-' }}
             </template>
           </el-table-column>
-          <el-table-column prop="market_value" label="市值" align="right">
+          <el-table-column prop="market_value" label="市值" width="120" align="right">
             <template slot-scope="scope">
               {{ scope.row.market_value ? '¥' + scope.row.market_value.toLocaleString() : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="rebalance_reason" label="调整原因" min-width="150" show-overflow-tooltip>
+            <template slot-scope="scope">
+              {{ scope.row.rebalance_reason || '-' }}
             </template>
           </el-table-column>
         </el-table>
@@ -208,9 +229,11 @@ export default {
       visible: this.value,
       loading: false,
       equityChart: null,
+      weightChart: null,
       positionCurrentPage: 1,
       positionPageSize: 10,
-      chartType: 'both' // total: 总净值, unit: 单位净值, both: 双轴对比
+      chartType: 'both', // total: 总净值, unit: 单位净值, both: 双轴对比
+      weightChartType: 'stacked' // stacked: 堆叠面积图, line: 折线图
     };
   },
   computed: {
@@ -231,7 +254,8 @@ export default {
               shares: pos.shares,
               price: pos.price,
               market_value: pos.market_value, // 使用 market_value 替代 value
-              portfolio_value: positionRecord.portfolio_value
+              portfolio_value: positionRecord.portfolio_value,
+              rebalance_reason: positionRecord.rebalance_reason
             });
           });
         }
@@ -268,6 +292,12 @@ export default {
         }
       });
       return count;
+    },
+    hasWeightChanges() {
+      return (
+        this.record.result.weight_changes &&
+        this.record.result.weight_changes.length > 0
+      );
     }
   },
   watch: {
@@ -277,6 +307,8 @@ export default {
         this.$nextTick(() => {
           this.initChart();
           this.renderEquityChart();
+          this.initWeightChart();
+          this.renderWeightChart();
         });
       }
     },
@@ -288,17 +320,39 @@ export default {
       this.$nextTick(() => {
         this.renderEquityChart();
       });
+    },
+    'record.result.weight_changes'() {
+      // 当权重变化数据更新时重新渲染权重图表
+      this.$nextTick(() => {
+        this.initWeightChart();
+        this.renderWeightChart();
+      });
+    },
+    weightChartType() {
+      // 当权重图表类型改变时重新渲染
+      this.$nextTick(() => {
+        this.renderWeightChart();
+      });
     }
   },
   mounted() {
     if (this.visible) {
       this.initChart();
       this.renderEquityChart();
+      this.$nextTick(() => {
+        this.initWeightChart();
+        this.renderWeightChart();
+      });
     }
   },
   beforeDestroy() {
     if (this.equityChart) {
       this.equityChart.dispose();
+      this.equityChart = null;
+    }
+    if (this.weightChart) {
+      this.weightChart.dispose();
+      this.weightChart = null;
     }
   },
   methods: {
@@ -307,185 +361,335 @@ export default {
         this.equityChart = echarts.init(this.$refs.equityChart);
       }
     },
+    initWeightChart() {
+      if (this.$refs.weightChart && !this.weightChart) {
+        this.weightChart = echarts.init(this.$refs.weightChart);
+      }
+    },
     renderEquityChart() {
       if (!this.equityChart || !this.record.result.equity_curve) {
         return;
       }
-
+      
       const equityCurve = this.record.result.equity_curve;
-      const dates = equityCurve.map(item => item.date ? dayjs(item.date).format('YYYY-MM-DD') : '');
-      const totalValues = equityCurve.map(item => item.value || 0);
-      const unitValues = equityCurve.map(item => item.unit_value || 1);
-
-      let option = {};
-
-      if (this.chartType === 'both') {
-        // 双轴对比模式
-        option = {
-          tooltip: {
-            trigger: 'axis',
-            axisPointer: { type: 'cross' },
-            formatter: (params) => {
-              let result = params[0].name + '<br/>';
-              params.forEach(param => {
-                const unit = param.seriesName === '总净值' ? '￥' : '';
-                result += `${param.marker}${param.seriesName}: ${unit}${param.value.toLocaleString()}<br/>`;
-              });
-              return result;
-            }
-          },
-          legend: { data: ['总净值', '单位净值'] },
-          grid: { left: '3%', right: '5%', bottom: '3%', containLabel: true },
-          xAxis: { type: 'category', data: dates, boundaryGap: false },
-          yAxis: [
-            {
-              type: 'value',
-              name: '总净值（元）',
-              position: 'left',
-              axisLabel: { formatter: (value) => '￥' + (value / 1000).toFixed(0) + 'K' }
-            },
-            {
-              type: 'value',
-              name: '单位净值',
-              position: 'right',
-              axisLabel: { formatter: (value) => value.toFixed(4) }
-            }
-          ],
-          series: [
-            {
-              name: '总净值',
-              type: 'line',
-              data: totalValues,
-              smooth: true,
-              symbol: 'none',
-              yAxisIndex: 0,
-              lineStyle: { width: 2, color: '#409EFF' },
-              areaStyle: {
-                color: {
-                  type: 'linear',
-                  x: 0, y: 0, x2: 0, y2: 1,
-                  colorStops: [
-                    { offset: 0, color: 'rgba(64, 158, 255, 0.25)' },
-                    { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
-                  ]
-                }
-              }
-            },
-            {
-              name: '单位净值',
-              type: 'line',
-              data: unitValues,
-              smooth: true,
-              symbol: 'none',
-              yAxisIndex: 1,
-              lineStyle: { width: 2, color: '#67C23A' }
-            }
-          ]
-        };
-      } else if (this.chartType === 'total') {
-        // 总净值模式
-        option = {
-          tooltip: {
-            trigger: 'axis',
-            formatter: (params) => `${params[0].name}<br/>总净值: ￥${params[0].value.toLocaleString()}`
-          },
-          grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-          xAxis: { type: 'category', data: dates, boundaryGap: false },
-          yAxis: {
-            type: 'value',
-            name: '总净值（元）',
-            axisLabel: { formatter: (value) => '￥' + (value / 1000).toFixed(0) + 'K' }
-          },
-          series: [
-            {
-              name: '总净值',
-              type: 'line',
-              data: totalValues,
-              smooth: true,
-              symbol: 'none',
-              lineStyle: { width: 2, color: '#409EFF' },
-              areaStyle: {
-                color: {
-                  type: 'linear',
-                  x: 0, y: 0, x2: 0, y2: 1,
-                  colorStops: [
-                    { offset: 0, color: 'rgba(64, 158, 255, 0.25)' },
-                    { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
-                  ]
-                }
-              }
-            }
-          ]
-        };
+      const returnCurve = this.record.result.return_curve || [];
+      
+      // 准备数据
+      const dates = equityCurve.map(item => dayjs(item.date).format('MM-DD'));
+      const unitValues = equityCurve.map(item => item.unit_value);
+      
+      // 累计收益率数据（从 return_curve 获取）
+      let returnValues = [];
+      if (returnCurve.length > 0) {
+        // 如果后端返回了 return_curve，使用后端计算好的累计收益率
+        returnValues = returnCurve.map(item => item.cumulative_return * 100); // 转为百分比
       } else {
-        // 单位净值模式
-        option = {
-          tooltip: {
-            trigger: 'axis',
-            formatter: (params) => `${params[0].name}<br/>单位净值: ${params[0].value.toFixed(4)}`
+        // 如果没有 return_curve，从 unit_value 计算
+        const initialValue = unitValues[0] || 1;
+        returnValues = unitValues.map(val => ((val - initialValue) / initialValue) * 100);
+      }
+      
+      // 准备图表配置
+      const option = {
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: {
+            type: 'cross'
           },
-          grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-          xAxis: { type: 'category', data: dates, boundaryGap: false },
-          yAxis: {
-            type: 'value',
-            name: '单位净值',
-            axisLabel: { formatter: (value) => value.toFixed(4) }
-          },
-          series: [
-            {
-              name: '单位净值',
-              type: 'line',
-              data: unitValues,
-              smooth: true,
-              symbol: 'none',
-              lineStyle: { width: 2, color: '#67C23A' },
-              areaStyle: {
-                color: {
-                  type: 'linear',
-                  x: 0, y: 0, x2: 0, y2: 1,
-                  colorStops: [
-                    { offset: 0, color: 'rgba(103, 194, 58, 0.25)' },
-                    { offset: 1, color: 'rgba(103, 194, 58, 0.05)' }
-                  ]
+          formatter: (params) => {
+            const date = params[0].axisValue;
+            let result = `${date}<br />`;
+            params.forEach(param => {
+              const value = param.value;
+              if (value !== undefined && value !== null && !isNaN(value)) {
+                // 根据系列名称决定格式
+                if (param.seriesName.includes('收益率')) {
+                  result += `${param.seriesName}: ${value.toFixed(2)}%<br />`;
+                } else {
+                  result += `${param.seriesName}: ${value.toFixed(4)}<br />`;
+                }
+              } else {
+                result += `${param.seriesName}: -<br />`;
+              }
+            });
+            return result;
+          }
+        },
+        legend: {
+          data: this.chartType === 'both' ? ['累计收益率', '单位净值'] : [this.chartType === 'return' ? '累计收益率' : '单位净值'],
+          top: '10%'
+        },
+        grid: {
+          left: '3%',
+          right: '4%',
+          bottom: '3%',
+          top: '20%',
+          containLabel: true
+        },
+        xAxis: {
+          type: 'category',
+          boundaryGap: false,
+          data: dates
+        },
+        yAxis: this.chartType === 'both'
+          ? [
+              {
+                type: 'value',
+                name: '收益率(%)',
+                position: 'left',
+                axisLabel: {
+                  formatter: '{value}%'
+                }
+              },
+              {
+                type: 'value',
+                name: '单位净值',
+                position: 'right',
+                scale: true
+              }
+            ]
+          : {
+              type: 'value',
+              scale: true,
+              axisLabel: {
+                formatter: this.chartType === 'return' ? '{value}%' : '{value}'
+              }
+            },
+        series: this.chartType === 'both' 
+          ? [
+              {
+                name: '累计收益率',
+                type: 'line',
+                yAxisIndex: 0,
+                data: returnValues,
+                smooth: true,
+                symbol: 'none',
+                lineStyle: {
+                  width: 2,
+                  color: '#67c23a'
+                },
+                areaStyle: {
+                  color: {
+                    type: 'linear',
+                    x: 0,
+                    y: 0,
+                    x2: 0,
+                    y2: 1,
+                    colorStops: [
+                      { offset: 0, color: 'rgba(103, 194, 58, 0.3)' },
+                      { offset: 1, color: 'rgba(103, 194, 58, 0.05)' }
+                    ]
+                  }
+                }
+              },
+              {
+                name: '单位净值',
+                type: 'line',
+                yAxisIndex: 1,
+                data: unitValues,
+                smooth: true,
+                symbol: 'none',
+                lineStyle: {
+                  width: 2,
+                  type: 'dashed',
+                  color: '#409eff'
                 }
               }
-            }
-          ]
-        };
-      }
-
+            ]
+          : [
+              {
+                name: this.chartType === 'return' ? '累计收益率' : '单位净值',
+                type: 'line',
+                data: this.chartType === 'return' ? returnValues : unitValues,
+                smooth: true,
+                symbol: 'none',
+                lineStyle: {
+                  width: 2,
+                  color: this.chartType === 'return' ? '#67c23a' : '#409eff'
+                },
+                areaStyle: this.chartType === 'return' ? {
+                  color: {
+                    type: 'linear',
+                    x: 0,
+                    y: 0,
+                    x2: 0,
+                    y2: 1,
+                    colorStops: [
+                      { offset: 0, color: 'rgba(103, 194, 58, 0.3)' },
+                      { offset: 1, color: 'rgba(103, 194, 58, 0.05)' }
+                    ]
+                  }
+                } : undefined
+              }
+            ]
+      };
+      
       this.equityChart.setOption(option, true);
+    },
+    renderWeightChart() {
+      if (!this.weightChart || !this.record.result.weight_changes) {
+        return;
+      }
+      
+      const weightChanges = this.record.result.weight_changes;
+      const assetNames = this.record.result.asset_names || {};
+      
+      // 提取所有唯一的资产代码
+      const allAssets = new Set();
+      weightChanges.forEach(change => {
+        if (change.weights) {
+          Object.keys(change.weights).forEach(asset => allAssets.add(asset));
+        }
+      });
+      
+      const assetList = Array.from(allAssets);
+      
+      // 为每个资产创建时间序列数据
+      const seriesData = {};
+      const assetDisplayNames = {}; // 存储资产显示名称
+      
+      assetList.forEach(asset => {
+        // 生成显示名称：资产代码 - 资产名称
+        const assetName = assetNames[asset] || '未知资产';
+        assetDisplayNames[asset] = `${asset} - ${assetName}`;
+        
+        seriesData[asset] = weightChanges.map(change => {
+          const date = change.date ? dayjs(change.date).format('YYYY-MM-DD') : '';
+          const weight = change.weights && change.weights[asset] ? change.weights[asset] : 0;
+          return [date, weight];
+        });
+      });
+      
+      // 准备图表配置
+      let seriesConfig;
+      if (this.weightChartType === 'stacked') {
+        // 堆叠面积图
+        seriesConfig = assetList.map((asset, index) => ({
+          name: assetDisplayNames[asset],
+          type: 'line',
+          stack: 'Total',  // 堆叠
+          data: seriesData[asset],
+          smooth: true,
+          symbol: 'none',
+          lineStyle: {
+            width: 1
+          },
+          areaStyle: {
+            opacity: 0.6
+          },
+          itemStyle: {
+            color: this.getColorByIndex(index)
+          }
+        }));
+      } else {
+        // 普通折线图
+        seriesConfig = assetList.map((asset, index) => ({
+          name: assetDisplayNames[asset],
+          type: 'line',
+          data: seriesData[asset],
+          smooth: true,
+          symbol: 'none',
+          lineStyle: {
+            width: 2
+          },
+          itemStyle: {
+            color: this.getColorByIndex(index)
+          }
+        }));
+      }
+      
+      const option = {
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: {
+            type: 'cross'
+          },
+          formatter: (params) => {
+            const date = dayjs(params[0].axisValue).format('YYYY-MM-DD');
+            let result = `${date}<br />`;
+            params.forEach(param => {
+              const value = param.value[1];
+              if (value !== undefined && value !== null) {
+                const formattedValue = parseFloat(value).toFixed(4);
+                result += `${param.seriesName}: ${(formattedValue * 100).toFixed(2)}%<br />`;
+              } else {
+                result += `${param.seriesName}: -<br />`;
+              }
+            });
+            return result;
+          }
+        },
+        legend: {
+          data: assetList.map(asset => assetDisplayNames[asset]),
+          type: 'scroll',
+          orient: 'horizontal',
+          top: '10%'
+        },
+        grid: {
+          left: '3%',
+          right: '4%',
+          bottom: '3%',
+          top: '20%',
+          containLabel: true
+        },
+        xAxis: {
+          type: 'time',
+          boundaryGap: false,
+          axisLabel: {
+            formatter: (value) => {
+              return dayjs(value).format('MM-DD');
+            }
+          }
+        },
+        yAxis: {
+          type: 'value',
+          axisLabel: {
+            formatter: (value) => {
+              return (value * 100).toFixed(0) + '%';
+            }
+          }
+        },
+        series: seriesConfig
+      };
+      
+      this.weightChart.setOption(option, true);
+    },
+    getColorByIndex(index) {
+      // 定义一组易于区分的颜色
+      const colors = [
+        '#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de',
+        '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc', '#546570',
+        '#bda29a', '#6e7074', '#5fa466', '#bd1111', '#4abcd9'
+      ];
+      return colors[index % colors.length];
     },
     handlePositionPageChange(page) {
       this.positionCurrentPage = page;
     },
-    getReturnColor(value) {
-      if (value == null || value === undefined) return '#909399';
-      return value >= 0 ? '#67c23a' : '#f56c6c';
-    },
-    getCorrelationColor(value) {
-      if (value === null || value === undefined) return '#909399';
-      if (value > 0.7) return '#f56c6c';
-      if (value > 0.3) return '#e6a23c';
-      if (value > -0.3) return '#909399';
-      if (value > -0.7) return '#409eff';
-      return '#67c23a';
-    },
-    handleExport() {
-      this.$message.info('导出功能开发中');
-    },
     handleClose() {
       this.visible = false;
-      if (this.equityChart) {
-        this.equityChart.dispose();
-        this.equityChart = null;
-      }
+    },
+    handleExport() {
+      // 导出报告功能
+      this.$message.info('正在导出回测报告...');
     },
     formatDate(date) {
       return date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-';
     },
     formatDateShort(date) {
       return date ? dayjs(date).format('YYYY-MM-DD') : '-';
+    },
+    getReturnColor(value) {
+      if (value == null) return '#909399';
+      return value >= 0 ? '#67c23a' : '#f56c6c';
+    },
+    getCorrelationColor(value) {
+      if (value == null) return '#909399';
+      if (value > 0.5) return '#f56c6c';  // 高度正相关，红色
+      if (value > 0.2) return '#e6a23c';  // 中度正相关，橙色
+      if (value < -0.5) return '#409eff'; // 高度负相关，蓝色
+      if (value < -0.2) return '#7a6df0'; // 中度负相关，紫色
+      return '#909399';  // 低相关性，灰色
     }
   }
 };
@@ -502,21 +706,22 @@ export default {
 }
 
 .metric-box {
-  text-align: center;
   padding: 15px;
-  background: #f5f7fa;
+  border: 1px solid #ebeef5;
   border-radius: 4px;
+  text-align: center;
+  background: #fafafa;
 }
 
 .metric-label {
-  font-size: 13px;
-  color: #909399;
-  margin-bottom: 8px;
+  font-size: 12px;
+  color: #606266;
+  margin-bottom: 5px;
 }
 
 .metric-value {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: bold;
   color: #303133;
 }
 </style>

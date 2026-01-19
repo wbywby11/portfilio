@@ -21,8 +21,8 @@
           <el-input v-model="form.name" placeholder="请输入资产名称"></el-input>
         </el-form-item>
 
-        <el-form-item label="资产分类" prop="category">
-          <el-select v-model="form.category" placeholder="请选择资产分类">
+        <el-form-item label="资产分类" prop="asset_type">
+          <el-select v-model="form.asset_type" placeholder="请选择资产分类">
             <el-option
               v-for="item in assetCategories"
               :key="item.value"
@@ -32,37 +32,8 @@
           </el-select>
         </el-form-item>
 
-        <el-divider content-position="left">风险收益特征</el-divider>
-
-        <el-form-item label="预期收益率" prop="expectedReturn">
-          <el-input-number
-            v-model="form.expectedReturn"
-            :min="-1"
-            :max="2"
-            :step="0.01"
-            :precision="4"
-          ></el-input-number>
-          <span style="margin-left: 10px; color: #909399;">年化收益率（小数形式，如0.08表示8%）</span>
-        </el-form-item>
-
-        <el-form-item label="波动率" prop="volatility">
-          <el-input-number
-            v-model="form.volatility"
-            :min="0"
-            :max="2"
-            :step="0.01"
-            :precision="4"
-          ></el-input-number>
-          <span style="margin-left: 10px; color: #909399;">年化波动率（小数形式）</span>
-        </el-form-item>
-
-        <el-form-item label="数据源" prop="dataSource">
-          <el-select v-model="form.dataSource" placeholder="请选择数据源">
-            <el-option label="手动录入" value="MANUAL"></el-option>
-            <el-option label="Wind" value="WIND"></el-option>
-            <el-option label="通达信" value="TDX"></el-option>
-            <el-option label="东方财富" value="EASTMONEY"></el-option>
-          </el-select>
+        <el-form-item label="交易所" prop="exchange">
+          <el-input v-model="form.exchange" placeholder="请输入交易所名称（可选）"></el-input>
         </el-form-item>
 
         <el-form-item label="描述" prop="description">
@@ -73,6 +44,54 @@
             placeholder="请输入资产描述（可选）"
           ></el-input>
         </el-form-item>
+
+        <el-divider content-position="left">展期与替代信息（可选）</el-divider>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="展期天数 k" prop="rollover_days">
+              <el-input-number v-model="form.rollover_days" :min="0" style="width: 100%"></el-input-number>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="持仓量阈值 th" prop="rollover_threshold">
+              <el-input-number v-model="form.rollover_threshold" :min="0" style="width: 100%"></el-input-number>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="观察窗口起点 p" prop="rollover_window_p">
+              <el-input-number v-model="form.rollover_window_p" :min="0" style="width: 100%"></el-input-number>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="观察窗口终点 q" prop="rollover_window_q">
+              <el-input-number v-model="form.rollover_window_q" :min="0" style="width: 100%"></el-input-number>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="替代标的代码" prop="substitute_code">
+              <el-input v-model="form.substitute_code" placeholder="请输入替代标的代码"></el-input>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="切换日期" prop="switch_date">
+              <el-date-picker
+                v-model="form.switch_date"
+                type="date"
+                placeholder="选择日期"
+                format="yyyy-MM-dd"
+                value-format="yyyyMMdd"
+                style="width: 100%"
+              ></el-date-picker>
+            </el-form-item>
+          </el-col>
+        </el-row>
 
         <el-form-item>
           <el-button type="primary" @click="handleSubmit" :loading="submitting">
@@ -95,17 +114,21 @@ export default {
       form: {
         code: '',
         name: '',
-        category: '',
-        expectedReturn: 0.08,
-        volatility: 0.15,
-        dataSource: 'MANUAL',
-        description: ''
+        asset_type: '',
+        exchange: '',
+        description: '',
+        rollover_days: null,
+        rollover_threshold: null,
+        rollover_window_p: null,
+        rollover_window_q: null,
+        substitute_code: '',
+        switch_date: ''
       },
       currentAssetId: null,  // 保存当前编辑的资产 ID
       rules: {
         code: [{ required: true, message: '请输入资产代码', trigger: 'blur' }],
         name: [{ required: true, message: '请输入资产名称', trigger: 'blur' }],
-        category: [{ required: true, message: '请选择资产分类', trigger: 'change' }]
+        asset_type: [{ required: true, message: '请选择资产分类', trigger: 'change' }]
       },
       submitting: false,
       isEdit: false
@@ -142,13 +165,17 @@ export default {
       if (asset) {
         this.currentAssetId = asset.id;  // 保存 ID
         this.form = {
-          code: asset.asset_code,
-          name: asset.asset_name,
-          category: asset.asset_type,
-          expectedReturn: asset.expected_return,
-          volatility: asset.volatility,
-          dataSource: asset.data_source || 'MANUAL',
-          description: asset.description || ''
+          code: asset.code,
+          name: asset.name,
+          asset_type: asset.asset_type,
+          exchange: asset.exchange || '',
+          description: asset.description || '',
+          rollover_days: asset.rollover_days,
+          rollover_threshold: asset.rollover_threshold,
+          rollover_window_p: asset.rollover_window_p,
+          rollover_window_q: asset.rollover_window_q,
+          substitute_code: asset.substitute_code || '',
+          switch_date: asset.switch_date || ''
         };
       } else {
         this.$message.error('找不到资产信息');

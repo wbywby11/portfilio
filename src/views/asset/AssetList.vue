@@ -6,7 +6,18 @@
         <el-button type="primary" icon="el-icon-plus" @click="$router.push('/asset/add')">
           新增资产
         </el-button>
-        <el-button icon="el-icon-upload2">批量导入</el-button>
+        <el-button icon="el-icon-download" @click="handleDownloadTemplate">下载资产模板</el-button>
+        <el-upload
+          ref="assetUpload"
+          action=""
+          :auto-upload="false"
+          :show-file-list="false"
+          :on-change="handleAssetFileChange"
+          accept=".xlsx,.xls"
+          style="display: inline-block; margin-left: 10px;"
+        >
+          <el-button icon="el-icon-upload2">批量导入资产</el-button>
+        </el-upload>
       </div>
     </div>
 
@@ -42,28 +53,20 @@
         style="width: 100%"
         stripe
       >
-        <el-table-column prop="asset_code" label="资产代码" width="120"></el-table-column>
-        <el-table-column prop="asset_name" label="资产名称" width="150"></el-table-column>
+        <el-table-column prop="code" label="资产代码" width="120"></el-table-column>
+        <el-table-column prop="name" label="资产名称" width="150"></el-table-column>
         <el-table-column prop="asset_type" label="资产分类" width="120">
           <template slot-scope="scope">
-            <el-tag size="small">{{ getCategoryLabel(scope.row.asset_type) }}</el-tag>
+            <el-tag size="small">{{ scope.row.asset_type }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="expected_return" label="预期收益率" width="120" align="right">
+        <el-table-column prop="exchange" label="交易所" width="120"></el-table-column>
+        <el-table-column prop="substitute_code" label="替代标的" width="120">
           <template slot-scope="scope">
-            {{ formatPercent(scope.row.expected_return) }}
+            {{ scope.row.substitute_code || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="volatility" label="波动率" width="100" align="right">
-          <template slot-scope="scope">
-            {{ formatPercent(scope.row.volatility) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="data_source" label="数据源" width="100">
-          <template slot-scope="scope">
-            <el-tag size="small" type="info">{{ scope.row.data_source || 'MANUAL' }}</el-tag>
-          </template>
-        </el-table-column>
+        <el-table-column prop="description" label="描述" min-width="150" show-overflow-tooltip></el-table-column>
         <el-table-column prop="is_active" label="状态" width="100">
           <template slot-scope="scope">
             <el-tag :type="scope.row.is_active ? 'success' : 'info'" size="small">
@@ -71,8 +74,9 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template slot-scope="scope">
+            <el-button type="text" size="small" @click="handleViewQuote(scope.row)">行情</el-button>
             <el-button type="text" size="small" @click="handleView(scope.row)">查看</el-button>
             <el-tooltip content="后端暂未实现更新接口" placement="top">
               <el-button type="text" size="small" @click="handleEdit(scope.row)">编辑</el-button>
@@ -101,6 +105,7 @@
 
 <script>
 import { mapState } from 'vuex';
+import { downloadAssetTemplate, importAssetsFromExcel } from '@/api/asset';
 
 export default {
   name: 'AssetList',
@@ -154,11 +159,17 @@ export default {
     handleView(row) {
       this.$message.info('查看资产详情：' + row.name);
     },
+    handleViewQuote(row) {
+      this.$router.push({
+        name: 'AssetQuote',
+        query: { code: row.code }
+      });
+    },
     handleEdit(row) {
-      this.$router.push(`/asset/edit/${row.asset_code}`);
+      this.$router.push(`/asset/edit/${row.id}`);
     },
     handleDelete(row) {
-      this.$confirm(`确定要删除资产 "${row.asset_name}" 吗?`, '提示', {
+      this.$confirm(`确定要删除资产 "${row.name}" 吗?`, '提示', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
@@ -186,6 +197,61 @@ export default {
     },
     formatPercent(num) {
       return (num * 100).toFixed(2) + '%';
+    },
+    // 下载资产导入模板
+    async handleDownloadTemplate() {
+      try {
+        const blob = await downloadAssetTemplate();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = '资产导入模板.xlsx';
+        link.click();
+        window.URL.revokeObjectURL(url);
+        this.$message.success('模板下载成功');
+      } catch (error) {
+        this.$message.error('模板下载失败');
+      }
+    },
+    // 处理资产文件选择
+    async handleAssetFileChange(file) {
+      const loading = this.$loading({
+        lock: true,
+        text: '正在导入资产数据...',
+        spinner: 'el-icon-loading'
+      });
+      
+      try {
+        const result = await importAssetsFromExcel(file.raw);
+        const data = result.data || result;
+        
+        this.$message.success(
+          `导入完成！成功: ${data.success_count || 0}条，失败: ${data.error_count || 0}条`
+        );
+        
+        if (data.errors && data.errors.length > 0) {
+          this.$alert(
+            data.errors.join('\n'),
+            '导入错误详情',
+            {
+              confirmButtonText: '确定',
+              type: 'warning'
+            }
+          );
+        }
+        
+        // 刷新列表
+        this.fetchData();
+      } catch (error) {
+        const errorMsg = error.response?.data?.detail || error.message || '导入失败';
+        this.$message.error('导入失败：' + errorMsg);
+      } finally {
+        loading.close();
+        // 清空文件选择
+        if (this.$refs.assetUpload) {
+          this.$refs.assetUpload.clearFiles();
+        }
+      }
     }
   }
 };

@@ -60,19 +60,22 @@ const actions = {
         limit: params.pageSize || 20
       });
       
-      // 后端返回的数据可能被包装在 data 字段中
+      // 后端返回的数据可能被包装 in data 字段中
       const rawList = Array.isArray(response) ? response : (response.data || []);
       const list = rawList.map(item => ({
-        id: item.id,                  // 保存 id 用于更新和删除
-        asset_code: item.code,        // 后端 code -> 前端 asset_code
-        asset_name: item.name,        // 后端 name -> 前端 asset_name
+        id: item.id,
+        code: item.code,
+        name: item.name,
         asset_type: item.asset_type,
-        expected_return: item.expected_return || 0,
-        volatility: item.volatility || 0,
-        is_active: item.is_active,
-        data_source: item.data_source,
-        description: item.description,
         exchange: item.exchange,
+        description: item.description,
+        rollover_days: item.rollover_days,
+        rollover_threshold: item.rollover_threshold,
+        rollover_window_p: item.rollover_window_p,
+        rollover_window_q: item.rollover_window_q,
+        substitute_code: item.substitute_code,
+        switch_date: item.switch_date,
+        is_active: item.is_active,
         created_at: item.created_at,
         updated_at: item.updated_at
       }));
@@ -109,28 +112,11 @@ const actions = {
   // 新增资产
   async addAsset({ commit }, asset) {
     try {
-      // 转换字段名称以匹配后端 API
-      const assetData = {
-        code: asset.code,  // 后端期望 code 而不是 asset_code
-        name: asset.name,  // 后端期望 name 而不是 asset_name
-        asset_type: asset.category,  // 使用中文枚举值
-        expected_return: asset.expectedReturn,
-        volatility: asset.volatility,
-        data_source: asset.dataSource || 'MANUAL',
-        description: asset.description || ''
-      };
-      
-      const assetCode = await createAsset(assetData);
+      const assetCode = await createAsset(asset);
       
       // 添加到列表
       commit('ADD_ASSET', {
-        asset_code: assetCode,
-        asset_name: asset.name,
-        asset_type: asset.category,
-        expected_return: asset.expectedReturn,
-        volatility: asset.volatility,
-        data_source: asset.dataSource || 'MANUAL',
-        description: asset.description || '',
+        ...asset,
         is_active: true
       });
       
@@ -144,28 +130,12 @@ const actions = {
   // 更新资产
   async updateAsset({ commit }, { assetId, data }) {
     try {
-      // 转换字段名称以匹配后端 API
-      const assetData = {
-        name: data.name,  // 后端期望 name
-        asset_type: data.category,  // 使用中文枚举值
-        expected_return: data.expectedReturn,
-        volatility: data.volatility,
-        data_source: data.dataSource || 'MANUAL',
-        description: data.description || ''
-      };
-      
-      await updateAssetApi(assetId, assetData);
+      await updateAssetApi(assetId, data);
       
       // 更新 Store 中的数据
       commit('UPDATE_ASSET', {
         id: assetId,
-        asset_code: data.code,
-        asset_name: data.name,
-        asset_type: data.category,
-        expected_return: data.expectedReturn,
-        volatility: data.volatility,
-        data_source: data.dataSource || 'MANUAL',
-        description: data.description || ''
+        ...data
       });
       
       return true;
@@ -189,7 +159,7 @@ const actions = {
 
 const getters = {
   getAssetByCode: state => code => {
-    return state.assetList.find(a => a.asset_code === code);
+    return state.assetList.find(a => a.code === code);
   },
   getAssetsByCategory: state => category => {
     return state.assetList.filter(a => a.asset_type === category);

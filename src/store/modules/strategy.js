@@ -178,11 +178,15 @@ const actions = {
   },
 
   // 获取回测历史
-  async fetchBacktestHistory({ commit }, modelId) {
+  async fetchBacktestHistory({ commit }, { modelId, skip = 0, limit = 100 }) {
     try {
       const res = await request({
         url: `/api/v1/strategy-models/${modelId}/backtests`,
-        method: 'get'
+        method: 'get',
+        params: {
+          skip,
+          limit
+        }
       });
       const history = Array.isArray(res) ? res : (res.data || []);
       return history;

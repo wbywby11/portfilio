@@ -48,11 +48,8 @@ service.interceptors.response.use(
         case 404:
           Message.error('请求的资源不存在');
           break;
-        case 500:
-          Message.error('服务器错误');
-          break;
-        default:
-          Message.error(data.detail || data.message || '请求失败');
+        // 500和其他业务错误不在这里显示，由组件级catch处理
+        // 这样可以提供更友好的上下文相关错误提示
       }
     } else if (error.request) {
       Message.error('网络错误，请检查网络连接');

@@ -41,14 +41,6 @@
               
               <div class="template-info">
                 <div class="info-item">
-                  <span class="label">适用场景：</span>
-                  <span class="value">{{ template.application_scenario || '-' }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="label">算法类：</span>
-                  <span class="value">{{ template.algorithm_class || '-' }}</span>
-                </div>
-                <div class="info-item">
                   <span class="label">状态：</span>
                   <el-tag :type="template.is_active ? 'success' : 'info'" size="mini">
                     {{ template.is_active ? '已启用' : '已禁用' }}
@@ -111,12 +103,6 @@
           <el-descriptions-item label="描述">
             {{ currentTemplate.description || '暂无' }}
           </el-descriptions-item>
-          <el-descriptions-item label="适用场景">
-            {{ currentTemplate.application_scenario || '暂无' }}
-          </el-descriptions-item>
-          <el-descriptions-item label="算法实现类">
-            {{ currentTemplate.algorithm_class || '暂无' }}
-          </el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="currentTemplate.is_active ? 'success' : 'info'" size="small">
               {{ currentTemplate.is_active ? '已启用' : '已禁用' }}
@@ -129,10 +115,42 @@
           <el-table :data="currentTemplate.parameters" border size="small">
             <el-table-column prop="name" label="参数名" width="120"></el-table-column>
             <el-table-column prop="label" label="显示名" width="120"></el-table-column>
-            <el-table-column prop="param_type" label="类型" width="80"></el-table-column>
+            <el-table-column prop="param_type" label="类型" width="80">
+              <template slot-scope="scope">
+                <el-tag size="mini" :type="getParamTypeTag(scope.row.param_type)">
+                  {{ getParamTypeLabel(scope.row.param_type) }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column prop="default_value" label="默认值" width="100">
               <template slot-scope="scope">
-                {{ scope.row.default_value !== null && scope.row.default_value !== undefined ? scope.row.default_value : '-' }}
+                <span v-if="scope.row.param_type === 'boolean'">
+                  <el-tag :type="scope.row.default_value ? 'success' : 'info'" size="mini">
+                    {{ scope.row.default_value ? '是' : '否' }}
+                  </el-tag>
+                </span>
+                <span v-else-if="scope.row.param_type === 'dict'">
+                  <el-popover placement="top" trigger="hover" :content="JSON.stringify(scope.row.default_value)">
+                    <el-tag slot="reference" size="mini" type="danger">JSON</el-tag>
+                  </el-popover>
+                </span>
+                <span v-else>
+                  {{ scope.row.default_value !== null && scope.row.default_value !== undefined ? scope.row.default_value : '-' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="参数范围" width="150">
+              <template slot-scope="scope">
+                <span v-if="scope.row.param_type === 'number' || scope.row.param_type === 'slider'">
+                  [{{ scope.row.min_value }}, {{ scope.row.max_value }}]
+                  <span v-if="scope.row.param_type === 'slider' && scope.row.step">
+                    <br>步长: {{ scope.row.step }}
+                  </span>
+                </span>
+                <span v-else-if="scope.row.param_type === 'select' && scope.row.options">
+                  {{ Array.isArray(scope.row.options) ? scope.row.options.join(', ') : scope.row.options }}
+                </span>
+                <span v-else>-</span>
               </template>
             </el-table-column>
             <el-table-column prop="required" label="必填" width="60">
@@ -201,6 +219,7 @@ export default {
     async fetchData() {
       this.loading = true;
       try {
+        // 列表加载时不包含源代码，提高性能
         const res = await this.$store.dispatch('strategy/fetchTemplateList');
         this.templateList = res;
       } catch (error) {
@@ -215,29 +234,35 @@ export default {
     handleCreate() {
       this.$router.push('/strategy/template/add');
     },
-    handleView(template) {
-      this.currentTemplate = template;
-      this.detailDialogVisible = true;
-      // 初始化代码编辑器
-      this.$nextTick(() => {
-        if (template.source_code && this.$refs.detailCodeEditor) {
-          // 清理旧的编辑器
-          if (this.detailCodeEditor) {
-            this.detailCodeEditor.toTextArea();
+    async handleView(template) {
+      // 单独获取带有源代码的模板详情
+      try {
+        const fullTemplate = await this.$store.dispatch('strategy/fetchTemplate', template.code);
+        this.currentTemplate = fullTemplate;
+        this.detailDialogVisible = true;
+        // 初始化代码编辑器
+        this.$nextTick(() => {
+          if (fullTemplate.source_code && this.$refs.detailCodeEditor) {
+            // 清理旧的编辑器
+            if (this.detailCodeEditor) {
+              this.detailCodeEditor.toTextArea();
+            }
+            // 创建新的只读编辑器
+            this.detailCodeEditor = CodeMirror.fromTextArea(this.$refs.detailCodeEditor, {
+              mode: 'python',
+              theme: 'monokai',
+              lineNumbers: true,
+              lineWrapping: true,
+              readOnly: true,  // 只读模式
+              cursorBlinkRate: -1  // 隐藏光标
+            });
+            this.detailCodeEditor.setValue(fullTemplate.source_code);
+            this.detailCodeEditor.setSize(null, '400px');
           }
-          // 创建新的只读编辑器
-          this.detailCodeEditor = CodeMirror.fromTextArea(this.$refs.detailCodeEditor, {
-            mode: 'python',
-            theme: 'monokai',
-            lineNumbers: true,
-            lineWrapping: true,
-            readOnly: true,  // 只读模式
-            cursorBlinkRate: -1  // 隐藏光标
-          });
-          this.detailCodeEditor.setValue(template.source_code);
-          this.detailCodeEditor.setSize(null, '400px');
-        }
-      });
+        });
+      } catch (error) {
+        this.$message.error('加载模板详情失败');
+      }
     },
     handleEdit(template) {
       // 使用 code 作为路由参数，因为后端接口需要 code 来获取模板
@@ -267,6 +292,28 @@ export default {
     },
     formatDate(date) {
       return date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-';
+    },
+    getParamTypeLabel(type) {
+      const typeMap = {
+        'number': '数字',
+        'string': '文本',
+        'boolean': '复选框',
+        'select': '选择',
+        'slider': '滑块',
+        'dict': '字典(JSON)'
+      };
+      return typeMap[type] || type;
+    },
+    getParamTypeTag(type) {
+      const tagMap = {
+        'number': '',
+        'string': 'info',
+        'boolean': 'warning',
+        'select': 'success',
+        'slider': 'primary',
+        'dict': 'danger'
+      };
+      return tagMap[type] || '';
     }
   },
   beforeDestroy() {

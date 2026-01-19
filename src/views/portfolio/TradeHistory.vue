@@ -237,21 +237,35 @@
       width="70%"
     >
       <div v-if="currentSnapshot">
+        <div class="snapshot-info" style="margin-bottom: 15px;">
+          <el-tag type="info" size="small">日期: {{ currentSnapshot.date }}</el-tag>
+          <el-tag type="warning" size="small" style="margin-left: 10px;" v-if="currentSnapshot.rebalance_reason">
+            调整原因: {{ currentSnapshot.rebalance_reason }}
+          </el-tag>
+        </div>
         <el-tabs v-model="snapshotTab">
           <el-tab-pane label="调仓后持仓" name="after">
             <el-table :data="currentSnapshot.after" border size="small">
-              <el-table-column prop="assetCode" label="资产代码" width="120"></el-table-column>
-              <el-table-column prop="assetName" label="资产名称" width="150"></el-table-column>
-              <el-table-column prop="quantity" label="持仓数量" align="right"></el-table-column>
-              <el-table-column prop="price" label="成本价" align="right"></el-table-column>
-              <el-table-column prop="value" label="市值" align="right">
+              <el-table-column prop="asset_code" label="资产代码" width="120"></el-table-column>
+              <el-table-column prop="asset_name" label="资产名称" width="150"></el-table-column>
+              <el-table-column prop="shares" label="持仓数量" align="right">
                 <template slot-scope="scope">
-                  {{ formatNumber(scope.row.value) }}
+                  {{ scope.row.shares ? scope.row.shares.toFixed(2) : '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="price" label="成本价" align="right">
+                <template slot-scope="scope">
+                  {{ scope.row.price ? scope.row.price.toFixed(4) : '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="market_value" label="市值" align="right">
+                <template slot-scope="scope">
+                  {{ formatNumber(scope.row.market_value) }}
                 </template>
               </el-table-column>
               <el-table-column prop="weight" label="权重" align="right">
                 <template slot-scope="scope">
-                  {{ scope.row.weight }}%
+                  {{ scope.row.weight ? (scope.row.weight * 100).toFixed(2) + '%' : '-' }}
                 </template>
               </el-table-column>
             </el-table>
@@ -259,18 +273,26 @@
           
           <el-tab-pane label="调仓前持仓" name="before">
             <el-table :data="currentSnapshot.before" border size="small">
-              <el-table-column prop="assetCode" label="资产代码" width="120"></el-table-column>
-              <el-table-column prop="assetName" label="资产名称" width="150"></el-table-column>
-              <el-table-column prop="quantity" label="持仓数量" align="right"></el-table-column>
-              <el-table-column prop="price" label="成本价" align="right"></el-table-column>
-              <el-table-column prop="value" label="市值" align="right">
+              <el-table-column prop="asset_code" label="资产代码" width="120"></el-table-column>
+              <el-table-column prop="asset_name" label="资产名称" width="150"></el-table-column>
+              <el-table-column prop="shares" label="持仓数量" align="right">
                 <template slot-scope="scope">
-                  {{ formatNumber(scope.row.value) }}
+                  {{ scope.row.shares ? scope.row.shares.toFixed(2) : '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="price" label="成本价" align="right">
+                <template slot-scope="scope">
+                  {{ scope.row.price ? scope.row.price.toFixed(4) : '-' }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="market_value" label="市值" align="right">
+                <template slot-scope="scope">
+                  {{ formatNumber(scope.row.market_value) }}
                 </template>
               </el-table-column>
               <el-table-column prop="weight" label="权重" align="right">
                 <template slot-scope="scope">
-                  {{ scope.row.weight }}%
+                  {{ scope.row.weight ? (scope.row.weight * 100).toFixed(2) + '%' : '-' }}
                 </template>
               </el-table-column>
             </el-table>
@@ -410,13 +432,15 @@ export default {
     viewSnapshot(record) {
       // 生成快照数据
       this.currentSnapshot = {
+        date: record.timestamp.split(' ')[0],
+        rebalance_reason: record.reason,
         before: [
-          { assetCode: '000300.SH', assetName: '沪深300', quantity: 1000, price: 40.5, value: 42100, weight: 40.5 },
-          { assetCode: '000905.SH', assetName: '中证500', quantity: 800, price: 30.2, value: 25200, weight: 24.16 }
+          { asset_code: '000300.SH', asset_name: '沪深300', shares: 1000, price: 40.5, market_value: 42100, weight: 0.405 },
+          { asset_code: '000905.SH', asset_name: '中证500', shares: 800, price: 30.2, market_value: 25200, weight: 0.2416 }
         ],
         after: [
-          { assetCode: '000300.SH', assetName: '沪深300', quantity: 800, price: 42.1, value: 33680, weight: 38.2 },
-          { assetCode: '000905.SH', assetName: '中证500', quantity: 900, price: 31.2, value: 28080, weight: 26.8 }
+          { asset_code: '000300.SH', asset_name: '沪深300', shares: 800, price: 42.1, market_value: 33680, weight: 0.382 },
+          { asset_code: '000905.SH', asset_name: '中证500', shares: 900, price: 31.2, market_value: 28080, weight: 0.268 }
         ]
       };
       this.snapshotDialogVisible = true;

@@ -38,6 +38,15 @@ export function updateTemplate(templateId, data) {
   });
 }
 
+// 验证模板有效性
+export function validateTemplate(data) {
+  return request({
+    url: '/api/v1/model-templates/validate',
+    method: 'post',
+    data
+  });
+}
+
 // 创建策略模型
 export function createStrategyModel(data) {
   return request({
@@ -76,7 +85,7 @@ export function getStrategyModel(modelId) {
 // 运行回测
 export function runBacktest(modelId, data) {
   return request({
-    url: `/api/v1/strategy-models/${modelId}/backtest`,
+    url: `/api/v1/backtests/run-by-model/${modelId}`,
     method: 'post',
     data
   });
@@ -113,5 +122,57 @@ export function calculateStrategy(data) {
     url: '/api/v1/algorithms/calculate',
     method: 'post',
     data
+  });
+}
+
+// 业绩基准相关API
+
+// 获取业绩基准列表
+export function getBenchmarkList() {
+  return request({
+    url: '/api/v1/benchmarks/',
+    method: 'get'
+  });
+}
+
+// 获取单个业绩基准
+export function getBenchmark(benchmarkId) {
+  return request({
+    url: `/api/v1/benchmarks/${benchmarkId}`,
+    method: 'get'
+  });
+}
+
+// 根据代码获取业绩基准
+export function getBenchmarkByCode(code) {
+  return request({
+    url: `/api/v1/benchmarks/by-code/${code}`,
+    method: 'get'
+  });
+}
+
+// 创建业绩基准
+export function createBenchmark(data) {
+  return request({
+    url: '/api/v1/benchmarks/',
+    method: 'post',
+    data
+  });
+}
+
+// 更新业绩基准
+export function updateBenchmark(benchmarkId, data) {
+  return request({
+    url: `/api/v1/benchmarks/${benchmarkId}`,
+    method: 'put',
+    data
+  });
+}
+
+// 删除业绩基准
+export function deleteBenchmark(benchmarkId) {
+  return request({
+    url: `/api/v1/benchmarks/${benchmarkId}`,
+    method: 'delete'
   });
 }

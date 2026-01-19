@@ -68,13 +68,68 @@
                 <el-form-item
                   v-for="param in currentTemplate.parameters"
                   :key="param.name"
-                  :label="param.label"
+                  :label="param.label || param.name"
                 >
+                  <!-- 数字类型 -->
                   <el-input-number
+                    v-if="param.param_type === 'number'"
                     v-model="strategyForm.parameters[param.name]"
-                    :min="param.min"
-                    :max="param.max"
+                    :min="param.min_value !== null && param.min_value !== undefined ? param.min_value : undefined"
+                    :max="param.max_value !== null && param.max_value !== undefined ? param.max_value : undefined"
                     :step="param.step || 0.01"
+                    :precision="4"
+                  ></el-input-number>
+
+                  <!-- 滑块类型 -->
+                  <el-slider
+                    v-else-if="param.param_type === 'slider'"
+                    v-model="strategyForm.parameters[param.name]"
+                    :min="param.min_value !== null && param.min_value !== undefined ? param.min_value : 0"
+                    :max="param.max_value !== null && param.max_value !== undefined ? param.max_value : 100"
+                    :step="param.step || 1"
+                    show-input
+                  ></el-slider>
+
+                  <!-- 下拉选择类型 -->
+                  <el-select
+                    v-else-if="param.param_type === 'select'"
+                    v-model="strategyForm.parameters[param.name]"
+                    placeholder="请选择"
+                  >
+                    <el-option
+                      v-for="option in getParamOptions(param)"
+                      :key="option"
+                      :label="option"
+                      :value="option"
+                    ></el-option>
+                  </el-select>
+
+                  <!-- 复选框类型 -->
+                  <el-switch
+                    v-else-if="param.param_type === 'boolean'"
+                    v-model="strategyForm.parameters[param.name]"
+                  ></el-switch>
+
+                  <!-- 字典类型 -->
+                  <el-input
+                    v-else-if="param.param_type === 'dict'"
+                    type="textarea"
+                    v-model="strategyForm.parameters[param.name]"
+                    :rows="3"
+                    placeholder='请输入JSON字符串，如：{"key": "value"}'
+                  ></el-input>
+
+                  <!-- 文本类型 -->
+                  <el-input
+                    v-else-if="param.param_type === 'string'"
+                    v-model="strategyForm.parameters[param.name]"
+                    placeholder="请输入"
+                  ></el-input>
+
+                  <!-- 默认 -->
+                  <el-input-number
+                    v-else
+                    v-model="strategyForm.parameters[param.name]"
                     :precision="4"
                   ></el-input-number>
                 </el-form-item>
@@ -208,10 +263,16 @@ export default {
     },
     handleTemplateChange(templateId) {
       const template = this.templateList.find(t => t.id === templateId);
-      if (template) {
+      if (template && template.parameters) {
         this.strategyForm.parameters = {};
         template.parameters.forEach(p => {
-          this.strategyForm.parameters[p.name] = p.default;
+          if (p.param_type === 'dict') {
+            this.strategyForm.parameters[p.name] = p.default !== undefined 
+              ? (typeof p.default === 'object' ? JSON.stringify(p.default, null, 2) : p.default)
+              : '{}';
+          } else {
+            this.strategyForm.parameters[p.name] = p.default;
+          }
         });
       }
     },
@@ -227,10 +288,24 @@ export default {
 
       this.calculating = true;
       try {
+        // 处理参数：如果是 dict 类型，尝试解析 JSON
+        const submitParameters = { ...this.strategyForm.parameters };
+        if (this.currentTemplate && this.currentTemplate.parameters) {
+          this.currentTemplate.parameters.forEach(param => {
+            if (param.param_type === 'dict' && typeof submitParameters[param.name] === 'string') {
+              try {
+                submitParameters[param.name] = JSON.parse(submitParameters[param.name]);
+              } catch (e) {
+                throw new Error(`参数 "${param.label || param.name}" 不是有效的 JSON 格式`);
+              }
+            }
+          });
+        }
+
         this.calculationResult = await this.$store.dispatch('strategy/calculateStrategy', {
           assets: this.selectedAssets,
           template: this.strategyForm.templateId,
-          parameters: this.strategyForm.parameters
+          parameters: submitParameters
         });
         this.$message.success('计算完成');
       } catch (error) {
@@ -238,6 +313,15 @@ export default {
       } finally {
         this.calculating = false;
       }
+    },
+    // 获取参数选项
+    getParamOptions(param) {
+      if (!param.options) return [];
+      if (Array.isArray(param.options)) return param.options;
+      if (typeof param.options === 'string') {
+        return param.options.split(',').map(o => o.trim()).filter(o => o);
+      }
+      return [];
     },
     async saveStrategy() {
       if (!this.strategyForm.name) {

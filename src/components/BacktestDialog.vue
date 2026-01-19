@@ -1,10 +1,9 @@
 <template>
   <el-dialog
-    :title="title"
+    title="回测配置"
     :visible.sync="visible"
     width="600px"
-    :close-on-click-modal="false"
-    @close="handleClose"
+    :before-close="handleClose"
   >
     <el-form
       ref="form"
@@ -12,15 +11,24 @@
       :rules="rules"
       label-width="120px"
     >
-      <el-form-item label="回测区间" prop="dateRange">
+      <el-form-item label="起始日期" prop="start_date">
         <el-date-picker
-          v-model="form.dateRange"
-          type="daterange"
-          range-separator="至"
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
+          v-model="form.start_date"
+          type="date"
+          placeholder="请选择起始日期"
+          format="yyyy-MM-dd"
           value-format="yyyy-MM-dd"
-          :picker-options="pickerOptions"
+          style="width: 100%;"
+        ></el-date-picker>
+      </el-form-item>
+
+      <el-form-item label="结束日期" prop="end_date">
+        <el-date-picker
+          v-model="form.end_date"
+          type="date"
+          placeholder="请选择结束日期"
+          format="yyyy-MM-dd"
+          value-format="yyyy-MM-dd"
           style="width: 100%;"
         ></el-date-picker>
       </el-form-item>
@@ -31,29 +39,31 @@
           :min="10000"
           :max="100000000"
           :step="10000"
-          :precision="2"
           style="width: 100%;"
         ></el-input-number>
-        <div style="color: #909399; font-size: 12px; margin-top: 5px;">
-          默认: 1,000,000 元
-        </div>
       </el-form-item>
 
-      <el-alert
-        title="回测说明"
-        type="info"
-        :closable="false"
-        style="margin-bottom: 20px;"
-      >
-        <div style="font-size: 13px; line-height: 1.6;">
-          <p style="margin: 5px 0;">• 回测将基于历史数据模拟策略的实际表现</p>
-          <p style="margin: 5px 0;">• 回测时间不宜过长,建议选择1-3年</p>
-          <p style="margin: 5px 0;">• 回测结果仅供参考,不代表未来实际收益</p>
-        </div>
-      </el-alert>
+      <el-form-item label="业绩基准">
+        <el-select
+          v-model="form.benchmark_code"
+          placeholder="请选择业绩基准（可选）"
+          clearable
+          style="width: 100%;"
+        >
+          <el-option
+            v-for="benchmark in benchmarkOptions"
+            :key="benchmark.code"
+            :label="`${benchmark.code} - ${benchmark.name}`"
+            :value="benchmark.code"
+          >
+            <span style="float: left">{{ benchmark.code }} - {{ benchmark.name }}</span>
+            <span style="float: right; color: #8492a6; font-size: 13px">{{ benchmark.benchmark_type }}</span>
+          </el-option>
+        </el-select>
+      </el-form-item>
     </el-form>
 
-    <div slot="footer">
+    <div slot="footer" class="dialog-footer">
       <el-button @click="handleClose">取消</el-button>
       <el-button type="primary" @click="handleSubmit" :loading="submitting">
         {{ submitting ? '回测中...' : '开始回测' }}
@@ -74,130 +84,107 @@ export default {
     },
     modelId: {
       type: String,
-      default: ''
-    },
-    title: {
-      type: String,
-      default: '回测配置'
+      required: true
     }
   },
   data() {
     return {
-      visible: this.value,
-      submitting: false,
       form: {
-        dateRange: [],
-        initial_capital: 1000000
+        start_date: dayjs().subtract(1, 'year').format('YYYY-MM-DD'),
+        end_date: dayjs().format('YYYY-MM-DD'),
+        initial_capital: 1000000,
+        benchmark_code: ''
       },
+      benchmarkOptions: [],
+      submitting: false,
       rules: {
-        dateRange: [
-          { required: true, message: '请选择回测区间', trigger: 'change' }
+        start_date: [
+          { required: true, message: '请选择起始日期', trigger: 'change' }
+        ],
+        end_date: [
+          { required: true, message: '请选择结束日期', trigger: 'change' },
+          {
+            validator: (rule, value, callback) => {
+              if (value && this.form.start_date && new Date(value) <= new Date(this.form.start_date)) {
+                callback(new Error('结束日期必须大于起始日期'));
+              } else {
+                callback();
+              }
+            },
+            trigger: 'change'
+          }
         ],
         initial_capital: [
-          { required: true, message: '请输入初始资金', trigger: 'blur' }
-        ]
-      },
-      pickerOptions: {
-        disabledDate(time) {
-          // 禁用未来日期
-          return time.getTime() > Date.now();
-        },
-        shortcuts: [
-          {
-            text: '最近1年',
-            onClick(picker) {
-              const end = new Date();
-              const start = new Date();
-              start.setTime(start.getTime() - 3600 * 1000 * 24 * 365);
-              picker.$emit('pick', [start, end]);
-            }
-          },
-          {
-            text: '最近2年',
-            onClick(picker) {
-              const end = new Date();
-              const start = new Date();
-              start.setTime(start.getTime() - 3600 * 1000 * 24 * 730);
-              picker.$emit('pick', [start, end]);
-            }
-          },
-          {
-            text: '最近3年',
-            onClick(picker) {
-              const end = new Date();
-              const start = new Date();
-              start.setTime(start.getTime() - 3600 * 1000 * 24 * 1095);
-              picker.$emit('pick', [start, end]);
-            }
-          }
+          { required: true, message: '请输入初始资金', trigger: 'blur' },
+          { type: 'number', min: 1000, message: '初始资金至少为1000', trigger: 'blur' }
         ]
       }
     };
   },
-  watch: {
-    value(val) {
-      this.visible = val;
-      if (val) {
-        this.initForm();
+  computed: {
+    visible: {
+      get() {
+        return this.value;
+      },
+      set(val) {
+        this.$emit('input', val);
       }
-    },
-    visible(val) {
-      this.$emit('input', val);
     }
   },
+  created() {
+    this.loadBenchmarkOptions();
+  },
   methods: {
-    initForm() {
-      // 默认最近1年
-      const end = dayjs().format('YYYY-MM-DD');
-      const start = dayjs().subtract(1, 'year').format('YYYY-MM-DD');
-      this.form.dateRange = [start, end];
-      this.form.initial_capital = 1000000;
+    async loadBenchmarkOptions() {
+      try {
+        const res = await this.$store.dispatch('benchmark/fetchBenchmarkList');
+        this.benchmarkOptions = res.filter(b => b.is_active); // 只显示激活的基准
+      } catch (error) {
+        console.error('加载业绩基准失败:', error);
+      }
+    },
+    handleClose() {
+      this.$emit('input', false);
     },
     handleSubmit() {
       this.$refs.form.validate(async (valid) => {
         if (!valid) {
-          return;
-        }
-
-        if (!this.modelId) {
-          this.$message.error('策略模型ID不能为空');
+          this.$message.warning('请完善必填项');
           return;
         }
 
         this.submitting = true;
         try {
-          const [startDate, endDate] = this.form.dateRange;
-          
-          // 转换为年月日格式（不包含时分秒）
           const backtestData = {
-            start_date: dayjs(startDate).format('YYYY-MM-DD'),
-            end_date: dayjs(endDate).format('YYYY-MM-DD'),
-            initial_capital: this.form.initial_capital
+            start_date: this.form.start_date,
+            end_date: this.form.end_date,
+            initial_capital: this.form.initial_capital,
+            benchmark_code: this.form.benchmark_code || null
           };
 
-          const result = await this.$store.dispatch('strategy/runBacktest', {
+          await this.$store.dispatch('strategy/runBacktest', {
             modelId: this.modelId,
             data: backtestData
           });
 
-          this.$message.success('回测完成');
-          this.$emit('success', result);
+          this.$message.success('回测已启动');
           this.handleClose();
+          this.$emit('success');
         } catch (error) {
-          console.error('回测失败:', error);
-          this.$message.error('回测失败：' + (error.response?.data?.message || error.message));
+          // 优先使用后端返回的错误信息
+          const errorMsg = error.response?.data?.message || error.response?.data?.detail || error.message || '回测启动失败';
+          this.$message.error('回测启动失败：' + errorMsg);
         } finally {
           this.submitting = false;
         }
       });
-    },
-    handleClose() {
-      this.visible = false;
-      this.$refs.form.resetFields();
     }
   }
 };
 </script>
 
 <style scoped>
+.dialog-footer {
+  text-align: right;
+}
 </style>

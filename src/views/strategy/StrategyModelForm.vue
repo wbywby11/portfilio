@@ -112,14 +112,79 @@
             :key="param.name"
             :label="param.label || param.name"
           >
+            <!-- 数字类型 -->
             <el-input-number
+              v-if="param.param_type === 'number'"
               v-model="form.parameters[param.name]"
-              :min="param.min"
-              :max="param.max"
+              :min="param.min_value !== null && param.min_value !== undefined ? param.min_value : undefined"
+              :max="param.max_value !== null && param.max_value !== undefined ? param.max_value : undefined"
               :step="param.step || 0.01"
               :precision="4"
               style="width: 200px;"
             ></el-input-number>
+            
+            <!-- 滑块类型 -->
+            <div v-else-if="param.param_type === 'slider'" style="display: flex; align-items: center;">
+              <el-slider
+                v-model="form.parameters[param.name]"
+                :min="param.min_value !== null && param.min_value !== undefined ? param.min_value : 0"
+                :max="param.max_value !== null && param.max_value !== undefined ? param.max_value : 100"
+                :step="param.step || 1"
+                style="width: 200px; margin-right: 15px;"
+                show-input
+              ></el-slider>
+            </div>
+            
+            <!-- 下拉选择类型 -->
+            <el-select
+              v-else-if="param.param_type === 'select'"
+              v-model="form.parameters[param.name]"
+              placeholder="请选择"
+              style="width: 200px;"
+            >
+              <el-option
+                v-for="option in getParamOptions(param)"
+                :key="option"
+                :label="option"
+                :value="option"
+              ></el-option>
+            </el-select>
+            
+            <!-- 复选框类型 -->
+            <el-switch
+              v-else-if="param.param_type === 'boolean'"
+              v-model="form.parameters[param.name]"
+            ></el-switch>
+            
+            <!-- 文本类型 -->
+            <el-input
+              v-else-if="param.param_type === 'string'"
+              v-model="form.parameters[param.name]"
+              placeholder="请输入"
+              style="width: 200px;"
+            ></el-input>
+            
+            <!-- 字典类型 -->
+            <el-input
+              v-else-if="param.param_type === 'dict'"
+              type="textarea"
+              v-model="form.parameters[param.name]"
+              :rows="3"
+              placeholder='请输入JSON字符串，如：{"key": "value"}'
+              style="width: 100%; max-width: 500px;"
+            ></el-input>
+            
+            <!-- 默认使用数字输入框（向下兼容） -->
+            <el-input-number
+              v-else
+              v-model="form.parameters[param.name]"
+              :min="param.min_value !== null && param.min_value !== undefined ? param.min_value : undefined"
+              :max="param.max_value !== null && param.max_value !== undefined ? param.max_value : undefined"
+              :step="param.step || 0.01"
+              :precision="4"
+              style="width: 200px;"
+            ></el-input-number>
+            
             <span style="margin-left: 10px; color: #909399; font-size: 13px;">
               {{ param.description || '' }}
             </span>
@@ -204,12 +269,26 @@ export default {
     async loadModel() {
       try {
         const model = await this.$store.dispatch('strategy/fetchStrategyModel', this.currentModelId);
+        
+        // 处理参数：如果是 dict 类型且是对象，转换为 JSON 字符串显示
+        const parameters = { ...(model.parameters || {}) };
+        if (model.template_code) {
+          const template = this.templateList.find(t => t.code === model.template_code);
+          if (template && template.parameters) {
+            template.parameters.forEach(param => {
+              if (param.param_type === 'dict' && typeof parameters[param.name] === 'object') {
+                parameters[param.name] = JSON.stringify(parameters[param.name], null, 2);
+              }
+            });
+          }
+        }
+
         this.form = {
           name: model.name,
           description: model.description || '',
           template_code: model.template_code,
           asset_codes: model.asset_codes || [],
-          parameters: model.parameters || {},
+          parameters: parameters,
           rebalance_frequency: model.rebalance_frequency || '月'
         };
       } catch (error) {
@@ -223,7 +302,13 @@ export default {
         // 初始化参数默认值
         const parameters = {};
         template.parameters.forEach(param => {
-          parameters[param.name] = param.default;
+          if (param.param_type === 'dict') {
+            parameters[param.name] = param.default !== undefined 
+              ? (typeof param.default === 'object' ? JSON.stringify(param.default, null, 2) : param.default)
+              : '{}';
+          } else {
+            parameters[param.name] = param.default;
+          }
         });
         this.form.parameters = parameters;
       }
@@ -238,6 +323,22 @@ export default {
       const asset = this.assetOptions.find(a => a.code === code);
       return asset ? `${asset.code} ${asset.name}` : code;
     },
+    // 获取参数的选项列表
+    getParamOptions(param) {
+      if (!param.options) {
+        return [];
+      }
+      // 如果options是数组，直接返回
+      if (Array.isArray(param.options)) {
+        return param.options;
+      }
+      // 如果options是字符串，按逗号分割
+      if (typeof param.options === 'string') {
+        return param.options.split(',').map(o => o.trim()).filter(o => o);
+      }
+      return [];
+    },
+
     resetParameters() {
       if (this.currentTemplate && this.currentTemplate.parameters) {
         const parameters = {};
@@ -257,12 +358,28 @@ export default {
 
         this.submitting = true;
         try {
+          // 处理参数：如果是 dict 类型，尝试从 JSON 字符串解析为对象
+          const submitParameters = { ...this.form.parameters };
+          if (this.currentTemplate && this.currentTemplate.parameters) {
+            this.currentTemplate.parameters.forEach(param => {
+              if (param.param_type === 'dict' && typeof submitParameters[param.name] === 'string') {
+                try {
+                  submitParameters[param.name] = JSON.parse(submitParameters[param.name]);
+                } catch (e) {
+                  console.error(`解析参数 ${param.name} 失败:`, e);
+                  // 如果解析失败，保留原字符串或抛出错误
+                  throw new Error(`参数 "${param.label || param.name}" 不是有效的 JSON 格式`);
+                }
+              }
+            });
+          }
+
           const modelData = {
             name: this.form.name,
             description: this.form.description,
             template_code: this.form.template_code,
             asset_codes: this.form.asset_codes,
-            parameters: this.form.parameters,
+            parameters: submitParameters,
             rebalance_frequency: this.form.rebalance_frequency
           };
 

@@ -48,7 +48,9 @@
         <el-table-column prop="name" label="策略名称" width="200"></el-table-column>
         <el-table-column prop="template_code" label="所用模板" width="150">
           <template slot-scope="scope">
-            <el-tag size="small">{{ scope.row.template_code }}</el-tag>
+            <el-tag size="small">
+              {{ scope.row.template_name || scope.row.template_code }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
@@ -58,21 +60,24 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="description" label="描述" show-overflow-tooltip></el-table-column>
-        <el-table-column prop="backtest_result" label="回测结果" width="150">
+        <el-table-column prop="asset_codes" label="关联资产" width="200">
           <template slot-scope="scope">
-            <div v-if="scope.row.backtest_result">
-              <span style="color: #67c23a;">
-                年化收益: {{ (scope.row.backtest_result.annual_return * 100).toFixed(2) }}%
-              </span>
-              <br />
-              <span style="color: #909399; font-size: 12px;">
-                夏普: {{ scope.row.backtest_result.sharpe_ratio ? scope.row.backtest_result.sharpe_ratio.toFixed(2) : '-' }}
-              </span>
-            </div>
-            <span v-else style="color: #909399;">未回测</span>
+            <el-popover
+              placement="top-start"
+              trigger="hover"
+              :title="'资产列表'"
+              :width="300"
+            >
+              <div v-for="assetCode in scope.row.asset_codes" :key="assetCode" style="padding: 5px 0;">
+                {{ assetCode }} - {{ scope.row.asset_names && scope.row.asset_names[assetCode] || '未知资产' }}
+              </div>
+              <el-tag slot="reference" size="small" type="info" style="margin-right: 5px;">
+                {{ scope.row.asset_codes.length }}个资产
+              </el-tag>
+            </el-popover>
           </template>
         </el-table-column>
+        <el-table-column prop="description" label="描述" show-overflow-tooltip></el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="160">
           <template slot-scope="scope">
             {{ formatDate(scope.row.created_at) }}
