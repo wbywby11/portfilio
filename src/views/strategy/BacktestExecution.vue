@@ -10,7 +10,7 @@
           <span>回测配置</span>
         </div>
 
-        <el-form :model="form" :rules="rules" ref="form" label-width="120px" style="max-width: 900px;">
+        <el-form :model="form" :rules="rules" ref="form" label-width="170px" class="backtest-form" style="max-width: 900px;">
           <!-- 回测模式 -->
           <el-divider content-position="left">回测模式</el-divider>
           <el-form-item label="回测模式">
@@ -220,10 +220,10 @@
               <div slot="header" style="font-size: 14px; font-weight: 500; color: #409EFF;">
                 <i class="el-icon-s-data"></i> 动量资产选择器配置
               </div>
-              <el-form :model="form" label-width="140px" style="margin-bottom: 0;">
+              <el-form :model="form" label-width="170px" style="margin-bottom: 0;">
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="选择器类型" label-width="140px">
+                  <el-form-item label="选择器类型" label-width="170px">
                     <el-select v-model="form.selector_type" placeholder="请选择" style="width: 100%;">
                       <el-option label="动量选择器" value="momentum"></el-option>
                       <el-option label="混合动量选择器" value="hybrid"></el-option>
@@ -233,7 +233,7 @@
               </el-row>
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="MOM窗口" label-width="140px">
+                  <el-form-item label="MOM窗口" label-width="170px">
                     <el-input
                       v-model="form.momentum_windows"
                       placeholder="例如：20,60,120,250"
@@ -245,7 +245,7 @@
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
-                  <el-form-item label="SMOM窗口" label-width="140px">
+                  <el-form-item label="SMOM窗口" label-width="170px">
                     <el-input
                       v-model="form.smom_windows"
                       placeholder="例如：20,60,120,250"
@@ -259,7 +259,7 @@
               </el-row>
               <el-row :gutter="20" v-if="form.selector_type === 'hybrid'">
                 <el-col :span="24">
-                  <el-form-item label="MACD短期窗口" label-width="140px">
+                  <el-form-item label="MACD短期窗口" label-width="170px">
                     <el-input
                       v-model="form.macd_windows"
                       placeholder="例如：40,80,120,160"
@@ -273,7 +273,7 @@
               </el-row>
               <el-row :gutter="20" v-if="form.selector_type === 'hybrid'">
                 <el-col :span="24">
-                  <el-form-item label="反转因子偏度窗口" label-width="140px">
+                  <el-form-item label="反转因子偏度窗口" label-width="170px">
                     <el-input
                       v-model="form.reversal_windows"
                       placeholder="例如：10,22"
@@ -304,10 +304,10 @@
                 :title="`${strategy.name} - 动量选择器参数`"
                 :name="strategy.id"
               >
-                <el-form :model="form" label-width="140px" style="margin-bottom: 0;">
+                <el-form :model="form" label-width="170px" style="margin-bottom: 0;">
                 <el-row :gutter="20">
                   <el-col :span="12">
-                    <el-form-item :label="`${strategy.name} - 选择器类型`" label-width="140px">
+                    <el-form-item :label="`${strategy.name} - 选择器类型`" label-width="170px">
                       <el-select 
                         v-model="form.multiStrategySelectionParams[strategy.id].selector_type" 
                         placeholder="请选择" 
@@ -321,7 +321,7 @@
                 </el-row>
                 <el-row :gutter="20">
                   <el-col :span="12">
-                    <el-form-item :label="`${strategy.name} - MOM窗口`" label-width="140px">
+                    <el-form-item :label="`${strategy.name} - MOM窗口`" label-width="170px">
                       <el-input
                         v-model="form.multiStrategySelectionParams[strategy.id].momentum_windows"
                         placeholder="例如：20,60,120,250"
@@ -330,7 +330,7 @@
                     </el-form-item>
                   </el-col>
                   <el-col :span="12">
-                    <el-form-item :label="`${strategy.name} - SMOM窗口`" label-width="140px">
+                    <el-form-item :label="`${strategy.name} - SMOM窗口`" label-width="170px">
                       <el-input
                         v-model="form.multiStrategySelectionParams[strategy.id].smom_windows"
                         placeholder="例如：20,60,120,250"
@@ -341,7 +341,7 @@
                 </el-row>
                 <el-row :gutter="20" v-if="form.multiStrategySelectionParams[strategy.id].selector_type === 'hybrid'">
                   <el-col :span="24">
-                    <el-form-item :label="`${strategy.name} - MACD短期窗口`" label-width="140px">
+                    <el-form-item :label="`${strategy.name} - MACD短期窗口`" label-width="170px">
                       <el-input
                         v-model="form.multiStrategySelectionParams[strategy.id].macd_windows"
                         placeholder="例如：40,80,120,160"
@@ -352,7 +352,7 @@
                 </el-row>
                 <el-row :gutter="20" v-if="form.multiStrategySelectionParams[strategy.id].selector_type === 'hybrid'">
                   <el-col :span="24">
-                    <el-form-item :label="`${strategy.name} - 反转因子偏度窗口`" label-width="140px">
+                    <el-form-item :label="`${strategy.name} - 反转因子偏度窗口`" label-width="170px">
                       <el-input
                         v-model="form.multiStrategySelectionParams[strategy.id].reversal_windows"
                         placeholder="例如：10,22"
@@ -3591,6 +3591,11 @@ export default {
 
 .el-form {
   max-width: 800px;
+}
+
+/* 表单标签不换行，避免中文标签断行不美观 */
+.backtest-form ::v-deep .el-form-item__label {
+  white-space: nowrap;
 }
 
 /* 资产选择标签样式 */
