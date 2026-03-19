@@ -8,6 +8,14 @@ import {
   getStrategyModel,
   runBacktest,
   publishModel,
+  livePublishModel as livePublishModelApi,
+  liveUnpublishModel as liveUnpublishModelApi,
+  updateLiveConfig as updateLiveConfigApi,
+  getLivePublishedModelList,
+  getLiveMonitoring as getLiveMonitoringApi,
+  getLiveConfig as getLiveConfigApi,
+  confirmManualRebalance as confirmManualRebalanceApi,
+  getLiveChangeLogs as getLiveChangeLogsApi,
   deleteStrategyModel as deleteStrategyModelApi,
   updateStrategyModel as updateStrategyModelApi
 } from '@/api/strategy';
@@ -165,12 +173,11 @@ const actions = {
     }
   },
 
-  // 运行回测
+  // 运行回测（返回完整响应 { code, data, message }，便于组件统一从 result.data 取 payload 含 record_id）
   async runBacktest({ commit }, { modelId, data }) {
     try {
       const res = await runBacktest(modelId, data);
-      const result = res.data || res;
-      return result;
+      return res;
     } catch (error) {
       console.error('运行回测失败:', error);
       throw error;
@@ -198,13 +205,135 @@ const actions = {
   },
 
   // 发布模型
-  async publishModel({ commit }, modelId) {
+  async publishModel({ commit, state }, modelId) {
     try {
       const res = await publishModel(modelId);
       const result = res.data || res;
+      
+      // 更新 store 中对应策略的状态
+      const model = state.strategyModelList.find(m => m.id === modelId);
+      if (model) {
+        commit('UPDATE_STRATEGY_MODEL', {
+          ...model,
+          status: '已发布',
+          published_at: new Date().toISOString()
+        });
+      }
+      
       return result;
     } catch (error) {
       console.error('发布模型失败:', error);
+      throw error;
+    }
+  },
+
+  // 实盘发布（与普通发布不冲突）
+  async livePublishModel({ commit, state }, { modelId, data }) {
+    try {
+      const res = await livePublishModelApi(modelId, data || {});
+      const result = res.data || res;
+
+      const model = state.strategyModelList.find(m => m.id === modelId);
+      if (model) {
+        commit('UPDATE_STRATEGY_MODEL', {
+          ...model,
+          live_publish_enabled: true,
+          live_snapshot_outdated: false,
+          live_published_at: new Date().toISOString()
+        });
+      }
+      return result;
+    } catch (error) {
+      console.error('实盘发布失败:', error);
+      throw error;
+    }
+  },
+
+  async liveUnpublishModel({ commit, state }, { modelId, params }) {
+    try {
+      const res = await liveUnpublishModelApi(modelId, params || {});
+      const result = res.data || res;
+      const model = state.strategyModelList.find(m => m.id === modelId);
+      if (model) {
+        commit('UPDATE_STRATEGY_MODEL', {
+          ...model,
+          live_publish_enabled: false
+        });
+      }
+      return result;
+    } catch (error) {
+      console.error('取消实盘发布失败:', error);
+      throw error;
+    }
+  },
+
+  async updateLiveConfig({ commit, state }, { modelId, data }) {
+    try {
+      const res = await updateLiveConfigApi(modelId, data);
+      const result = res.data || res;
+      const model = state.strategyModelList.find(m => m.id === modelId);
+      if (model) {
+        commit('UPDATE_STRATEGY_MODEL', {
+          ...model,
+          live_rebalance_mode: data.rebalance_mode || model.live_rebalance_mode,
+          live_volatility_threshold: Object.prototype.hasOwnProperty.call(data, 'volatility_threshold')
+            ? data.volatility_threshold
+            : model.live_volatility_threshold
+        });
+      }
+      return result;
+    } catch (error) {
+      console.error('更新实盘配置失败:', error);
+      throw error;
+    }
+  },
+
+  async fetchLivePublishedModelList({ commit }, params) {
+    try {
+      const res = await getLivePublishedModelList(params);
+      return Array.isArray(res) ? res : (res.data || []);
+    } catch (error) {
+      console.error('获取实盘发布列表失败:', error);
+      throw error;
+    }
+  },
+
+  async fetchLiveMonitoring({ commit }, modelId) {
+    try {
+      const res = await getLiveMonitoringApi(modelId);
+      return res.data || res;
+    } catch (error) {
+      console.error('获取实盘监控失败:', error);
+      throw error;
+    }
+  },
+
+  async fetchLiveConfig({ commit }, modelId) {
+    try {
+      const res = await getLiveConfigApi(modelId);
+      return res.data || res;
+    } catch (error) {
+      console.error('获取实盘配置失败:', error);
+      throw error;
+    }
+  },
+
+  async confirmManualRebalance({ commit }, { modelId, data }) {
+    try {
+      const res = await confirmManualRebalanceApi(modelId, data);
+      return res.data || res;
+    } catch (error) {
+      console.error('手动调仓确认失败:', error);
+      throw error;
+    }
+  },
+
+  async fetchLiveChangeLogs({ commit }, { modelId, params }) {
+    try {
+      const res = await getLiveChangeLogsApi(modelId, params);
+      return Array.isArray(res) ? res : (res.data || []);
+    } catch (error) {
+      console.error('获取实盘变更日志失败:', error);
       throw error;
     }
   },
@@ -312,7 +441,9 @@ const getters = {
   },
   getStrategyModelById: state => id => {
     return state.strategyModelList.find(m => m.id === id);
-  }
+  },
+  // 为了兼容性，提供 strategyList 作为 strategyModelList 的别名
+  strategyList: state => state.strategyModelList
 };
 
 export default {

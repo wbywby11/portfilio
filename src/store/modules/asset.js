@@ -3,13 +3,9 @@ import { getAssetList, createAsset, getAssetOptions, updateAsset as updateAssetA
 const state = {
   assetList: [],
   assetCategories: [
-    { value: '股票', label: '股票' },
-    { value: '债券', label: '债券' },
-    { value: '基金', label: '基金' },
-    { value: '商品', label: '商品' },
-    { value: '货币', label: '货币' },
-    { value: '指数', label: '指数' },
-    { value: '数字货币', label: '数字货币' }
+    { value: '指数类', label: '指数类' },
+    { value: '现货类', label: '现货类' },
+    { value: '期货类', label: '期货类' }
   ],
   selectedAssets: [],
   loading: false,
@@ -160,6 +156,9 @@ const actions = {
 const getters = {
   getAssetByCode: state => code => {
     return state.assetList.find(a => a.code === code);
+  },
+  getAssetById: state => id => {
+    return state.assetList.find(a => a.id === id);
   },
   getAssetsByCategory: state => category => {
     return state.assetList.filter(a => a.asset_type === category);

@@ -27,6 +27,7 @@ const routes = [
       {
         path: 'asset',
         name: 'Asset',
+        redirect: '/asset/list',
         component: () => import('@/views/asset/Index.vue'),
         meta: { title: '资产库管理', icon: 'el-icon-coin' },
         children: [
@@ -110,6 +111,18 @@ const routes = [
             name: 'BenchmarkList',
             component: () => import('@/views/strategy/BenchmarkList.vue'),
             meta: { title: '业绩基准管理' }
+          },
+          {
+            path: 'backtest',
+            name: 'BacktestExecution',
+            component: () => import('@/views/strategy/BacktestExecution.vue'),
+            meta: { title: '回测执行' }
+          },
+          {
+            path: 'live-monitoring',
+            name: 'LiveMonitoring',
+            component: () => import('@/views/strategy/LiveMonitoring.vue'),
+            meta: { title: '实盘监控' }
           }
         ]
       },
@@ -176,6 +189,30 @@ const routes = [
         name: 'Analysis',
         component: () => import('@/views/analysis/AssetAnalysis.vue'),
         meta: { title: '资产分析', icon: 'el-icon-data-analysis' }
+      },
+      {
+        path: 'analysis/asset-index',
+        name: 'AssetIndex',
+        component: () => import('@/views/analysis/AssetIndex.vue'),
+        meta: { title: '大类资产指数', icon: 'el-icon-data-line' }
+      },
+      {
+        path: 'analysis/weight-import',
+        name: 'WeightValuationImport',
+        component: () => import('@/views/analysis/WeightValuationImport.vue'),
+        meta: { title: '权重与持仓估值导入', icon: 'el-icon-upload2' }
+      },
+      {
+        path: 'analysis/fx-import',
+        name: 'FxImport',
+        component: () => import('@/views/analysis/FxImport.vue'),
+        meta: { title: '汇率数据导入', icon: 'el-icon-upload2' }
+      },
+      {
+        path: 'analysis/multi-asset-import',
+        name: 'MultiAssetImport',
+        component: () => import('@/views/analysis/MultiAssetImport.vue'),
+        meta: { title: '多资产行情导入', icon: 'el-icon-upload2' }
       },
       // 系统管理
       {

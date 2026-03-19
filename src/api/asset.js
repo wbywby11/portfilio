@@ -49,6 +49,14 @@ export function updateAsset(assetId, data) {
   });
 }
 
+// 获取资产详情
+export function getAssetDetail(assetId) {
+  return request({
+    url: `/api/v1/assets/${assetId}`,
+    method: 'get'
+  });
+}
+
 // 删除资产
 export function deleteAsset(assetId) {
   return request({
@@ -85,10 +93,8 @@ export function importAssetsFromExcel(file) {
   return request({
     url: '/api/v1/assets/import/excel',
     method: 'post',
-    data: formData,
-    headers: {
-      'Content-Type': 'multipart/form-data'
-    }
+    data: formData
+    // 不要设置 Content-Type：让浏览器/axios 自动带 boundary，否则后端无法解析
   });
 }
 
@@ -101,7 +107,7 @@ export function downloadPriceTemplate() {
   });
 }
 
-// 从Excel导入资产行情数据
+// 从Excel导入资产行情数据（大批量可能较慢，单独延长超时）
 export function importPricesFromExcel(assetCode, file, replaceExisting = false) {
   const formData = new FormData();
   formData.append('file', file);
@@ -113,8 +119,43 @@ export function importPricesFromExcel(assetCode, file, replaceExisting = false) 
       replace_existing: replaceExisting
     },
     data: formData,
-    headers: {
-      'Content-Type': 'multipart/form-data'
-    }
+    timeout: 120000
+    // 不设置 Content-Type，由浏览器自动带 boundary；超时 2 分钟，适应大批量导入
+  });
+}
+
+// ========== 多资产行情导入（大类资产底层数据-含插件.xlsx 格式） ==========
+
+// 多资产导入预览（解析冲突信息）
+export function previewMultiAssetImport(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request({
+    url: '/api/v1/assets/prices/import/multi-asset/preview',
+    method: 'post',
+    data: formData,
+    timeout: 60000
+  });
+}
+
+// 多资产Excel解析（返回完整资产+行情，供逐条导入）
+export function parseMultiAssetExcel(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return request({
+    url: '/api/v1/assets/prices/import/multi-asset/parse',
+    method: 'post',
+    data: formData,
+    timeout: 120000
+  });
+}
+
+// 单资产导入（多资产逐条调用，用于进度展示）
+export function importSingleAssetFromMulti(data) {
+  return request({
+    url: '/api/v1/assets/prices/import/multi-asset/single',
+    method: 'post',
+    data,
+    timeout: 120000
   });
 }

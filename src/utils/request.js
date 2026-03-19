@@ -2,10 +2,10 @@ import axios from 'axios';
 import store from '@/store';
 import { Message } from 'element-ui';
 
-// 创建axios实例
+// 创建axios实例（默认 60s 超时，避免行情/列表等请求超时；单次可覆盖 timeout）
 const service = axios.create({
-  baseURL: 'http://127.0.0.1:8000',
-  timeout: 15000
+  baseURL: process.env.VUE_APP_BASE_URL || 'http://127.0.0.1:8000',
+  timeout: 60000
 });
 
 // 请求拦截器
@@ -32,11 +32,11 @@ service.interceptors.response.use(
   },
   error => {
     console.error('响应错误:', error);
-    
+
     // 处理不同的错误状态码
     if (error.response) {
       const { status, data } = error.response;
-      
+
       switch (status) {
         case 401:
           Message.error('未授权，请重新登录');
@@ -48,15 +48,29 @@ service.interceptors.response.use(
         case 404:
           Message.error('请求的资源不存在');
           break;
-        // 500和其他业务错误不在这里显示，由组件级catch处理
-        // 这样可以提供更友好的上下文相关错误提示
+        // 500 和其他业务错误由组件级 catch 处理
       }
     } else if (error.request) {
-      Message.error('网络错误，请检查网络连接');
+      // 无 response：连接失败、超时、跨域、后端未启动等
+      const msg = (error.message || '').toLowerCase();
+      const isTimeout = msg.includes('timeout') || error.code === 'ECONNABORTED';
+      const isNetwork = msg.includes('network') || msg.includes('failed to fetch') || msg.includes('load failed');
+      if (isTimeout || isNetwork) {
+        const tip = isTimeout
+          ? '请求超时，请检查后端是否已启动、网络是否正常；若为大量数据可缩小日期范围或使用「同步行情」'
+          : '连接失败，请检查：① 后端服务是否已启动 ② 网络是否正常';
+        Message.error({
+          message: tip,
+          duration: 6000,
+          showClose: true
+        });
+      } else {
+        Message.error('网络错误，请检查网络连接');
+      }
     } else {
       Message.error('请求配置错误');
     }
-    
+
     return Promise.reject(error);
   }
 );

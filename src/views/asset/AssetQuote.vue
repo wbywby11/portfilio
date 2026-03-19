@@ -1,5 +1,5 @@
 <template>
-  <div class="asset-quote-container">
+  <div :class="{'asset-quote-container': !isDialog}">
     <el-card class="filter-card">
       <el-form :inline="true" :model="filterForm" size="small">
         <el-form-item label="选择资产">
@@ -31,8 +31,17 @@
           >
           </el-date-picker>
         </el-form-item>
+        <el-form-item label="价格精度">
+          <el-select v-model="pricePrecision" placeholder="请选择" style="width: 120px">
+            <el-option label="2位" :value="2"></el-option>
+            <el-option label="4位" :value="4"></el-option>
+            <el-option label="6位" :value="6"></el-option>
+            <el-option label="8位" :value="8"></el-option>
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" icon="el-icon-search" @click="fetchData">查询</el-button>
+          <el-button type="success" icon="el-icon-refresh" @click="handleSyncToday">同步行情</el-button>
           <el-button icon="el-icon-download" @click="handleDownloadPriceTemplate">下载行情模板</el-button>
           <el-upload
             ref="priceUpload"
@@ -41,6 +50,7 @@
             :show-file-list="false"
             :on-change="handlePriceFileChange"
             accept=".xlsx,.xls"
+            style="display: inline-block; margin-left: 10px;"
           >
             <el-button icon="el-icon-upload2">批量导入行情</el-button>
           </el-upload>
@@ -64,35 +74,64 @@
         >
           <vxe-column field="date" title="日期" sortable width="150"></vxe-column>
           <vxe-column field="open" title="开盘价" width="120">
-            <template #default="{ row }">{{ row.open.toFixed(2) }}</template>
+            <template #default="{ row }">
+              {{ row.open != null ? formatPrice(row.open) : '-' }}
+            </template>
           </vxe-column>
           <vxe-column field="high" title="最高价" width="120">
-            <template #default="{ row }">{{ row.high.toFixed(2) }}</template>
+            <template #default="{ row }">
+              {{ row.high != null ? formatPrice(row.high) : '-' }}
+            </template>
           </vxe-column>
           <vxe-column field="low" title="最低价" width="120">
-            <template #default="{ row }">{{ row.low.toFixed(2) }}</template>
+            <template #default="{ row }">
+              {{ row.low != null ? formatPrice(row.low) : '-' }}
+            </template>
           </vxe-column>
           <vxe-column field="close" title="收盘价" width="120">
             <template #default="{ row }">
-              <span :class="getPriceClass(row)">{{ row.close.toFixed(2) }}</span>
+              <span :class="getPriceClass(row)">
+                {{ row.close != null ? formatPrice(row.close) : '-' }}
+              </span>
             </template>
           </vxe-column>
           <vxe-column field="volume" title="成交量" width="150">
-            <template #default="{ row }">{{ formatVolume(row.volume) }}</template>
+            <template #default="{ row }">
+              {{ row.volume != null ? formatVolume(row.volume) : '-' }}
+            </template>
+          </vxe-column>
+          <vxe-column field="amount" title="成交额" width="150">
+            <template #default="{ row }">
+              {{ row.amount != null ? formatAmount(row.amount) : '-' }}
+            </template>
           </vxe-column>
         </vxe-table>
       </el-tab-pane>
     </el-tabs>
+
+    <sync-progress-dialog ref="syncProgressDialog" @sync-success="handleSyncSuccess" />
   </div>
 </template>
 
 <script>
 import { getAssetOptions, getAssetKline } from '@/api/asset';
 import { downloadPriceTemplate, importPricesFromExcel } from '@/api/asset';
+import SyncProgressDialog from '@/components/SyncProgressDialog.vue';
 import * as echarts from 'echarts';
 
 export default {
   name: 'AssetQuote',
+  components: { SyncProgressDialog },
+  props: {
+    isDialog: {
+      type: Boolean,
+      default: false
+    },
+    assetCode: {
+      type: String,
+      default: ''
+    }
+  },
   data() {
     return {
       selectedAsset: '',
@@ -102,12 +141,30 @@ export default {
       activeTab: 'chart',
       loading: false,
       quoteData: [],
-      chartInstance: null
+      chartInstance: null,
+      pricePrecision: 2  // 价格精度，默认2位小数
     };
   },
   mounted() {
     this.initDateRange();
     this.fetchAssetOptions();
+  },
+  watch: {
+    assetCode(newVal) {
+      if (this.isDialog && newVal) {
+        this.selectedAsset = newVal;
+        this.fetchData();
+      }
+    },
+    activeTab(val) {
+      if (val === 'chart') {
+        this.$nextTick(() => {
+          if (this.chartInstance) {
+            this.chartInstance.resize();
+          }
+        });
+      }
+    }
   },
   methods: {
     initDateRange() {
@@ -129,12 +186,17 @@ export default {
         const res = await getAssetOptions();
         this.assetOptions = res.data || res;
         
-        // 优先从路由参数获取 code，否则默认选第一个
-        const queryCode = this.$route.query.code;
-        if (queryCode && this.assetOptions.some(item => item.code === queryCode)) {
-          this.selectedAsset = queryCode;
-        } else if (this.assetOptions.length > 0) {
-          this.selectedAsset = this.assetOptions[0].code;
+        // 优先使用 props 的 assetCode
+        if (this.isDialog && this.assetCode) {
+          this.selectedAsset = this.assetCode;
+        } else {
+          // 优先从路由参数获取 code，否则默认选第一个
+          const queryCode = this.$route.query.code;
+          if (queryCode && this.assetOptions.some(item => item.code === queryCode)) {
+            this.selectedAsset = queryCode;
+          } else if (this.assetOptions.length > 0) {
+            this.selectedAsset = this.assetOptions[0].code;
+          }
         }
         
         if (this.selectedAsset) {
@@ -150,6 +212,12 @@ export default {
     handleDateChange() {
       this.fetchData();
     },
+    handleSyncToday() {
+      this.$refs.syncProgressDialog.openSyncToday();
+    },
+    handleSyncSuccess() {
+      this.fetchData();
+    },
     async fetchData() {
       if (!this.selectedAsset) return;
       this.loading = true;
@@ -159,7 +227,19 @@ export default {
           end_date: this.dateRange ? this.dateRange[1] : ''
         };
         const res = await getAssetKline(this.selectedAsset, params);
-        this.quoteData = res.data || res;
+        const rawData = res.data || res;
+        
+        // 数据标准化：如果缺少 open/high/low，用 close 填充
+        this.quoteData = rawData.map(item => ({
+          date: item.date,
+          open: item.open ?? item.close ?? 0,
+          high: item.high ?? item.close ?? 0,
+          low: item.low ?? item.close ?? 0,
+          close: item.close ?? 0,
+          volume: item.volume ?? 0,
+          amount: item.amount ?? 0
+        }));
+        
         this.renderChart();
       } catch (error) {
         this.$message.error('获取行情数据失败');
@@ -175,18 +255,62 @@ export default {
           this.chartInstance = echarts.init(this.$refs.klineChart);
         }
 
-        const dates = this.quoteData.map(item => item.date);
-        const data = this.quoteData.map(item => [item.open, item.close, item.low, item.high]);
+        if (this.quoteData.length === 0) {
+          this.chartInstance.clear();
+          this.chartInstance.setOption({
+            title: {
+              text: this.getAssetName(this.selectedAsset) + ' K线图',
+              left: 0,
+              subtext: '暂无数据',
+              subtextStyle: { color: '#999' }
+            },
+            xAxis: { type: 'category', data: [] },
+            yAxis: { type: 'value' },
+            series: []
+          });
+          return;
+        }
 
+        const dates = this.quoteData.map(item => item.date);
+        const closeData = this.quoteData.map(item => item.close);
+        const klineData = this.quoteData.map(item => [item.open, item.close, item.low, item.high]);
+        
+        // 检测是否所有数据都只有收盘价（open=high=low=close）
+        const hasOnlyClose = this.quoteData.every(item => 
+          item.open === item.close && item.high === item.close && item.low === item.close
+        );
+
+        const quoteData = this.quoteData;
         const option = {
           title: {
-            text: this.getAssetName(this.selectedAsset) + ' K线图',
+            text: this.getAssetName(this.selectedAsset) + (hasOnlyClose ? ' 收盘价走势' : ' K线图'),
             left: 0
           },
           tooltip: {
             trigger: 'axis',
             axisPointer: {
               type: 'cross'
+            },
+            formatter: (params) => {
+              if (!params || !params.length) return '';
+              const idx = params[0].dataIndex;
+              const row = quoteData[idx];
+              if (!row) return params[0].name || '';
+              const lines = [row.date || params[0].name];
+              if (hasOnlyClose) {
+                lines.push(`收盘: ${this.formatPrice(row.close)}`);
+              } else {
+                const o = row.open, c = row.close, h = row.high, l = row.low;
+                lines.push(`开盘: ${this.formatPrice(o)}  收盘: ${this.formatPrice(c)}`);
+                lines.push(`最高: ${this.formatPrice(h)}  最低: ${this.formatPrice(l)}`);
+                if (o != null && o !== 0 && c != null) {
+                  const pct = (((c - o) / o) * 100).toFixed(2);
+                  lines.push(`涨跌幅: ${pct}%`);
+                }
+              }
+              if (row.volume != null && row.volume !== 0) lines.push(`成交量: ${this.formatVolume(row.volume)}`);
+              if (row.amount != null && row.amount !== 0) lines.push(`成交额: ${this.formatAmount(row.amount)}`);
+              return lines.join('<br/>');
             }
           },
           grid: {
@@ -198,11 +322,9 @@ export default {
             type: 'category',
             data: dates,
             scale: true,
-            boundaryGap: false,
+            boundaryGap: hasOnlyClose ? false : true,
             axisLine: { onZero: false },
-            splitLine: { show: false },
-            min: 'dataMin',
-            max: 'dataMax'
+            splitLine: { show: false }
           },
           yAxis: {
             scale: true,
@@ -224,11 +346,26 @@ export default {
               end: 100
             }
           ],
-          series: [
+          series: hasOnlyClose ? [
+            {
+              name: '收盘',
+              type: 'line',
+              data: closeData,
+              smooth: false,
+              symbol: 'circle',
+              symbolSize: 6,
+              itemStyle: {
+                color: '#5470c6'
+              },
+              lineStyle: {
+                width: 2
+              }
+            }
+          ] : [
             {
               name: '日K',
               type: 'candlestick',
-              data: data,
+              data: klineData,
               itemStyle: {
                 color: '#ec0000',
                 color0: '#00da3c',
@@ -236,23 +373,40 @@ export default {
                 borderColor0: '#008F28'
               }
             }
-          ]
+          ],
+          legend: {
+            data: hasOnlyClose ? ['收盘'] : ['日K'],
+            bottom: '2%'
+          }
         };
 
-        this.chartInstance.setOption(option);
+        this.chartInstance.setOption(option, true);
       });
     },
     getAssetName(code) {
       const asset = this.assetOptions.find(item => item.code === code);
       return asset ? asset.name : code;
     },
+    formatPrice(price) {
+      if (price == null) return '-';
+      return price.toFixed(this.pricePrecision);
+    },
     getPriceClass(row) {
+      if (row.close == null || row.open == null) return '';
       return row.close >= row.open ? 'price-up' : 'price-down';
     },
     formatVolume(v) {
+      if (v == null || v === 0) return '-';
       if (v >= 100000000) return (v / 100000000).toFixed(2) + '亿';
       if (v >= 10000) return (v / 10000).toFixed(2) + '万';
-      return v;
+      return v.toString();
+    },
+    formatAmount(v) {
+      if (v == null || v === 0) return '-';
+      const n = Number(v);
+      if (n >= 100000000) return (n / 100000000).toFixed(2) + '亿';
+      if (n >= 10000) return (n / 10000).toFixed(2) + '万';
+      return n.toLocaleString();
     },
     // 下载行情导入模板
     async handleDownloadPriceTemplate() {
@@ -327,17 +481,6 @@ export default {
         if (this.$refs.priceUpload) {
           this.$refs.priceUpload.clearFiles();
         }
-      }
-    }
-  },
-  watch: {
-    activeTab(val) {
-      if (val === 'chart') {
-        this.$nextTick(() => {
-          if (this.chartInstance) {
-            this.chartInstance.resize();
-          }
-        });
       }
     }
   }

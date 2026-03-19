@@ -1,10 +1,10 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
+  <div :class="{'page-container': !isDialog}">
+    <div v-if="!isDialog" class="page-header">
       <h2 class="page-title">{{ isEdit ? '编辑模板' : '新增模板' }}</h2>
     </div>
 
-    <div class="page-content">
+    <div :class="{'page-content': !isDialog}">
       <el-form :model="form" :rules="rules" ref="form" label-width="140px" style="max-width: 800px;">
         <el-divider content-position="left">基本信息</el-divider>
         
@@ -211,6 +211,16 @@ import 'codemirror/mode/python/python';
 
 export default {
   name: 'TemplateForm',
+  props: {
+    isDialog: {
+      type: Boolean,
+      default: false
+    },
+    code: {
+      type: String,
+      default: ''
+    }
+  },
   data() {
     return {
       form: {
@@ -235,15 +245,26 @@ export default {
     };
   },
   created() {
-    // 路由参数是 code（模板代码），不是 id
-    if (this.$route.params.id) {
+    const code = this.isDialog ? this.code : this.$route.params.id;
+    if (code) {
       this.isEdit = true;
-      this.loadTemplate();
+      this.loadTemplate(code);
     }
   },
   methods: {
-    async loadTemplate() {
-      const templateCode = this.$route.params.id;  // 路由参数名是 id，但实际值是 code
+    resetForm() {
+      this.form = {
+        code: '',
+        name: '',
+        description: '',
+        source_code: '',
+        parameters: []
+      };
+      if (this.codeEditor) {
+        this.codeEditor.setValue('');
+      }
+    },
+    async loadTemplate(templateCode) {
       try {
         // 使用 code 获取模板
         const template = await this.$store.dispatch('strategy/fetchTemplate', templateCode);
@@ -369,8 +390,12 @@ export default {
               this.$message.success('模板创建成功');
             }
             
-            // 返回列表页
-            this.$router.push('/strategy/template');
+            if (this.isDialog) {
+              this.$emit('success');
+            } else {
+              // 返回列表页
+              this.$router.push('/strategy/template');
+            }
           } catch (error) {
             console.error('提交失败:', error);
             const errorMsg = error.response && error.response.data && error.response.data.detail 
@@ -384,7 +409,11 @@ export default {
       });
     },
     handleCancel() {
-      this.$router.back();
+      if (this.isDialog) {
+        this.$emit('close');
+      } else {
+        this.$router.back();
+      }
     },
     async handleValidate() {
       // 验证模板有效性
@@ -509,6 +538,15 @@ export default {
     }
   },
   watch: {
+    code(newVal) {
+      if (this.isDialog && newVal) {
+        this.isEdit = true;
+        this.loadTemplate(newVal);
+      } else if (this.isDialog && !newVal) {
+        this.isEdit = false;
+        this.resetForm();
+      }
+    },
     // 如果 form.source_code 从外部变化，同步到编辑器
     'form.source_code'(newVal) {
       if (this.codeEditor && this.codeEditor.getValue() !== newVal) {
@@ -548,27 +586,26 @@ export default {
   overflow: hidden;
 }
 
-/* 覆盖 CodeMirror 默认样式 */
-.codemirror-wrapper >>> .CodeMirror {
+/* 覆盖 CodeMirror 默认样式（CodeMirror 在 mounted 时动态创建） */
+.codemirror-wrapper ::v-deep .CodeMirror {
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 13px;  /* 字体大小调小 */
-  line-height: 1.4; /* 行高调小 */
+  font-size: 13px;
+  line-height: 1.4;
   height: 400px;
 }
 
-.codemirror-wrapper >>> .CodeMirror-gutters {
+.codemirror-wrapper ::v-deep .CodeMirror-gutters {
   background-color: #272822;
   border-right: 1px solid #3e3d32;
 }
 
-.codemirror-wrapper >>> .CodeMirror-linenumber {
+.codemirror-wrapper ::v-deep .CodeMirror-linenumber {
   color: #75715e;
-  font-size: 12px;  /* 行号字体更小 */
+  font-size: 12px;
   padding: 0 5px;
 }
 
-/* 代码行样式 */
-.codemirror-wrapper >>> .CodeMirror-line {
-  padding: 0 4px;  /* 减少行内边距 */
+.codemirror-wrapper ::v-deep .CodeMirror-line {
+  padding: 0 4px;
 }
 </style>

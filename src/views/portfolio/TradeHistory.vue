@@ -1,6 +1,6 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
+  <div :class="{'page-container': !isDialog}">
+    <div v-if="!isDialog" class="page-header">
       <h2 class="page-title">调仓历史</h2>
       <div>
         <el-button @click="$router.back()">返回</el-button>
@@ -8,7 +8,7 @@
       </div>
     </div>
 
-    <div class="page-content">
+    <div :class="{'page-content': !isDialog}">
       <!-- 组合信息 -->
       <el-descriptions :column="4" border size="small" style="margin-bottom: 20px;">
         <el-descriptions-item label="组合名称">{{ portfolio.name }}</el-descriptions-item>
@@ -312,8 +312,19 @@ import dayjs from 'dayjs';
 
 export default {
   name: 'TradeHistory',
+  props: {
+    isDialog: {
+      type: Boolean,
+      default: false
+    },
+    id: {
+      type: String,
+      default: ''
+    }
+  },
   data() {
     return {
+      portfolioId: null,
       portfolio: {},
       tradeHistory: [],
       filterType: '',
@@ -357,12 +368,20 @@ export default {
     }
   },
   created() {
+    this.portfolioId = this.isDialog ? this.id : this.$route.params.id;
     this.loadData();
+  },
+  watch: {
+    id(newVal) {
+      if (this.isDialog && newVal) {
+        this.portfolioId = newVal;
+        this.loadData();
+      }
+    }
   },
   methods: {
     loadData() {
-      const id = this.$route.params.id;
-      this.portfolio = this.$store.getters['portfolio/getPortfolioById'](id) || {};
+      this.portfolio = this.$store.getters['portfolio/getPortfolioById'](this.portfolioId) || {};
       
       // 模拟调仓历史数据
       this.tradeHistory = this.generateMockHistory();

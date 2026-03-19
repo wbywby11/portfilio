@@ -1,10 +1,10 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
+  <div :class="{'page-container': !isDialog}">
+    <div v-if="!isDialog" class="page-header">
       <h2 class="page-title">策略开发</h2>
     </div>
 
-    <div class="page-content">
+    <div :class="{'page-content': !isDialog}">
       <el-row :gutter="20">
         <!-- 左侧：资产选择 -->
         <el-col :span="6">
@@ -60,6 +60,9 @@
                     :value="tpl.id"
                   ></el-option>
                 </el-select>
+                <el-tooltip content="选择用于计算资产权重的算法模型，不同模型有不同的风险收益特征，如风险平价、均值方差优化等" placement="top">
+                  <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+                </el-tooltip>
               </el-form-item>
 
               <el-divider>模型参数</el-divider>
@@ -194,6 +197,16 @@ import { mapState } from 'vuex';
 
 export default {
   name: 'StrategyDevelop',
+  props: {
+    isDialog: {
+      type: Boolean,
+      default: false
+    },
+    templateId: {
+      type: String,
+      default: ''
+    }
+  },
   data() {
     return {
       assetSearch: '',
@@ -233,9 +246,18 @@ export default {
     // 初始化加载资产列表和模板列表
     this.loadInitialData();
     
-    if (this.$route.query.templateId) {
-      this.strategyForm.templateId = this.$route.query.templateId;
+    const tid = this.isDialog ? this.templateId : this.$route.query.templateId;
+    if (tid) {
+      this.strategyForm.templateId = tid;
       this.handleTemplateChange(this.strategyForm.templateId);
+    }
+  },
+  watch: {
+    templateId(newVal) {
+      if (this.isDialog && newVal) {
+        this.strategyForm.templateId = newVal;
+        this.handleTemplateChange(newVal);
+      }
     }
   },
   methods: {
@@ -338,7 +360,11 @@ export default {
 
       await this.$store.dispatch('strategy/saveStrategy', strategy);
       this.$message.success('策略已保存');
-      this.$router.push('/strategy/list');
+      if (this.isDialog) {
+        this.$emit('success');
+      } else {
+        this.$router.push('/strategy/list');
+      }
     },
     resetForm() {
       this.strategyForm = {

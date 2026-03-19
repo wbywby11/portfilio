@@ -1,11 +1,11 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
+  <div :class="{'page-container': !isDialog}">
+    <div v-if="!isDialog" class="page-header">
       <h2 class="page-title">{{ isEdit ? '编辑资产' : '新增资产' }}</h2>
     </div>
 
-    <div class="page-content">
-      <el-form :model="form" :rules="rules" ref="form" label-width="120px" style="max-width: 800px;">
+    <div :class="{'page-content': !isDialog}">
+      <el-form :model="form" :rules="rules" ref="form" label-width="120px" style="max-width: 800px; margin: 0 auto;">
         <el-divider content-position="left">基本信息</el-divider>
         
         <el-form-item label="资产代码" prop="code">
@@ -45,53 +45,89 @@
           ></el-input>
         </el-form-item>
 
-        <el-divider content-position="left">展期与替代信息（可选）</el-divider>
+        <!-- 展期信息：仅当选择期货类时显示 -->
+        <template v-if="form.asset_type === '期货类'">
+          <el-divider content-position="left">展期信息（可选）</el-divider>
 
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="展期天数 k" prop="rollover_days">
-              <el-input-number v-model="form.rollover_days" :min="0" style="width: 100%"></el-input-number>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="持仓量阈值 th" prop="rollover_threshold">
-              <el-input-number v-model="form.rollover_threshold" :min="0" style="width: 100%"></el-input-number>
-            </el-form-item>
-          </el-col>
-        </el-row>
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="展期天数 k" prop="rollover_days">
+                <el-input-number 
+                  v-model="form.rollover_days" 
+                  :min="0" 
+                  :max="365"
+                  :step="1"
+                  style="width: 100%"
+                ></el-input-number>
+                <span style="margin-left: 8px; color: #909399; font-size: 12px;">天（范围：0-365）</span>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="持仓量阈值 th" prop="rollover_threshold">
+                <el-input-number 
+                  v-model="form.rollover_threshold" 
+                  :min="0" 
+                  :max="1000000"
+                  :step="1000"
+                  style="width: 100%"
+                ></el-input-number>
+                <span style="margin-left: 8px; color: #909399; font-size: 12px;">（范围：≥0，步长：1000）</span>
+              </el-form-item>
+            </el-col>
+          </el-row>
 
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="观察窗口起点 p" prop="rollover_window_p">
-              <el-input-number v-model="form.rollover_window_p" :min="0" style="width: 100%"></el-input-number>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="观察窗口终点 q" prop="rollover_window_q">
-              <el-input-number v-model="form.rollover_window_q" :min="0" style="width: 100%"></el-input-number>
-            </el-form-item>
-          </el-col>
-        </el-row>
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="观察窗口起点 p" prop="rollover_window_p">
+                <el-input-number 
+                  v-model="form.rollover_window_p" 
+                  :min="0" 
+                  :max="365"
+                  :step="1"
+                  style="width: 100%"
+                ></el-input-number>
+                <span style="margin-left: 8px; color: #909399; font-size: 12px;">天（范围：0-365）</span>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="观察窗口终点 q" prop="rollover_window_q">
+                <el-input-number 
+                  v-model="form.rollover_window_q" 
+                  :min="0" 
+                  :max="365"
+                  :step="1"
+                  style="width: 100%"
+                ></el-input-number>
+                <span style="margin-left: 8px; color: #909399; font-size: 12px;">天（范围：0-365）</span>
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </template>
 
-        <el-row :gutter="20">
-          <el-col :span="12">
-            <el-form-item label="替代标的代码" prop="substitute_code">
-              <el-input v-model="form.substitute_code" placeholder="请输入替代标的代码"></el-input>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="切换日期" prop="switch_date">
-              <el-date-picker
-                v-model="form.switch_date"
-                type="date"
-                placeholder="选择日期"
-                format="yyyy-MM-dd"
-                value-format="yyyyMMdd"
-                style="width: 100%"
-              ></el-date-picker>
-            </el-form-item>
-          </el-col>
-        </el-row>
+        <!-- 替代信息：仅当选择现货类时显示 -->
+        <template v-if="form.asset_type === '现货类'">
+          <el-divider content-position="left">替代信息（可选）</el-divider>
+
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="替代标的代码" prop="substitute_code">
+                <el-input v-model="form.substitute_code" placeholder="请输入替代标的代码"></el-input>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="切换日期" prop="switch_date">
+                <el-date-picker
+                  v-model="form.switch_date"
+                  type="date"
+                  placeholder="选择日期"
+                  format="yyyy-MM-dd"
+                  value-format="yyyyMMdd"
+                  style="width: 100%"
+                ></el-date-picker>
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </template>
 
         <el-form-item>
           <el-button type="primary" @click="handleSubmit" :loading="submitting">
@@ -109,6 +145,16 @@ import { mapState } from 'vuex';
 
 export default {
   name: 'AssetForm',
+  props: {
+    isDialog: {
+      type: Boolean,
+      default: false
+    },
+    assetCode: {
+      type: String,
+      default: ''
+    }
+  },
   data() {
     return {
       form: {
@@ -138,14 +184,64 @@ export default {
     ...mapState('asset', ['assetCategories'])
   },
   created() {
-    if (this.$route.params.id) {
+    if (this.isDialog) {
+      if (this.assetCode) {
+        this.isEdit = true;
+        this.loadAsset(this.assetCode);
+      }
+    } else if (this.$route.params.id) {
       this.isEdit = true;
-      this.loadAsset();
+      this.loadAsset(this.$route.params.id);
+    }
+  },
+  watch: {
+    assetCode(newVal) {
+      if (this.isDialog && newVal) {
+        this.isEdit = true;
+        this.loadAsset(newVal);
+      } else {
+        this.resetForm();
+      }
+    },
+    // 监听资产分类变化，根据类型清空对应字段
+    'form.asset_type'(newVal) {
+      if (newVal !== '期货类') {
+        // 如果不是期货类，清空展期相关字段
+        this.form.rollover_days = null;
+        this.form.rollover_threshold = null;
+        this.form.rollover_window_p = null;
+        this.form.rollover_window_q = null;
+      }
+      if (newVal !== '现货类') {
+        // 如果不是现货类，清空替代相关字段
+        this.form.substitute_code = '';
+        this.form.switch_date = '';
+      }
     }
   },
   methods: {
-    async loadAsset() {
-      const assetCode = this.$route.params.id;
+    resetForm() {
+      this.isEdit = false;
+      this.currentAssetId = null;
+      this.form = {
+        code: '',
+        name: '',
+        asset_type: '',
+        exchange: '',
+        description: '',
+        rollover_days: null,
+        rollover_threshold: null,
+        rollover_window_p: null,
+        rollover_window_q: null,
+        substitute_code: '',
+        switch_date: ''
+      };
+      if (this.$refs.form) {
+        this.$refs.form.resetFields();
+      }
+    },
+    async loadAsset(code) {
+      const assetCode = code || (this.isDialog ? this.assetCode : this.$route.params.id);
       
       // 先尝试从 Store 中获取
       let asset = this.$store.getters['asset/getAssetByCode'](assetCode);
@@ -179,7 +275,9 @@ export default {
         };
       } else {
         this.$message.error('找不到资产信息');
-        this.$router.push('/asset/list');
+        if (!this.isDialog) {
+          this.$router.push('/asset/list');
+        }
       }
     },
     handleSubmit() {
@@ -195,7 +293,11 @@ export default {
                   data: this.form
                 });
                 this.$message.success('更新成功');
-                this.$router.push('/asset/list');
+                if (this.isDialog) {
+                  this.$emit('success');
+                } else {
+                  this.$router.push('/asset/list');
+                }
               } catch (error) {
                 // 如果是 404 错误，说明后端暂不支持更新
                 if (error.response && error.response.status === 404) {
@@ -219,7 +321,11 @@ export default {
               // 调用创建接口
               await this.$store.dispatch('asset/addAsset', this.form);
               this.$message.success('添加成功');
-              this.$router.push('/asset/list');
+              if (this.isDialog) {
+                this.$emit('success');
+              } else {
+                this.$router.push('/asset/list');
+              }
             }
           } catch (error) {
             const errorMsg = error.response?.data?.detail || error.message || '请检查网络连接';
@@ -231,7 +337,11 @@ export default {
       });
     },
     handleCancel() {
-      this.$router.back();
+      if (this.isDialog) {
+        this.$emit('close');
+      } else {
+        this.$router.back();
+      }
     }
   }
 };

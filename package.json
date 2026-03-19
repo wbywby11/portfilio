@@ -1,8 +1,12 @@
 {
   "name": "portfilio-vue-project",
-  "version": "1.0.0",
+  "version": "0.2.28",
   "description": "Vue 2.6.14 project with Webpack",
   "main": "index.js",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=7.0.0"
+  },
   "scripts": {
     "dev": "webpack serve --mode development --open",
     "build": "webpack --mode production"

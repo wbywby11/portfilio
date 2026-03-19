@@ -3,7 +3,7 @@
     <div class="page-header">
       <h2 class="page-title">资产列表</h2>
       <div>
-        <el-button type="primary" icon="el-icon-plus" @click="$router.push('/asset/add')">
+        <el-button type="primary" icon="el-icon-plus" @click="handleAdd">
           新增资产
         </el-button>
         <el-button icon="el-icon-download" @click="handleDownloadTemplate">下载资产模板</el-button>
@@ -24,7 +24,13 @@
     <div class="page-content">
       <!-- 搜索栏 -->
       <el-form :inline="true" :model="searchForm" class="search-form">
-        <el-form-item label="资产代码">
+        <el-form-item>
+          <span slot="label">
+            资产代码
+            <el-tooltip content="从数据库中选择已有的资产代码" placement="top">
+              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+            </el-tooltip>
+          </span>
           <el-input v-model="searchForm.code" placeholder="请输入资产代码" clearable></el-input>
         </el-form-item>
         <el-form-item label="资产名称">
@@ -47,46 +53,49 @@
       </el-form>
 
       <!-- 资产表格 -->
-      <el-table
+      <vxe-table
         :data="tableData"
-        v-loading="loading"
-        style="width: 100%"
+        :loading="loading"
+        border
         stripe
+        height="600"
+        :scroll-y="{enabled: true, gt: 0}"
+        show-overflow
       >
-        <el-table-column prop="code" label="资产代码" width="120"></el-table-column>
-        <el-table-column prop="name" label="资产名称" width="150"></el-table-column>
-        <el-table-column prop="asset_type" label="资产分类" width="120">
-          <template slot-scope="scope">
-            <el-tag size="small">{{ scope.row.asset_type }}</el-tag>
+        <vxe-column field="code" title="资产代码" width="120"></vxe-column>
+        <vxe-column field="name" title="资产名称" width="150"></vxe-column>
+        <vxe-column field="asset_type" title="资产分类" width="120">
+          <template #default="{ row }">
+            <el-tag size="small">{{ row.asset_type }}</el-tag>
           </template>
-        </el-table-column>
-        <el-table-column prop="exchange" label="交易所" width="120"></el-table-column>
-        <el-table-column prop="substitute_code" label="替代标的" width="120">
-          <template slot-scope="scope">
-            {{ scope.row.substitute_code || '-' }}
+        </vxe-column>
+        <vxe-column field="exchange" title="交易所" width="120"></vxe-column>
+        <vxe-column field="substitute_code" title="替代标的" width="120">
+          <template #default="{ row }">
+            {{ row.substitute_code || '-' }}
           </template>
-        </el-table-column>
-        <el-table-column prop="description" label="描述" min-width="150" show-overflow-tooltip></el-table-column>
-        <el-table-column prop="is_active" label="状态" width="100">
-          <template slot-scope="scope">
-            <el-tag :type="scope.row.is_active ? 'success' : 'info'" size="small">
-              {{ scope.row.is_active ? '启用' : '禁用' }}
+        </vxe-column>
+        <vxe-column field="description" title="描述" min-width="150" show-overflow></vxe-column>
+        <vxe-column field="is_active" title="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.is_active ? 'success' : 'info'" size="small">
+              {{ row.is_active ? '启用' : '禁用' }}
             </el-tag>
           </template>
-        </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
-          <template slot-scope="scope">
-            <el-button type="text" size="small" @click="handleViewQuote(scope.row)">行情</el-button>
-            <el-button type="text" size="small" @click="handleView(scope.row)">查看</el-button>
+        </vxe-column>
+        <vxe-column title="操作" width="220" fixed="right">
+          <template #default="{ row }">
+            <el-button type="text" size="small" @click="handleViewQuote(row)">行情</el-button>
+            <el-button type="text" size="small" @click="handleView(row)">查看</el-button>
             <el-tooltip content="后端暂未实现更新接口" placement="top">
-              <el-button type="text" size="small" @click="handleEdit(scope.row)">编辑</el-button>
+              <el-button type="text" size="small" @click="handleEdit(row)">编辑</el-button>
             </el-tooltip>
-            <el-button type="text" size="small" @click="handleDelete(scope.row)" style="color: #f56c6c;">
+            <el-button type="text" size="small" @click="handleDelete(row)" style="color: #f56c6c;">
               删除
             </el-button>
           </template>
-        </el-table-column>
-      </el-table>
+        </vxe-column>
+      </vxe-table>
 
       <!-- 分页 -->
       <el-pagination
@@ -100,15 +109,70 @@
         style="margin-top: 20px; text-align: right;"
       ></el-pagination>
     </div>
+
+    <!-- 资产表单弹窗 -->
+    <el-dialog
+      :title="editingAssetCode ? '编辑资产' : '新增资产'"
+      :visible.sync="assetFormVisible"
+      width="900px"
+      :close-on-click-modal="false"
+      append-to-body
+    >
+      <asset-form
+        v-if="assetFormVisible"
+        is-dialog
+        :asset-code="editingAssetCode"
+        @success="handleFormSuccess"
+        @close="assetFormVisible = false"
+      />
+    </el-dialog>
+
+    <!-- 行情查看弹窗 -->
+    <el-dialog
+      :title="`资产行情 - ${currentQuoteAsset ? currentQuoteAsset.name : ''}`"
+      :visible.sync="quoteVisible"
+      width="1200px"
+      append-to-body
+      top="5vh"
+    >
+      <asset-quote
+        v-if="quoteVisible"
+        is-dialog
+        :asset-code="currentQuoteAsset ? currentQuoteAsset.code : ''"
+      />
+    </el-dialog>
+
+    <!-- 资产详情弹窗 -->
+    <el-dialog
+      :title="`资产详情 - ${currentDetailAsset ? currentDetailAsset.name : ''}`"
+      :visible.sync="detailVisible"
+      width="900px"
+      append-to-body
+      top="5vh"
+    >
+      <asset-detail
+        v-if="detailVisible && currentDetailAsset"
+        is-dialog
+        :asset-id="currentDetailAsset.id"
+      />
+    </el-dialog>
   </div>
 </template>
 
 <script>
 import { mapState } from 'vuex';
 import { downloadAssetTemplate, importAssetsFromExcel } from '@/api/asset';
+import AssetForm from './AssetForm.vue';
+import AssetQuote from './AssetQuote.vue';
+import AssetDetail from './AssetDetail.vue';
 
 export default {
   name: 'AssetList',
+  components: {
+    AssetForm,
+    AssetQuote,
+    AssetDetail
+  },
   data() {
     return {
       searchForm: {
@@ -122,7 +186,13 @@ export default {
         current: 1,
         pageSize: 20,
         total: 0
-      }
+      },
+      assetFormVisible: false,
+      editingAssetCode: '',
+      quoteVisible: false,
+      currentQuoteAsset: null,
+      detailVisible: false,
+      currentDetailAsset: null
     };
   },
   computed: {
@@ -157,16 +227,24 @@ export default {
       this.fetchData();
     },
     handleView(row) {
-      this.$message.info('查看资产详情：' + row.name);
+      this.currentDetailAsset = row;
+      this.detailVisible = true;
     },
     handleViewQuote(row) {
-      this.$router.push({
-        name: 'AssetQuote',
-        query: { code: row.code }
-      });
+      this.currentQuoteAsset = row;
+      this.quoteVisible = true;
+    },
+    handleAdd() {
+      this.editingAssetCode = '';
+      this.assetFormVisible = true;
     },
     handleEdit(row) {
-      this.$router.push(`/asset/edit/${row.id}`);
+      this.editingAssetCode = row.code;
+      this.assetFormVisible = true;
+    },
+    handleFormSuccess() {
+      this.assetFormVisible = false;
+      this.fetchData();
     },
     handleDelete(row) {
       this.$confirm(`确定要删除资产 "${row.name}" 吗?`, '提示', {

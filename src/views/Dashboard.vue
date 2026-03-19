@@ -59,16 +59,16 @@
         <div class="info-card">
           <div class="info-card-title">快捷入口</div>
           <div class="quick-links">
-            <el-button type="primary" icon="el-icon-plus" @click="$router.push('/portfolio/create')">
+            <el-button type="primary" icon="el-icon-plus" @click="handleCreatePortfolio">
               创建组合
             </el-button>
-            <el-button type="success" icon="el-icon-data-analysis" @click="$router.push('/strategy/develop')">
+            <el-button type="success" icon="el-icon-data-analysis" @click="handleDevelopStrategy">
               策略开发
             </el-button>
-            <el-button type="warning" icon="el-icon-coin" @click="$router.push('/asset/add')">
+            <el-button type="warning" icon="el-icon-coin" @click="handleAddAsset">
               新增资产
             </el-button>
-            <el-button type="info" icon="el-icon-s-data" @click="$router.push('/portfolio/compare')">
+            <el-button type="info" icon="el-icon-s-data" @click="$message.info('组合对比功能开发中')">
               组合对比
             </el-button>
           </div>
@@ -125,27 +125,66 @@
         <el-table-column prop="updateTime" label="更新时间" width="180"></el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template slot-scope="scope">
-            <el-button type="text" size="small" @click="viewPortfolio(scope.row.id)">查看</el-button>
-            <el-button type="text" size="small" @click="$router.push('/portfolio/performance/' + scope.row.id)">
+            <el-button type="text" size="small" @click="handleViewPortfolio(scope.row.id)">查看</el-button>
+            <el-button type="text" size="small" @click="handleAnalyzePortfolio(scope.row.id)">
               分析
             </el-button>
           </template>
         </el-table-column>
       </el-table>
     </div>
+
+    <!-- 弹窗部分 -->
+    <el-dialog title="新增资产" :visible.sync="assetFormVisible" width="900px" append-to-body>
+      <asset-form v-if="assetFormVisible" is-dialog @success="assetFormVisible = false; loadData()" @close="assetFormVisible = false" />
+    </el-dialog>
+
+    <el-dialog title="创建组合" :visible.sync="portfolioCreateVisible" width="1000px" append-to-body>
+      <portfolio-create v-if="portfolioCreateVisible" is-dialog @success="portfolioCreateVisible = false; loadData()" @close="portfolioCreateVisible = false" />
+    </el-dialog>
+
+    <el-dialog title="策略开发" :visible.sync="strategyDevelopVisible" width="1200px" append-to-body top="5vh">
+      <strategy-develop v-if="strategyDevelopVisible" is-dialog @success="strategyDevelopVisible = false; loadData()" @close="strategyDevelopVisible = false" />
+    </el-dialog>
+
+    <el-dialog title="组合详情" :visible.sync="portfolioDetailVisible" width="1200px" append-to-body top="5vh">
+      <portfolio-detail v-if="portfolioDetailVisible" is-dialog :id="currentPortfolioId" />
+    </el-dialog>
+
+    <el-dialog title="业绩分析" :visible.sync="performanceVisible" width="1200px" append-to-body top="5vh">
+      <performance v-if="performanceVisible" is-dialog :id="currentPortfolioId" />
+    </el-dialog>
   </div>
 </template>
 
 <script>
 import { mapGetters, mapState } from 'vuex';
 import dayjs from 'dayjs';
+import AssetForm from './asset/AssetForm.vue';
+import PortfolioCreate from './portfolio/PortfolioCreate.vue';
+import StrategyDevelop from './strategy/StrategyDevelop.vue';
+import PortfolioDetail from './portfolio/PortfolioDetail.vue';
+import Performance from './portfolio/Performance.vue';
 
 export default {
   name: 'Dashboard',
+  components: {
+    AssetForm,
+    PortfolioCreate,
+    StrategyDevelop,
+    PortfolioDetail,
+    Performance
+  },
   data() {
     return {
       currentDate: dayjs().format('YYYY年MM月DD日'),
-      recentPortfolios: []
+      recentPortfolios: [],
+      assetFormVisible: false,
+      portfolioCreateVisible: false,
+      strategyDevelopVisible: false,
+      portfolioDetailVisible: false,
+      performanceVisible: false,
+      currentPortfolioId: ''
     };
   },
   computed: {
@@ -196,8 +235,22 @@ export default {
       if (ret < 0) return 'number-negative';
       return 'number-neutral';
     },
-    viewPortfolio(id) {
-      this.$router.push(`/portfolio/detail/${id}`);
+    handleCreatePortfolio() {
+      this.portfolioCreateVisible = true;
+    },
+    handleDevelopStrategy() {
+      this.strategyDevelopVisible = true;
+    },
+    handleAddAsset() {
+      this.assetFormVisible = true;
+    },
+    handleViewPortfolio(id) {
+      this.currentPortfolioId = id;
+      this.portfolioDetailVisible = true;
+    },
+    handleAnalyzePortfolio(id) {
+      this.currentPortfolioId = id;
+      this.performanceVisible = true;
     }
   }
 };

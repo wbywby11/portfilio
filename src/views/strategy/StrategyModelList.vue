@@ -39,75 +39,95 @@
       </el-form>
 
       <!-- 策略表格 -->
-      <el-table
+      <vxe-table
         :data="tableData"
-        v-loading="loading"
-        style="width: 100%"
+        :loading="loading"
+        border
         stripe
+        height="600"
+        :scroll-y="{enabled: true, gt: 0}"
+        show-overflow
       >
-        <el-table-column prop="name" label="策略名称" width="200"></el-table-column>
-        <el-table-column prop="template_code" label="所用模板" width="150">
-          <template slot-scope="scope">
+        <vxe-column field="name" title="策略名称" width="200"></vxe-column>
+        <vxe-column field="template_code" title="所用模板" width="150">
+          <template #default="{ row }">
             <el-tag size="small">
-              {{ scope.row.template_name || scope.row.template_code }}
+              {{ row.template_name || row.template_code }}
             </el-tag>
           </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
-          <template slot-scope="scope">
-            <el-tag :type="getStatusType(scope.row.status)" size="small">
-              {{ getStatusLabel(scope.row.status) }}
+        </vxe-column>
+        <vxe-column field="status" title="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="getStatusType(row.status)" size="small">
+              {{ getStatusLabel(row.status) }}
             </el-tag>
           </template>
-        </el-table-column>
-        <el-table-column prop="asset_codes" label="关联资产" width="200">
-          <template slot-scope="scope">
+        </vxe-column>
+        <vxe-column field="live_publish_enabled" title="实盘状态" width="120">
+          <template #default="{ row }">
+            <el-tag :type="row.live_publish_enabled ? 'success' : 'info'" size="small">
+              {{ row.live_publish_enabled ? '已实盘发布' : '未实盘发布' }}
+            </el-tag>
+          </template>
+        </vxe-column>
+        <vxe-column field="asset_codes" title="关联资产" width="200">
+          <template #default="{ row }">
             <el-popover
               placement="top-start"
               trigger="hover"
               :title="'资产列表'"
               :width="300"
             >
-              <div v-for="assetCode in scope.row.asset_codes" :key="assetCode" style="padding: 5px 0;">
-                {{ assetCode }} - {{ scope.row.asset_names && scope.row.asset_names[assetCode] || '未知资产' }}
+              <template v-slot:reference>
+                <el-tag size="small" type="info" style="margin-right: 5px;">
+                  {{ row.asset_codes.length }}个资产
+                </el-tag>
+              </template>
+              <div v-for="assetCode in row.asset_codes" :key="assetCode" style="padding: 5px 0;">
+                {{ assetCode }} - {{ row.asset_names && row.asset_names[assetCode] || '未知资产' }}
               </div>
-              <el-tag slot="reference" size="small" type="info" style="margin-right: 5px;">
-                {{ scope.row.asset_codes.length }}个资产
-              </el-tag>
             </el-popover>
           </template>
-        </el-table-column>
-        <el-table-column prop="description" label="描述" show-overflow-tooltip></el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="160">
-          <template slot-scope="scope">
-            {{ formatDate(scope.row.created_at) }}
+        </vxe-column>
+        <vxe-column field="description" title="描述" min-width="150" show-overflow></vxe-column>
+        <vxe-column field="created_at" title="创建时间" width="160">
+          <template #default="{ row }">
+            {{ formatDate(row.created_at) }}
           </template>
-        </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
-          <template slot-scope="scope">
-            <el-button type="text" size="small" @click="handleView(scope.row)">查看</el-button>
+        </vxe-column>
+        <vxe-column title="操作" width="280" fixed="right">
+          <template #default="{ row }">
+            <el-button type="text" size="small" @click="handleView(row)">查看</el-button>
             <el-button
               type="text"
               size="small"
-              @click="handleBacktest(scope.row)"
+              @click="handleBacktest(row)"
             >
               回测
             </el-button>
             <el-button
               type="text"
               size="small"
-              @click="handlePublish(scope.row)"
-              :disabled="scope.row.status === '已发布' || scope.row.status === 'published' || !scope.row.backtest_result"
+              @click="handlePublish(row)"
+              :disabled="row.status === '已发布' || row.status === 'published' || row.status === '已归档' || row.status === 'archived'"
             >
               发布
             </el-button>
-            <el-button type="text" size="small" @click="handleEdit(scope.row)">编辑</el-button>
-            <el-button type="text" size="small" @click="handleDelete(scope.row)" style="color: #f56c6c;">
+            <el-button
+              type="text"
+              size="small"
+              @click="handleLivePublish(row)"
+              :disabled="row.status === '已归档' || row.status === 'archived'"
+            >
+              {{ row.live_publish_enabled ? '更新实盘' : '实盘发布' }}
+            </el-button>
+            <el-button type="text" size="small" @click="handleEdit(row)">编辑</el-button>
+            <el-button type="text" size="small" @click="handleDelete(row)" style="color: #f56c6c;">
               删除
             </el-button>
           </template>
-        </el-table-column>
-      </el-table>
+        </vxe-column>
+      </vxe-table>
 
       <!-- 分页 -->
       <el-pagination
@@ -119,6 +139,7 @@
         layout="total, sizes, prev, pager, next, jumper"
         :total="pagination.total"
         style="margin-top: 20px; text-align: right;"
+      >
       </el-pagination>
     </div>
 
@@ -128,6 +149,36 @@
       :model-id="currentModelId"
       @success="handleBacktestSuccess"
     />
+
+    <!-- 策略详情弹窗 -->
+    <el-dialog
+      title="策略详情"
+      :visible.sync="detailDialogVisible"
+      width="1200px"
+      append-to-body
+    >
+      <strategy-model-detail
+        v-if="detailDialogVisible"
+        is-dialog
+        :id="currentModelId"
+      />
+    </el-dialog>
+
+    <!-- 策略表窗弹窗 (新增/编辑) -->
+    <el-dialog
+      :title="isEdit ? '编辑策略' : '新建策略'"
+      :visible.sync="formDialogVisible"
+      width="1000px"
+      append-to-body
+    >
+      <strategy-model-form
+        v-if="formDialogVisible"
+        is-dialog
+        :id="currentModelId"
+        @success="handleFormSuccess"
+        @close="formDialogVisible = false"
+      />
+    </el-dialog>
   </div>
 </template>
 
@@ -138,7 +189,9 @@ import BacktestDialog from '@/components/BacktestDialog.vue';
 export default {
   name: 'StrategyModelList',
   components: {
-    BacktestDialog
+    BacktestDialog,
+    StrategyModelDetail: () => import('./StrategyModelDetail.vue'),
+    StrategyModelForm: () => import('./StrategyModelForm.vue')
   },
   data() {
     return {
@@ -156,7 +209,10 @@ export default {
         total: 0
       },
       backtestDialogVisible: false,
-      currentModelId: ''
+      currentModelId: '',
+      detailDialogVisible: false,
+      formDialogVisible: false,
+      isEdit: false
     };
   },
   created() {
@@ -175,12 +231,12 @@ export default {
     async fetchData() {
       this.loading = true;
       try {
-        const res = await this.$store.dispatch('strategy/fetchStrategyModelList', {
+        const data = await this.$store.dispatch('strategy/fetchStrategyModelList', {
           status: this.searchForm.status,
           template_code: this.searchForm.template_code
         });
-        this.tableData = res;
-        this.pagination.total = res.length;
+        this.tableData = data;
+        this.pagination.total = data.length;
       } catch (error) {
         this.$message.error('加载策略列表失败');
       } finally {
@@ -200,10 +256,22 @@ export default {
       this.fetchData();
     },
     handleCreate() {
-      this.$router.push('/strategy/model/add');
+      this.isEdit = false;
+      this.currentModelId = '';
+      this.formDialogVisible = true;
     },
     handleView(row) {
-      this.$router.push(`/strategy/model/detail/${row.id}`);
+      this.currentModelId = row.id;
+      this.detailDialogVisible = true;
+    },
+    handleEdit(row) {
+      this.isEdit = true;
+      this.currentModelId = row.id;
+      this.formDialogVisible = true;
+    },
+    handleFormSuccess() {
+      this.formDialogVisible = false;
+      this.fetchData();
     },
     async handleBacktest(row) {
       this.currentModelId = row.id;
@@ -213,22 +281,50 @@ export default {
       this.fetchData();
     },
     async handlePublish(row) {
-      this.$confirm('确定要发布该策略模型吗？', '提示', {
+      this.$confirm('确定要发布该策略模型吗？发布后策略将可以被其他模块使用。', '提示', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
       }).then(async () => {
         try {
+          this.loading = true;
           await this.$store.dispatch('strategy/publishModel', row.id);
           this.$message.success('发布成功');
-          this.fetchData();
+          // 刷新列表以更新状态
+          await this.fetchData();
         } catch (error) {
-          this.$message.error('发布失败：' + (error.response?.data?.detail || error.message));
+          console.error('发布失败:', error);
+          const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.message || '未知错误';
+          this.$message.error('发布失败：' + errorMsg);
+        } finally {
+          this.loading = false;
+        }
+      }).catch(() => {
+        // 用户取消操作
+      });
+    },
+    async handleLivePublish(row) {
+      const actionText = row.live_publish_enabled ? '更新到最新实盘版本' : '实盘发布';
+      this.$confirm(`确定要${actionText}吗？操作后将于次交易日生效。`, '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(async () => {
+        try {
+          this.loading = true;
+          await this.$store.dispatch('strategy/livePublishModel', {
+            modelId: row.id,
+            data: { source: 'strategy' }
+          });
+          this.$message.success(`${actionText}成功`);
+          await this.fetchData();
+        } catch (error) {
+          const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.message || '未知错误';
+          this.$message.error(`${actionText}失败：` + errorMsg);
+        } finally {
+          this.loading = false;
         }
       }).catch(() => {});
-    },
-    handleEdit(row) {
-      this.$router.push(`/strategy/model/edit/${row.id}`);
     },
     handleDelete(row) {
       this.$confirm(`确定要删除策略 "${row.name}" 吗?`, '提示', {

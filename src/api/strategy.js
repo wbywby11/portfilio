@@ -82,12 +82,45 @@ export function getStrategyModel(modelId) {
   });
 }
 
-// 运行回测
+// 运行回测（混合动量等计算量大，超时设为 5 分钟）
 export function runBacktest(modelId, data) {
   return request({
     url: `/api/v1/backtests/run-by-model/${modelId}`,
     method: 'post',
-    data
+    data,
+    timeout: 300000
+  });
+}
+
+// 更新回测记录备注
+export function updateBacktestRemark(modelId, recordId, remark) {
+  return request({
+    url: `/api/v1/strategy-models/${modelId}/backtests/${recordId}`,
+    method: 'patch',
+    data: { remark: remark || '' }
+  });
+}
+
+// 基于快照切片计算绩效指标（多策略步进对比时用，保证与净值曲线数据源一致）
+export function computeMetricsFromSnapshots(snapshots, cutoffDate) {
+  return request({
+    url: '/api/v1/backtests/compute-metrics-from-snapshots',
+    method: 'post',
+    data: {
+      snapshots: Array.isArray(snapshots) ? snapshots : [],
+      cutoff_date: String(cutoffDate || '').replace(/-/g, '').slice(0, 8)
+    }
+  });
+}
+
+// 按指数编制规则获取资产权重上限（供权重初始化、预设调仓、步进输入限制与提示）
+export function getMaxWeightsByCodes(thscodes) {
+  const codes = Array.isArray(thscodes) ? thscodes.join(',') : (thscodes || '');
+  if (!codes) return Promise.resolve({ data: { data: {} } });
+  return request({
+    url: '/api/v1/backtests/max-weights',
+    method: 'get',
+    params: { thscodes: codes }
   });
 }
 
@@ -96,6 +129,76 @@ export function publishModel(modelId) {
   return request({
     url: `/api/v1/strategy-models/${modelId}/publish`,
     method: 'post'
+  });
+}
+
+// 实盘发布（T+1 生效）
+export function livePublishModel(modelId, data = {}) {
+  return request({
+    url: `/api/v1/strategy-models/${modelId}/live-publish`,
+    method: 'post',
+    data
+  });
+}
+
+// 取消实盘发布
+export function liveUnpublishModel(modelId, params = {}) {
+  return request({
+    url: `/api/v1/strategy-models/${modelId}/live-unpublish`,
+    method: 'post',
+    params
+  });
+}
+
+// 获取实盘配置（含策略参数建议值）
+export function getLiveConfig(modelId) {
+  return request({
+    url: `/api/v1/strategy-models/${modelId}/live-config`,
+    method: 'get'
+  });
+}
+
+// 更新实盘配置
+export function updateLiveConfig(modelId, data) {
+  return request({
+    url: `/api/v1/strategy-models/${modelId}/live-config`,
+    method: 'patch',
+    data
+  });
+}
+
+// 获取实盘发布策略列表
+export function getLivePublishedModelList(params) {
+  return request({
+    url: '/api/v1/strategy-models/live/published',
+    method: 'get',
+    params
+  });
+}
+
+// 获取单个策略实盘监控数据
+export function getLiveMonitoring(modelId) {
+  return request({
+    url: `/api/v1/strategy-models/${modelId}/live-monitoring`,
+    method: 'get'
+  });
+}
+
+// 手动调仓确认/跳过
+export function confirmManualRebalance(modelId, data) {
+  return request({
+    url: `/api/v1/strategy-models/${modelId}/manual-rebalance`,
+    method: 'post',
+    data
+  });
+}
+
+// 实盘变更日志
+export function getLiveChangeLogs(modelId, params) {
+  return request({
+    url: `/api/v1/strategy-models/${modelId}/live-change-logs`,
+    method: 'get',
+    params
   });
 }
 
