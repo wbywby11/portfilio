@@ -16,17 +16,8 @@
         <el-col :span="4">
           <el-card shadow="hover" class="metric-card primary">
             <div class="metric-label">当前净值</div>
-            <div class="metric-value large">{{ formatNumber(currentNav, 4) }}</div>
+            <div class="metric-value large">{{ formatNumber(currentNav, 2) }}</div>
             <div class="metric-sub">更新: {{ formatDate(monitorState && monitorState.date) }}</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">日涨跌幅</div>
-            <div class="metric-value" :style="{ color: getReturnColor(performance && performance.daily_return) }">
-              {{ formatPercent(performance && performance.daily_return) }}
-            </div>
-            <div class="metric-sub">较前日</div>
           </el-card>
         </el-col>
         <el-col :span="4">
@@ -59,9 +50,6 @@
             <div class="metric-sub">风险调整</div>
           </el-card>
         </el-col>
-      </el-row>
-
-      <el-row :gutter="20" style="margin-top: 20px;">
         <el-col :span="4">
           <el-card shadow="hover" class="metric-card">
             <div class="metric-label">最大回撤</div>
@@ -98,24 +86,6 @@
         </el-col>
         <el-col :span="4">
           <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">当日年化收益</div>
-            <div class="metric-value" :style="{ color: getReturnColor(dailyAnnualReturn) }">
-              {{ dailyAnnualReturn !== null ? formatSignedPercent(dailyAnnualReturn) : '-' }}
-            </div>
-            <div class="metric-sub">年化因子: 260</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">当日波动率</div>
-            <div class="metric-value" :class="{ 'warning-text': isVolatilityHigh }">
-              {{ currentVolatility !== null ? formatPercent(currentVolatility) : '-' }}
-            </div>
-            <div class="metric-sub">阈值: 6.00%</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
             <div class="metric-label">当前回撤</div>
             <div class="metric-value" style="color: #67C23A;">
               {{ formatPercent(currentDrawdown) }}
@@ -130,9 +100,6 @@
             <div class="metric-sub">权重 > 0</div>
           </el-card>
         </el-col>
-      </el-row>
-
-      <el-row :gutter="20" style="margin-top: 15px;">
         <el-col :span="4">
           <el-card shadow="hover" class="metric-card">
             <div class="metric-label">距下次调仓</div>
@@ -142,11 +109,11 @@
         </el-col>
         <el-col :span="4">
           <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">波动率状态</div>
-            <div class="metric-value">
-              <el-tag :type="volatilityStatusType" size="small">{{ volatilityStatusText }}</el-tag>
+            <div class="metric-label">监测波动率</div>
+            <div class="metric-value" :style="{ color: monitoredVolatilityColor }">
+              {{ formattedMonitoredVolatility }}
             </div>
-            <div class="metric-sub">vs 阈值 6%</div>
+            <div class="metric-sub">阈值: {{ formattedVolThreshold }}</div>
           </el-card>
         </el-col>
       </el-row>
@@ -170,10 +137,11 @@ export default {
     currentNav() {
       return (this.monitorState && this.monitorState.nav) ? this.monitorState.nav : 1;
     },
-    // 计算总杠杆：target_weights 所有值的绝对值之和
+    // 计算总杠杆：target_weights 所有值的绝对值之和（权重为百分比形式，需除以100）
     totalLeverage() {
       const weights = (this.monitorState && this.monitorState.target_weights) ? this.monitorState.target_weights : {};
-      return Object.values(weights).reduce((sum, w) => sum + Math.abs(w), 0);
+      const sum = Object.values(weights).reduce((sum, w) => sum + Math.abs(w), 0);
+      return sum / 100;
     },
     // 当前波动率
     currentVolatility() {
@@ -200,13 +168,6 @@ export default {
       }
       return null;
     },
-    // 当日年化收益率（小数形式）
-    dailyAnnualReturn() {
-      if (this.dailyReturnPct !== null) {
-        return this.dailyReturnPct * 260;  // 年化因子
-      }
-      return null;
-    },
     // 当前回撤
     currentDrawdown() {
       if (!this.navHistory || this.navHistory.length < 2) return null;
@@ -218,33 +179,59 @@ export default {
       }
       return (currentNav / peak) - 1;  // 负数表示回撤
     },
-    // 持仓资产数（权重大于0的资产数量）
+    // 持仓资产数（权重大于0的资产数量，权重为百分比形式，阈值用0.01过滤接近0的值）
     positionCount() {
       const weights = this.monitorState && this.monitorState.target_weights ? this.monitorState.target_weights : {};
-      return Object.values(weights).filter(w => Math.abs(w) > 0.0001).length;
+      return Object.values(weights).filter(w => Math.abs(w) > 0.01).length;
     },
-    // 波动率是否预警
-    isVolatilityHigh() {
-      return this.currentVolatility !== null && this.currentVolatility > 0.06;
+    // 波动率阈值（百分比数字，如 6 表示 6%）
+    volResetThreshold() {
+      if (this.signals && this.signals.vol_reset && this.signals.vol_reset.threshold !== undefined) {
+        return this.signals.vol_reset.threshold;
+      }
+      return 6;  // 默认 6%
     },
-    // 波动率状态类型
-    volatilityStatusType() {
-      if (this.currentVolatility === null) return 'info';
-      return this.currentVolatility > 0.06 ? 'danger' : 'success';
-    },
-    // 波动率状态文本
-    volatilityStatusText() {
+    // 格式化的监测波动率
+    formattedMonitoredVolatility() {
       if (this.currentVolatility === null) return '-';
-      return this.currentVolatility > 0.06 ? '预警' : '正常';
+      return this.currentVolatility.toFixed(2) + '%';
+    },
+    // 格式化的波动率阈值
+    formattedVolThreshold() {
+      return this.volResetThreshold.toFixed(2) + '%';
+    },
+    // 监测波动率颜色
+    monitoredVolatilityColor() {
+      if (this.currentVolatility === null) return '#909399';
+      if (this.currentVolatility >= this.volResetThreshold) {
+        return '#F56C6C';  // 红色 - 预警
+      }
+      return '#67C23A';  // 绿色 - 正常
     },
     // 计算距下次调仓天数
     daysToNextRebalance() {
-      const nextDate = (this.signals && this.signals.monthly_rebalance && this.signals.monthly_rebalance.next_date) 
+      if (!this.signals) return null;
+      
+      // 如果有 pending，优先计算 pending 的天数
+      if (this.signals.pending_rebalance && this.signals.pending_rebalance.execute_date) {
+        var pendingDate = new Date(this.signals.pending_rebalance.execute_date);
+        var today = this.monitorState && this.monitorState.date ? new Date(this.monitorState.date) : new Date();
+        var diff = Math.ceil((pendingDate - today) / (1000 * 60 * 60 * 24));
+        return diff >= 0 ? diff : 0;
+      }
+      
+      // 否则用月度调仓的 days_until（后端已计算好）
+      if (this.signals.monthly_rebalance && this.signals.monthly_rebalance.days_until !== undefined) {
+        return this.signals.monthly_rebalance.days_until;
+      }
+      
+      // 回退：自己计算
+      var nextDate = (this.signals.monthly_rebalance && this.signals.monthly_rebalance.next_date) 
         ? this.signals.monthly_rebalance.next_date : null;
-      if (!nextDate) return null;
-      const today = new Date();
-      const target = new Date(nextDate);
-      const diffTime = target - today;
+      if (!nextDate || !this.monitorState || !this.monitorState.date) return null;
+      var todayDate = new Date(this.monitorState.date);
+      var target = new Date(nextDate);
+      var diffTime = target - todayDate;
       return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     }
   },
@@ -265,7 +252,7 @@ export default {
           this.fetchMonitorState(),
           this.fetchPerformance(),
           this.fetchSignals(),
-          this.fetchNavHistory()
+          this.fetchNavHistory({ monitor_id: 'default' })
         ]);
       } catch (error) {
         this.$message.error('加载数据失败：' + ((error.response && error.response.data && error.response.data.message) ? error.response.data.message : error.message));
@@ -279,7 +266,7 @@ export default {
     },
     formatPercent(num) {
       if (num === null || num === undefined) return '-';
-      return (num * 100).toFixed(2) + '%';
+      return num.toFixed(2) + '%';
     },
     formatSignedPercent(num) {
       if (num === null || num === undefined) return '-';
@@ -375,9 +362,5 @@ export default {
 .metric-sub {
   font-size: 12px;
   color: #c0c4cc;
-}
-
-.warning-text {
-  color: #E6A23C !important;
 }
 </style>

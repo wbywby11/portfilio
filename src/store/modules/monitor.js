@@ -10,6 +10,8 @@ const state = {
   reportList: [],            // 日报列表
   currentReport: null,       // 当前日报
   subjectiveOverrides: [],   // 主观调仓指令列表
+  assetMetrics: [],          // 资产波动率指标
+  correlationMatrix: null,   // 资产相关性矩阵
   loading: false
 };
 
@@ -41,6 +43,12 @@ const mutations = {
   SET_SUBJECTIVE_OVERRIDES(state, data) {
     state.subjectiveOverrides = data;
   },
+  SET_ASSET_METRICS(state, data) {
+    state.assetMetrics = data;
+  },
+  SET_CORRELATION_MATRIX(state, data) {
+    state.correlationMatrix = data;
+  },
   SET_LOADING(state, loading) {
     state.loading = loading;
   }
@@ -56,15 +64,17 @@ const actions = {
       commit('SET_MONITOR_STATE', data);
       return data;
     } catch (error) {
-      console.error('获取监控状态失败:', error);
-      throw error;
+      // 404 表示未初始化，不抛异常，保持 monitorState 为 null
+      console.warn('获取监控状态失败（可能未初始化）:', error.message);
+      commit('SET_MONITOR_STATE', null);
+      return null;
     } finally {
       commit('SET_LOADING', false);
     }
   },
 
   // 获取净值历史
-  async fetchNavHistory({ commit }, params) {
+  async fetchNavHistory({ commit }, params = {}) {
     try {
       commit('SET_LOADING', true);
       const res = await monitorApi.getNavHistory(params);
@@ -72,8 +82,9 @@ const actions = {
       commit('SET_NAV_HISTORY', data);
       return data;
     } catch (error) {
-      console.error('获取净值历史失败:', error);
-      throw error;
+      console.warn('获取净值历史失败（可能未初始化）:', error.message);
+      commit('SET_NAV_HISTORY', []);
+      return [];
     } finally {
       commit('SET_LOADING', false);
     }
@@ -106,8 +117,9 @@ const actions = {
       commit('SET_PERFORMANCE', data);
       return data;
     } catch (error) {
-      console.error('获取绩效指标失败:', error);
-      throw error;
+      console.warn('获取绩效指标失败（可能未初始化）:', error.message);
+      commit('SET_PERFORMANCE', null);
+      return null;
     } finally {
       commit('SET_LOADING', false);
     }
@@ -122,15 +134,16 @@ const actions = {
       commit('SET_SIGNALS', data);
       return data;
     } catch (error) {
-      console.error('获取信号状态失败:', error);
-      throw error;
+      console.warn('获取信号状态失败（可能未初始化）:', error.message);
+      commit('SET_SIGNALS', null);
+      return null;
     } finally {
       commit('SET_LOADING', false);
     }
   },
 
   // 获取事件日志
-  async fetchEvents({ commit }, params) {
+  async fetchEvents({ commit }, params = {}) {
     try {
       commit('SET_LOADING', true);
       const res = await monitorApi.getMonitorEvents(params);
@@ -138,15 +151,16 @@ const actions = {
       commit('SET_EVENTS', data);
       return data;
     } catch (error) {
-      console.error('获取事件日志失败:', error);
-      throw error;
+      console.warn('获取事件日志失败（可能未初始化）:', error.message);
+      commit('SET_EVENTS', []);
+      return [];
     } finally {
       commit('SET_LOADING', false);
     }
   },
 
   // 获取日报列表
-  async fetchReportList({ commit }, params) {
+  async fetchReportList({ commit }, params = {}) {
     try {
       commit('SET_LOADING', true);
       const res = await monitorApi.getMonitorReportList(params);
@@ -220,7 +234,7 @@ const actions = {
   },
 
   // 获取主观调仓指令列表
-  async fetchSubjectiveOverrides({ commit }, params) {
+  async fetchSubjectiveOverrides({ commit }, params = {}) {
     try {
       commit('SET_LOADING', true);
       const res = await monitorApi.getSubjectiveOverrides(params);
@@ -265,13 +279,51 @@ const actions = {
     } finally {
       commit('SET_LOADING', false);
     }
+  },
+
+  // 获取资产分析数据（相关性矩阵和波动率指标）
+  async fetchAssetAnalysis({ commit }, { thscodes, startDate, endDate }) {
+    try {
+      var start = startDate.replace(/-/g, '');
+      var end = endDate.replace(/-/g, '');
+      
+      var results = await Promise.all([
+        monitorApi.getPositionsCorrelationMatrix({
+          thscodes: thscodes,
+          start_date: start,
+          end_date: end
+        }),
+        monitorApi.getPositionsAssetMetrics({
+          thscodes: thscodes,
+          start_date: start,
+          end_date: end
+        })
+      ]);
+      
+      var correlationRes = results[0];
+      var metricsRes = results[1];
+      
+      // 后端返回格式可能是 {code: 0, data: {...}} 或直接是数据
+      var correlationData = (correlationRes && correlationRes.data) ? correlationRes.data : correlationRes;
+      var metricsData = (metricsRes && metricsRes.data) ? metricsRes.data : metricsRes;
+      
+      commit('SET_CORRELATION_MATRIX', correlationData);
+      commit('SET_ASSET_METRICS', Array.isArray(metricsData) ? metricsData : []);
+      
+      return { correlationData: correlationData, metricsData: metricsData };
+    } catch (error) {
+      console.warn('获取资产分析数据失败:', error);
+      commit('SET_CORRELATION_MATRIX', null);
+      commit('SET_ASSET_METRICS', []);
+      return null;
+    }
   }
 };
 
 const getters = {
   monitorState: state => state.monitorState,
   isLoading: state => state.loading,
-  latestNav: state => state.monitorState?.nav,
+  latestNav: state => state.monitorState && state.monitorState.nav,
   hasActiveSignals: state => {
     if (!state.signals) return false;
     return state.signals.has_rebalance_signal || state.signals.has_subjective_pending;
