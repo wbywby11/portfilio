@@ -1,0 +1,34 @@
+TemplateForm 增量依赖文件清单
+=====================================
+
+对比项目: portfilio vs portfilio1
+
+增量文件（portfilio 新增）:
+  无增量文件
+
+结论:
+  TemplateForm 在两个项目中的依赖关系完全相同，没有新增的依赖文件。
+
+TemplateForm 依赖文件（两个项目相同）:
+  1. src/api/strategy.js
+     - createTemplate
+     - updateTemplate
+     - validateTemplate
+
+  2. src/views/strategy/TemplateList.vue
+     - 使用 TemplateForm 作为对话框组件
+
+  3. src/router/index.js
+     - template/add 路由
+     - template/edit/:id 路由
+
+第三方库依赖（两个项目相同）:
+  - codemirror
+  - codemirror/lib/codemirror.css
+  - codemirror/theme/monokai.css
+  - codemirror/mode/python/python
+
+统计:
+  - portfilio1: 4个相关文件
+  - portfilio: 4个相关文件
+  - 增量: 0个文件

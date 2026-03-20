@@ -20,13 +20,6 @@
           发布策略
         </el-button>
         <el-button
-          type="primary"
-          @click="handleLivePublish"
-          :disabled="model.status === '已归档' || model.status === 'archived'"
-        >
-          {{ model.live_publish_enabled ? '发布到最新实盘' : '实盘发布' }}
-        </el-button>
-        <el-button
           type="warning"
           icon="el-icon-plus"
           @click="handleCreatePortfolio"
@@ -53,14 +46,6 @@
           :disabled="model.status === '已发布' || model.status === 'published' || !hasBacktestResult"
         >
           发布策略
-        </el-button>
-        <el-button
-          type="primary"
-          size="small"
-          @click="handleLivePublish"
-          :disabled="model.status === '已归档' || model.status === 'archived'"
-        >
-          {{ model.live_publish_enabled ? '发布到最新实盘' : '实盘发布' }}
         </el-button>
         <el-button
           type="warning"
@@ -662,50 +647,12 @@ export default {
         }
       }).catch(() => {});
     },
-    async handleLivePublish() {
-      const actionText = this.model.live_publish_enabled ? '更新到最新实盘版本' : '实盘发布';
-      this.$confirm(`确定要${actionText}吗？新版本将于次交易日生效。`, '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(async () => {
-        try {
-          await this.$store.dispatch('strategy/livePublishModel', {
-            modelId: this.modelId,
-            data: { source: 'strategy' }
-          });
-          this.$message.success(`${actionText}成功`);
-          await this.loadData();
-        } catch (error) {
-          this.$message.error(`${actionText}失败：` + (error.response?.data?.detail || error.message));
-        }
-      }).catch(() => {});
-    },
     handleEdit() {
       this.editDialogVisible = true;
     },
     handleEditSuccess() {
       this.editDialogVisible = false;
-      this.loadData().then(() => {
-        if (this.model.live_publish_enabled) {
-          this.$confirm('策略配置已修改，是否同步发布到最新实盘版本？', '提示', {
-            confirmButtonText: '同步发布',
-            cancelButtonText: '稍后处理',
-            type: 'warning'
-          }).then(async () => {
-            try {
-              await this.$store.dispatch('strategy/livePublishModel', {
-                modelId: this.modelId,
-                data: { source: 'strategy' }
-              });
-              this.$message.success('已同步发布到最新实盘版本');
-              await this.loadData();
-            } catch (error) {
-              this.$message.error('同步发布失败：' + (error.response?.data?.detail || error.message));
-            }
-          }).catch(() => {});
-        }
-      });
+      this.loadData();
     },
     handleCreatePortfolio() {
       // 重置表单

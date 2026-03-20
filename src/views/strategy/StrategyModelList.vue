@@ -63,13 +63,6 @@
             </el-tag>
           </template>
         </vxe-column>
-        <vxe-column field="live_publish_enabled" title="实盘状态" width="120">
-          <template #default="{ row }">
-            <el-tag :type="row.live_publish_enabled ? 'success' : 'info'" size="small">
-              {{ row.live_publish_enabled ? '已实盘发布' : '未实盘发布' }}
-            </el-tag>
-          </template>
-        </vxe-column>
         <vxe-column field="asset_codes" title="关联资产" width="200">
           <template #default="{ row }">
             <el-popover
@@ -78,14 +71,12 @@
               :title="'资产列表'"
               :width="300"
             >
-              <template v-slot:reference>
-                <el-tag size="small" type="info" style="margin-right: 5px;">
-                  {{ row.asset_codes.length }}个资产
-                </el-tag>
-              </template>
               <div v-for="assetCode in row.asset_codes" :key="assetCode" style="padding: 5px 0;">
                 {{ assetCode }} - {{ row.asset_names && row.asset_names[assetCode] || '未知资产' }}
               </div>
+              <el-tag slot="reference" size="small" type="info" style="margin-right: 5px;">
+                {{ row.asset_codes.length }}个资产
+              </el-tag>
             </el-popover>
           </template>
         </vxe-column>
@@ -113,14 +104,6 @@
             >
               发布
             </el-button>
-            <el-button
-              type="text"
-              size="small"
-              @click="handleLivePublish(row)"
-              :disabled="row.status === '已归档' || row.status === 'archived'"
-            >
-              {{ row.live_publish_enabled ? '更新实盘' : '实盘发布' }}
-            </el-button>
             <el-button type="text" size="small" @click="handleEdit(row)">编辑</el-button>
             <el-button type="text" size="small" @click="handleDelete(row)" style="color: #f56c6c;">
               删除
@@ -139,7 +122,6 @@
         layout="total, sizes, prev, pager, next, jumper"
         :total="pagination.total"
         style="margin-top: 20px; text-align: right;"
-      >
       </el-pagination>
     </div>
 
@@ -231,12 +213,12 @@ export default {
     async fetchData() {
       this.loading = true;
       try {
-        const data = await this.$store.dispatch('strategy/fetchStrategyModelList', {
+        const res = await this.$store.dispatch('strategy/fetchStrategyModelList', {
           status: this.searchForm.status,
           template_code: this.searchForm.template_code
         });
-        this.tableData = data;
-        this.pagination.total = data.length;
+        this.tableData = res;
+        this.pagination.total = res.length;
       } catch (error) {
         this.$message.error('加载策略列表失败');
       } finally {
@@ -302,29 +284,6 @@ export default {
       }).catch(() => {
         // 用户取消操作
       });
-    },
-    async handleLivePublish(row) {
-      const actionText = row.live_publish_enabled ? '更新到最新实盘版本' : '实盘发布';
-      this.$confirm(`确定要${actionText}吗？操作后将于次交易日生效。`, '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(async () => {
-        try {
-          this.loading = true;
-          await this.$store.dispatch('strategy/livePublishModel', {
-            modelId: row.id,
-            data: { source: 'strategy' }
-          });
-          this.$message.success(`${actionText}成功`);
-          await this.fetchData();
-        } catch (error) {
-          const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.message || '未知错误';
-          this.$message.error(`${actionText}失败：` + errorMsg);
-        } finally {
-          this.loading = false;
-        }
-      }).catch(() => {});
     },
     handleDelete(row) {
       this.$confirm(`确定要删除策略 "${row.name}" 吗?`, '提示', {

@@ -41,7 +41,6 @@
             <el-menu-item index="/strategy/template">算法模板库</el-menu-item>
             <el-menu-item index="/strategy/model">我的策略</el-menu-item>
             <el-menu-item index="/strategy/backtest">回测执行</el-menu-item>
-            <el-menu-item index="/strategy/live-monitoring">实盘监控</el-menu-item>
             <el-menu-item index="/strategy/benchmark">业绩基准管理</el-menu-item>
           </el-submenu>
 
@@ -62,6 +61,7 @@
             </template>
             <el-menu-item index="/analysis">资产分析</el-menu-item>
             <el-menu-item index="/analysis/asset-index">大类资产指数</el-menu-item>
+            <el-menu-item index="/analysis/monitor">日常监控</el-menu-item>
             <el-menu-item index="/analysis/weight-import">权重与持仓估值导入</el-menu-item>
             <el-menu-item index="/analysis/fx-import">汇率数据导入</el-menu-item>
             <el-menu-item index="/analysis/multi-asset-import">多资产行情导入</el-menu-item>

@@ -117,12 +117,6 @@ const routes = [
             name: 'BacktestExecution',
             component: () => import('@/views/strategy/BacktestExecution.vue'),
             meta: { title: '回测执行' }
-          },
-          {
-            path: 'live-monitoring',
-            name: 'LiveMonitoring',
-            component: () => import('@/views/strategy/LiveMonitoring.vue'),
-            meta: { title: '实盘监控' }
           }
         ]
       },
@@ -213,6 +207,12 @@ const routes = [
         name: 'MultiAssetImport',
         component: () => import('@/views/analysis/MultiAssetImport.vue'),
         meta: { title: '多资产行情导入', icon: 'el-icon-upload2' }
+      },
+      {
+        path: 'analysis/monitor',
+        name: 'MonitorCenter',
+        component: () => import('@/views/monitor/MonitorCenter.vue'),
+        meta: { title: '日常监控', icon: 'el-icon-monitor' }
       },
       // 系统管理
       {

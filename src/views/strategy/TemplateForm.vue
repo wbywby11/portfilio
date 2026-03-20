@@ -251,6 +251,17 @@ export default {
       this.loadTemplate(code);
     }
   },
+  watch: {
+    code(newVal) {
+      if (this.isDialog && newVal) {
+        this.isEdit = true;
+        this.loadTemplate(newVal);
+      } else if (this.isDialog && !newVal) {
+        this.isEdit = false;
+        this.resetForm();
+      }
+    }
+  },
   methods: {
     resetForm() {
       this.form = {
@@ -538,15 +549,6 @@ export default {
     }
   },
   watch: {
-    code(newVal) {
-      if (this.isDialog && newVal) {
-        this.isEdit = true;
-        this.loadTemplate(newVal);
-      } else if (this.isDialog && !newVal) {
-        this.isEdit = false;
-        this.resetForm();
-      }
-    },
     // 如果 form.source_code 从外部变化，同步到编辑器
     'form.source_code'(newVal) {
       if (this.codeEditor && this.codeEditor.getValue() !== newVal) {
@@ -586,26 +588,27 @@ export default {
   overflow: hidden;
 }
 
-/* 覆盖 CodeMirror 默认样式（CodeMirror 在 mounted 时动态创建） */
-.codemirror-wrapper ::v-deep .CodeMirror {
+/* 覆盖 CodeMirror 默认样式 */
+.codemirror-wrapper >>> .CodeMirror {
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 13px;  /* 字体大小调小 */
+  line-height: 1.4; /* 行高调小 */
   height: 400px;
 }
 
-.codemirror-wrapper ::v-deep .CodeMirror-gutters {
+.codemirror-wrapper >>> .CodeMirror-gutters {
   background-color: #272822;
   border-right: 1px solid #3e3d32;
 }
 
-.codemirror-wrapper ::v-deep .CodeMirror-linenumber {
+.codemirror-wrapper >>> .CodeMirror-linenumber {
   color: #75715e;
-  font-size: 12px;
+  font-size: 12px;  /* 行号字体更小 */
   padding: 0 5px;
 }
 
-.codemirror-wrapper ::v-deep .CodeMirror-line {
-  padding: 0 4px;
+/* 代码行样式 */
+.codemirror-wrapper >>> .CodeMirror-line {
+  padding: 0 4px;  /* 减少行内边距 */
 }
 </style>

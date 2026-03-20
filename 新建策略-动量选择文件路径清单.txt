@@ -1,0 +1,87 @@
+新建策略中资产选择策略部分的动量选择以及参数配置所依赖的前后端文件路径清单
+================================================================================
+
+【前端文件】
+----------
+
+1. 核心表单组件
+   D:\portfilio\src\views\strategy\StrategyModelForm.vue
+   - 动量选择器UI和逻辑实现
+   - 行 120-207: 动量选择器参数配置UI
+   - 行 349-370: 表单数据定义
+   - 行 600-631: 提交逻辑（条件性包含参数）
+
+2. API接口
+   D:\portfilio\src\api\strategy.js
+   - createStrategyModel() - 创建策略（行 50-57）
+   - updateStrategyModel() - 更新策略（行 100-107）
+   - getStrategyModel() - 获取策略（行 77-83）
+
+3. Vuex状态管理
+   D:\portfilio\src\store\modules\strategy.js
+   - strategyModelList - 策略列表状态
+   - fetchStrategyModelList - 获取策略列表
+   - fetchStrategyModel - 获取单个策略
+
+【后端文件】
+----------
+
+1. 数据模型
+   D:\portfilio-end\app\models\strategy_model.py
+   - StrategyModel类（行 224-230）
+   - 定义动量选择器参数字段
+
+2. API Schema
+   D:\portfilio-end\app\schemas\strategy_model.py
+   - StrategyModelCreate（行 127-132）
+   - StrategyModelUpdate（行 164-169）
+   - StrategyModelOut（行 207-212）
+
+3. API端点
+   D:\portfilio-end\app\api\strategy_model.py
+   - POST /api/v1/strategy-models/（行 88-136）
+   - GET /api/v1/strategy-models/{model_id}（行 234-291）
+   - PUT /api/v1/strategy-models/{model_id}（行 294-350）
+
+4. 服务层
+   D:\portfilio-end\app\services\strategy_model_service.py
+   - create_model() - 创建策略
+   - update_model() - 更新策略
+   - get_model() - 获取策略
+
+5. 资产选择服务
+   D:\portfilio-end\app\selection\services\selection_service.py
+   - select_assets() - 执行资产选择
+
+6. 动量选择器实现
+   D:\portfilio-end\app\selection\selectors\momentum.py
+   - MomentumSelector类
+
+7. 动量因子计算
+   D:\portfilio-end\app\selection\formula\momentum_factors.py
+   - compute_sharp_momentum()
+   - rank_and_select_assets()
+
+8. 回测集成
+   D:\portfilio-end\app\backtesting\strategy_api.py
+   - StrategyAdapterWithSelection类（行 285-460）
+
+9. 回测API
+   D:\portfilio-end\app\api\backtests.py
+   - POST /api/v1/backtests/run-by-model/{model_id}（行 488-623）
+
+【关键参数】
+----------
+- enable_momentum_selection: 是否启用动量选择
+- selector_type: 选择器类型（momentum/reversal/hybrid）
+- asset_selection_count: 选择资产数量（1-100，默认8）
+- min_history_days: 最小历史数据要求（100-500，默认260）
+- momentum_windows: 动量窗口（如"22,65,260"）
+- tie_break_window: 并列决胜窗口（5-260，默认22）
+
+【数据流】
+--------
+前端表单 → API调用 → 后端验证 → 服务层 → MongoDB
+回测时：前端请求参数 > 数据库模型配置 > 默认值
+
+详细说明请参考：新建策略-动量选择依赖文件清单.md

@@ -10,7 +10,7 @@
           <span>回测配置</span>
         </div>
 
-        <el-form :model="form" :rules="rules" ref="form" label-width="170px" class="backtest-form" style="max-width: 900px;">
+        <el-form :model="form" :rules="rules" ref="form" label-width="120px" style="max-width: 900px;">
           <!-- 回测模式 -->
           <el-divider content-position="left">回测模式</el-divider>
           <el-form-item label="回测模式">
@@ -174,8 +174,8 @@
             </el-form-item>
           </template>
           
-          <!-- 显示策略参数信息（risk_budget_target_vol 策略参数不可前台调整，隐藏显示） -->
-          <el-form-item v-if="selectedStrategyInfo && selectedStrategyInfo.parameters && !isRiskBudgetTargetVolStrategy" label="策略参数">
+          <!-- 显示策略参数信息 -->
+          <el-form-item v-if="selectedStrategyInfo && selectedStrategyInfo.parameters" label="策略参数">
             <el-card shadow="never" style="background-color: #f5f7fa;">
               <div slot="header" style="font-size: 14px; font-weight: 500;">
                 <span>{{ selectedStrategyInfo.name || '策略参数' }}</span>
@@ -220,10 +220,10 @@
               <div slot="header" style="font-size: 14px; font-weight: 500; color: #409EFF;">
                 <i class="el-icon-s-data"></i> 动量资产选择器配置
               </div>
-              <el-form :model="form" label-width="170px" style="margin-bottom: 0;">
+              <el-form :model="form" label-width="140px" style="margin-bottom: 0;">
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="选择器类型" label-width="170px">
+                  <el-form-item label="选择器类型" label-width="140px">
                     <el-select v-model="form.selector_type" placeholder="请选择" style="width: 100%;">
                       <el-option label="动量选择器" value="momentum"></el-option>
                       <el-option label="混合动量选择器" value="hybrid"></el-option>
@@ -233,53 +233,67 @@
               </el-row>
               <el-row :gutter="20">
                 <el-col :span="12">
-                  <el-form-item label="MOM窗口" label-width="170px">
-                    <el-input
-                      v-model="form.momentum_windows"
-                      placeholder="例如：20,60,120,250"
+                  <el-form-item label="最小历史数据要求" label-width="140px">
+                    <el-input-number
+                      v-model="form.min_history_days"
+                      :min="100"
+                      :max="500"
+                      :step="10"
                       style="width: 100%;"
-                    ></el-input>
-                    <el-tooltip content="MOM 因子计算窗口（交易日），逗号分隔" placement="top">
+                    ></el-input-number>
+                    <span style="margin-left: 8px; color: #909399; font-size: 12px;">天</span>
+                    <el-tooltip content="资产进入选择的最小交易日数要求" placement="top">
                       <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
                     </el-tooltip>
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
-                  <el-form-item label="SMOM窗口" label-width="170px">
-                    <el-input
-                      v-model="form.smom_windows"
-                      placeholder="例如：20,60,120,250"
+                  <el-form-item label="并列决胜窗口" label-width="140px">
+                    <el-input-number
+                      v-model="form.tie_break_window"
+                      :min="5"
+                      :max="260"
+                      :step="1"
                       style="width: 100%;"
-                    ></el-input>
-                    <el-tooltip content="SMOM 因子计算窗口（交易日），逗号分隔" placement="top">
+                    ></el-input-number>
+                    <span style="margin-left: 8px; color: #909399; font-size: 12px;">天</span>
+                    <el-tooltip content="当多个资产得分相同时，使用此窗口期的动量进行排序" placement="top">
                       <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
                     </el-tooltip>
                   </el-form-item>
                 </el-col>
               </el-row>
-              <el-row :gutter="20" v-if="form.selector_type === 'hybrid'">
+              <el-row :gutter="20">
                 <el-col :span="24">
-                  <el-form-item label="MACD短期窗口" label-width="170px">
+                  <el-form-item label="动量窗口" label-width="140px">
                     <el-input
-                      v-model="form.macd_windows"
-                      placeholder="例如：40,80,120,160"
+                      v-model="form.momentum_windows"
+                      placeholder="例如：22,65,260"
                       style="width: 100%;"
                     ></el-input>
-                    <el-tooltip content="双均线动量 MACD 因子计算窗口（交易日），逗号分隔，默认 40/80/120/160" placement="top">
+                    <el-tooltip content="动量计算的窗口期，多个窗口用逗号分隔，例如：22,65,260 表示短期、中期、长期动量" placement="top">
                       <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
                     </el-tooltip>
+                    <div style="margin-top: 4px; font-size: 12px; color: #909399;">
+                      格式：天数用逗号分隔，例如 22,65,260
+                    </div>
                   </el-form-item>
                 </el-col>
               </el-row>
-              <el-row :gutter="20" v-if="form.selector_type === 'hybrid'">
-                <el-col :span="24">
-                  <el-form-item label="反转因子偏度窗口" label-width="170px">
-                    <el-input
-                      v-model="form.reversal_windows"
-                      placeholder="例如：10,22"
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="杠杆倍数" label-width="140px">
+                    <el-input-number
+                      v-model="form.run_max_leverage"
+                      :min="1"
+                      :max="10"
+                      :step="0.5"
+                      :precision="1"
+                      placeholder="不填则 1（100%）"
+                      controls-position="right"
                       style="width: 100%;"
-                    ></el-input>
-                    <el-tooltip content="反转因子 SKEW 计算窗口（交易日），逗号分隔，默认 10/22" placement="top">
+                    ></el-input-number>
+                    <el-tooltip content="资产权重按此倍数缩放，不归一化。如 4 表示 400%，选中的资产权重和可为 4" placement="top">
                       <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
                     </el-tooltip>
                   </el-form-item>
@@ -304,10 +318,10 @@
                 :title="`${strategy.name} - 动量选择器参数`"
                 :name="strategy.id"
               >
-                <el-form :model="form" label-width="170px" style="margin-bottom: 0;">
+                <el-form :model="form" label-width="140px" style="margin-bottom: 0;">
                 <el-row :gutter="20">
                   <el-col :span="12">
-                    <el-form-item :label="`${strategy.name} - 选择器类型`" label-width="170px">
+                    <el-form-item :label="`${strategy.name} - 选择器类型`" label-width="140px">
                       <el-select 
                         v-model="form.multiStrategySelectionParams[strategy.id].selector_type" 
                         placeholder="请选择" 
@@ -321,41 +335,36 @@
                 </el-row>
                 <el-row :gutter="20">
                   <el-col :span="12">
-                    <el-form-item :label="`${strategy.name} - MOM窗口`" label-width="170px">
-                      <el-input
-                        v-model="form.multiStrategySelectionParams[strategy.id].momentum_windows"
-                        placeholder="例如：20,60,120,250"
+                    <el-form-item :label="`${strategy.name} - 最小历史数据要求`" label-width="140px">
+                      <el-input-number
+                        v-model="form.multiStrategySelectionParams[strategy.id].min_history_days"
+                        :min="100"
+                        :max="500"
+                        :step="10"
                         style="width: 100%;"
-                      ></el-input>
+                      ></el-input-number>
+                      <span style="margin-left: 8px; color: #909399; font-size: 12px;">天</span>
                     </el-form-item>
                   </el-col>
                   <el-col :span="12">
-                    <el-form-item :label="`${strategy.name} - SMOM窗口`" label-width="170px">
-                      <el-input
-                        v-model="form.multiStrategySelectionParams[strategy.id].smom_windows"
-                        placeholder="例如：20,60,120,250"
+                    <el-form-item :label="`${strategy.name} - 并列决胜窗口`" label-width="140px">
+                      <el-input-number
+                        v-model="form.multiStrategySelectionParams[strategy.id].tie_break_window"
+                        :min="5"
+                        :max="260"
+                        :step="1"
                         style="width: 100%;"
-                      ></el-input>
+                      ></el-input-number>
+                      <span style="margin-left: 8px; color: #909399; font-size: 12px;">天</span>
                     </el-form-item>
                   </el-col>
                 </el-row>
-                <el-row :gutter="20" v-if="form.multiStrategySelectionParams[strategy.id].selector_type === 'hybrid'">
+                <el-row :gutter="20">
                   <el-col :span="24">
-                    <el-form-item :label="`${strategy.name} - MACD短期窗口`" label-width="170px">
+                    <el-form-item :label="`${strategy.name} - 动量窗口`" label-width="140px">
                       <el-input
-                        v-model="form.multiStrategySelectionParams[strategy.id].macd_windows"
-                        placeholder="例如：40,80,120,160"
-                        style="width: 100%;"
-                      ></el-input>
-                    </el-form-item>
-                  </el-col>
-                </el-row>
-                <el-row :gutter="20" v-if="form.multiStrategySelectionParams[strategy.id].selector_type === 'hybrid'">
-                  <el-col :span="24">
-                    <el-form-item :label="`${strategy.name} - 反转因子偏度窗口`" label-width="170px">
-                      <el-input
-                        v-model="form.multiStrategySelectionParams[strategy.id].reversal_windows"
-                        placeholder="例如：10,22"
+                        v-model="form.multiStrategySelectionParams[strategy.id].momentum_windows"
+                        placeholder="例如：22,65,260"
                         style="width: 100%;"
                       ></el-input>
                     </el-form-item>
@@ -1041,10 +1050,9 @@ export default {
         // 动量选择器参数（单策略模式使用）
         selector_type: 'momentum',
         asset_selection_count: 2,
-        momentum_windows: '20,60,120,250',
-        smom_windows: '20,60,120,250',
-        macd_windows: '40,80,120,160',
-        reversal_windows: '10,22',
+        min_history_days: 260,
+        momentum_windows: '22,65,260',
+        tie_break_window: 22,
         // 手动选择的资产代码列表
         selected_asset_codes: [],
         // 多策略模式的选择器参数（每个策略单独配置）
@@ -1258,12 +1266,6 @@ export default {
       const code = (this.selectedStrategyInfo.template_code || '').toString();
       return code === 'manual_allocation' || code === 'manual_allocation_strategy'
         || (code.toLowerCase && code.toLowerCase().includes('manual') && code.toLowerCase().includes('allocation'));
-    },
-    // 是否为 risk_budget_target_vol 策略（回测时策略参数不可前台调整，隐藏策略参数展示）
-    isRiskBudgetTargetVolStrategy() {
-      if (!this.selectedStrategyInfo) return false;
-      const code = (this.selectedStrategyInfo.template_code || '').toString();
-      return code === 'risk_budget_target_vol';
     },
     // 策略模型中的权重初始化（用于回测页展示/覆盖）
     modelManualWeights() {
@@ -1711,7 +1713,6 @@ export default {
           asset_selection_count: model.asset_selection_count ?? 1,
           min_history_days: model.min_history_days ?? 260,
           momentum_windows: model.momentum_windows || '20,60,120,250',
-          smom_windows: model.smom_windows || model.momentum_windows || '20,60,120,250',
           tie_break_window: model.tie_break_window ?? 22
         };
         if (model.enable_momentum_selection && model.selector_type === 'hybrid') {
@@ -2254,20 +2255,14 @@ export default {
                 const sp = this.form.multiStrategySelectionParams && this.form.multiStrategySelectionParams[oid];
                 if (sp) {
                   runPayload.selector_type = sp.selector_type;
+                  runPayload.min_history_days = sp.min_history_days;
                   runPayload.momentum_windows = sp.momentum_windows;
-                  runPayload.smom_windows = sp.smom_windows || sp.momentum_windows || '20,60,120,250';
-                  if (sp.selector_type === 'hybrid') {
-                    runPayload.macd_windows = sp.macd_windows || '40,80,120,160';
-                    runPayload.reversal_windows = sp.reversal_windows || '10,22';
-                  }
+                  runPayload.tie_break_window = sp.tie_break_window;
                 } else {
                   runPayload.selector_type = strategy.selector_type || 'momentum';
-                  runPayload.momentum_windows = strategy.momentum_windows || '20,60,120,250';
-                  runPayload.smom_windows = strategy.smom_windows || strategy.momentum_windows || '20,60,120,250';
-                  if ((strategy.selector_type || '') === 'hybrid') {
-                    runPayload.macd_windows = strategy.macd_windows || '40,80,120,160';
-                    runPayload.reversal_windows = strategy.reversal_windows || '10,22';
-                  }
+                  runPayload.min_history_days = strategy.min_history_days || 260;
+                  runPayload.momentum_windows = strategy.momentum_windows || '22,65,260';
+                  runPayload.tie_break_window = strategy.tie_break_window || 22;
                 }
               }
               const runResult = await this.$store.dispatch('strategy/runBacktest', { modelId: oidKey, data: runPayload });
@@ -2347,20 +2342,14 @@ export default {
           const sp = this.form.multiStrategySelectionParams && this.form.multiStrategySelectionParams[oid];
           if (sp) {
             backtestData.selector_type = sp.selector_type;
+            backtestData.min_history_days = sp.min_history_days;
             backtestData.momentum_windows = sp.momentum_windows;
-            backtestData.smom_windows = sp.smom_windows || sp.momentum_windows || '20,60,120,250';
-            if (sp.selector_type === 'hybrid') {
-              backtestData.macd_windows = sp.macd_windows || '40,80,120,160';
-              backtestData.reversal_windows = sp.reversal_windows || '10,22';
-            }
+            backtestData.tie_break_window = sp.tie_break_window;
           } else {
             backtestData.selector_type = strategy.selector_type || 'momentum';
-            backtestData.momentum_windows = strategy.momentum_windows || '20,60,120,250';
-            backtestData.smom_windows = strategy.smom_windows || strategy.momentum_windows || '20,60,120,250';
-            if ((strategy.selector_type || '') === 'hybrid') {
-              backtestData.macd_windows = strategy.macd_windows || '40,80,120,160';
-              backtestData.reversal_windows = strategy.reversal_windows || '10,22';
-            }
+            backtestData.min_history_days = strategy.min_history_days || 260;
+            backtestData.momentum_windows = strategy.momentum_windows || '22,65,260';
+            backtestData.tie_break_window = strategy.tie_break_window || 22;
           }
         }
         try {
@@ -2669,16 +2658,15 @@ export default {
     // 初始化单策略的选择器参数
     initSelectionParams(strategy) {
       if (!strategy) return;
-      // 兼容处理：reversal/momentum_reversal 映射为 hybrid 以显示混合选择器参数
+      // 兼容处理：将旧的选择器类型映射为 momentum（后端只支持 momentum）
       const selectorType = strategy.selector_type || 'momentum';
-      this.form.selector_type = (selectorType === 'reversal' || selectorType === 'momentum_reversal') ? 'hybrid' : selectorType;
+      this.form.selector_type = (selectorType === 'reversal' || selectorType === 'momentum_reversal') ? 'momentum' : selectorType;
       // 默认选择资产数量为资产池大小（或策略配置值）
       const poolSize = strategy.asset_codes?.length || 8;
       this.form.asset_selection_count = Math.min(strategy.asset_selection_count || poolSize, poolSize);
-      this.form.momentum_windows = strategy.momentum_windows || '20,60,120,250';
-      this.form.smom_windows = strategy.smom_windows || strategy.momentum_windows || '20,60,120,250';
-      this.form.macd_windows = strategy.macd_windows || '40,80,120,160';
-      this.form.reversal_windows = strategy.reversal_windows || '10,22';
+      this.form.min_history_days = strategy.min_history_days || 260;
+      this.form.momentum_windows = strategy.momentum_windows || '22,65,260';
+      this.form.tie_break_window = strategy.tie_break_window || 22;
       // 清空手动选择的资产
       this.form.selected_asset_codes = [];
       // 仅动量/量化策略拉取指数编制规则权重上限；主观策略不限制
@@ -2825,33 +2813,31 @@ export default {
           
           // 初始化或更新该策略的选择器参数
           if (!this.form.multiStrategySelectionParams[strategy.id]) {
-            // 兼容处理：reversal/momentum_reversal 映射为 hybrid 以显示混合选择器参数
+            // 兼容处理：将旧的选择器类型映射为 momentum（后端只支持 momentum）
             const selectorType = fullStrategy.selector_type || 'momentum';
-            const normalizedSelectorType = (selectorType === 'reversal' || selectorType === 'momentum_reversal') ? 'hybrid' : selectorType;
+            const normalizedSelectorType = (selectorType === 'reversal' || selectorType === 'momentum_reversal') ? 'momentum' : selectorType;
             this.$set(this.form.multiStrategySelectionParams, strategy.id, {
               selector_type: normalizedSelectorType,
               asset_selection_count: Math.min(fullStrategy.asset_selection_count || 8, fullStrategy.asset_codes?.length || 8),
-              momentum_windows: fullStrategy.momentum_windows || '20,60,120,250',
-              smom_windows: fullStrategy.smom_windows || fullStrategy.momentum_windows || '20,60,120,250',
-              macd_windows: fullStrategy.macd_windows || '40,80,120,160',
-              reversal_windows: fullStrategy.reversal_windows || '10,22',
+              min_history_days: fullStrategy.min_history_days || 260,
+              momentum_windows: fullStrategy.momentum_windows || '22,65,260',
+              tie_break_window: fullStrategy.tie_break_window || 22,
               selected_asset_codes: [] // 手动选择的资产代码列表
             });
           } else {
             // 如果参数已存在但可能不完整，更新缺失的字段
             const params = this.form.multiStrategySelectionParams[strategy.id];
             if (!params.selector_type) {
-              // 兼容处理：reversal/momentum_reversal 映射为 hybrid
+              // 兼容处理：将旧的选择器类型映射为 momentum（后端只支持 momentum）
               const selectorType = fullStrategy.selector_type || 'momentum';
-              params.selector_type = (selectorType === 'reversal' || selectorType === 'momentum_reversal') ? 'hybrid' : selectorType;
+              params.selector_type = (selectorType === 'reversal' || selectorType === 'momentum_reversal') ? 'momentum' : selectorType;
             }
             if (!params.asset_selection_count) {
               params.asset_selection_count = Math.min(fullStrategy.asset_selection_count || 8, fullStrategy.asset_codes?.length || 8);
             }
-            if (!params.momentum_windows) params.momentum_windows = fullStrategy.momentum_windows || '20,60,120,250';
-            if (!params.smom_windows) params.smom_windows = fullStrategy.smom_windows || fullStrategy.momentum_windows || '20,60,120,250';
-            if (!params.macd_windows) params.macd_windows = fullStrategy.macd_windows || '40,80,120,160';
-            if (!params.reversal_windows) params.reversal_windows = fullStrategy.reversal_windows || '10,22';
+            if (!params.min_history_days) params.min_history_days = fullStrategy.min_history_days || 260;
+            if (!params.momentum_windows) params.momentum_windows = fullStrategy.momentum_windows || '22,65,260';
+            if (!params.tie_break_window) params.tie_break_window = fullStrategy.tie_break_window || 22;
             // 确保 selected_asset_codes 存在
             if (!params.selected_asset_codes) {
               this.$set(params, 'selected_asset_codes', []);
@@ -3224,29 +3210,20 @@ export default {
                   const selectionParams = this.form.multiStrategySelectionParams[strategyId];
                   if (selectionParams) {
                     backtestData.selector_type = selectionParams.selector_type;
+                    backtestData.min_history_days = selectionParams.min_history_days;
                     backtestData.momentum_windows = selectionParams.momentum_windows;
-                    backtestData.smom_windows = selectionParams.smom_windows || selectionParams.momentum_windows || '20,60,120,250';
-                    if (selectionParams.selector_type === 'hybrid') {
-                      backtestData.macd_windows = selectionParams.macd_windows || '40,80,120,160';
-                      backtestData.reversal_windows = selectionParams.reversal_windows || '10,22';
-                    }
+                    backtestData.tie_break_window = selectionParams.tie_break_window;
                   } else {
                     backtestData.selector_type = strategy.selector_type || 'momentum';
-                    backtestData.momentum_windows = strategy.momentum_windows || '20,60,120,250';
-                    backtestData.smom_windows = strategy.smom_windows || strategy.momentum_windows || '20,60,120,250';
-                    if ((strategy.selector_type || '') === 'hybrid') {
-                      backtestData.macd_windows = strategy.macd_windows || '40,80,120,160';
-                      backtestData.reversal_windows = strategy.reversal_windows || '10,22';
-                    }
+                    backtestData.min_history_days = strategy.min_history_days || 260;
+                    backtestData.momentum_windows = strategy.momentum_windows || '22,65,260';
+                    backtestData.tie_break_window = strategy.tie_break_window || 22;
                   }
                 } else {
                   backtestData.selector_type = this.form.selector_type;
+                  backtestData.min_history_days = this.form.min_history_days;
                   backtestData.momentum_windows = this.form.momentum_windows;
-                  backtestData.smom_windows = this.form.smom_windows || this.form.momentum_windows || '20,60,120,250';
-                  if (this.form.selector_type === 'hybrid') {
-                    backtestData.macd_windows = this.form.macd_windows || '40,80,120,160';
-                    backtestData.reversal_windows = this.form.reversal_windows || '10,22';
-                  }
+                  backtestData.tie_break_window = this.form.tie_break_window;
                 }
               }
               
@@ -3591,11 +3568,6 @@ export default {
 
 .el-form {
   max-width: 800px;
-}
-
-/* 表单标签不换行，避免中文标签断行不美观 */
-.backtest-form ::v-deep .el-form-item__label {
-  white-space: nowrap;
 }
 
 /* 资产选择标签样式 */

@@ -5,6 +5,7 @@ import asset from './modules/asset';
 import strategy from './modules/strategy';
 import portfolio from './modules/portfolio';
 import benchmark from './modules/benchmark';
+import monitor from './modules/monitor';
 
 Vue.use(Vuex);
 
@@ -14,7 +15,8 @@ export default new Vuex.Store({
     asset,
     strategy,
     portfolio,
-    benchmark
+    benchmark,
+    monitor
   },
   state: {
     loading: false,
