@@ -1,11 +1,11 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
+  <div :class="{'page-container': !isDialog}">
+    <div v-if="!isDialog" class="page-header">
       <h2 class="page-title">策略详情</h2>
       <el-button @click="$router.back()">返回</el-button>
     </div>
 
-    <div class="page-content">
+    <div :class="{'page-content': !isDialog}">
       <el-descriptions title="基本信息" :column="2" border>
         <el-descriptions-item label="策略名称">{{ strategy.name }}</el-descriptions-item>
         <el-descriptions-item label="算法模型">{{ getTemplateName(strategy.templateId) }}</el-descriptions-item>
@@ -43,6 +43,16 @@ import dayjs from 'dayjs';
 
 export default {
   name: 'StrategyDetail',
+  props: {
+    isDialog: {
+      type: Boolean,
+      default: false
+    },
+    id: {
+      type: String,
+      default: ''
+    }
+  },
   data() {
     return {
       strategy: {}
@@ -61,9 +71,16 @@ export default {
   created() {
     this.loadData();
   },
+  watch: {
+    id(newVal) {
+      if (this.isDialog && newVal) {
+        this.loadData();
+      }
+    }
+  },
   methods: {
     loadData() {
-      const id = this.$route.params.id;
+      const id = this.isDialog ? this.id : this.$route.params.id;
       this.strategy = this.$store.getters['strategy/getStrategyById'](id) || {};
     },
     getTemplateName(id) {

@@ -86,10 +86,10 @@
             {{ scope.row.calmar_ratio ? scope.row.calmar_ratio.toFixed(3) : '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="cumulative_return" label="累计收益率" width="120">
+        <el-table-column prop="total_return" label="累计收益率" width="120">
           <template slot-scope="scope">
-            <span :style="{color: scope.row.cumulative_return >= 0 ? '#67c23a' : '#f56c6c'}">
-              {{ (scope.row.cumulative_return * 100).toFixed(2) }}%
+            <span :style="{color: scope.row.total_return >= 0 ? '#67c23a' : '#f56c6c'}">
+              {{ (scope.row.total_return * 100).toFixed(2) }}%
             </span>
           </template>
         </el-table-column>

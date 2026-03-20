@@ -1,10 +1,10 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
+  <div :class="{'page-container': !isDialog}">
+    <div v-if="!isDialog" class="page-header">
       <h2 class="page-title">创建组合</h2>
     </div>
 
-    <div class="page-content">
+    <div :class="{'page-content': !isDialog}">
       <el-steps :active="currentStep" finish-status="success" align-center style="margin-bottom: 30px;">
         <el-step title="基本信息"></el-step>
         <el-step title="建仓方式"></el-step>
@@ -22,10 +22,14 @@
             <el-input-number
               v-model="portfolioForm.initialCapital"
               :min="10000"
+              :max="100000000"
               :step="10000"
               :precision="2"
             ></el-input-number>
-            <span style="margin-left: 10px; color: #909399;">元（最小1万元）</span>
+            <el-tooltip content="组合的初始投资金额，最小1万元，用于计算组合净值和收益" placement="top">
+              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+            </el-tooltip>
+            <span style="margin-left: 10px; color: #909399;">元（默认：1000000，范围：10000-100000000，步长：10000）</span>
           </el-form-item>
 
           <el-form-item label="业绩基准">
@@ -37,6 +41,9 @@
                 :value="item.code"
               ></el-option>
             </el-select>
+            <el-tooltip content="用于对比组合业绩表现的基准指数，可选择多个基准，选择后会在业绩分析中显示相对基准的超额收益" placement="top">
+              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+            </el-tooltip>
           </el-form-item>
 
           <el-form-item label="组合描述">
@@ -50,7 +57,7 @@
 
           <el-form-item>
             <el-button type="primary" @click="nextStep">下一步</el-button>
-            <el-button @click="$router.back()">取消</el-button>
+            <el-button @click="isDialog ? $emit('close') : $router.back()">取消</el-button>
           </el-form-item>
         </el-form>
       </div>
@@ -81,16 +88,24 @@
                 </el-select>
               </template>
             </el-table-column>
-            <el-table-column label="持仓数量" width="150">
+            <el-table-column label="持仓数量" width="180">
               <template slot-scope="scope">
-                <el-input-number v-model="scope.row.quantity" :min="0" :precision="2" controls-position="right">
+                <el-input-number v-model="scope.row.quantity" :min="0" :step="1" :precision="2" controls-position="right">
                 </el-input-number>
+                <el-tooltip content="资产的持仓数量，用于计算持仓市值和权重" placement="top">
+                  <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+                </el-tooltip>
+                <span style="margin-left: 4px; color: #909399; font-size: 12px;">（范围：≥0，步长：1）</span>
               </template>
             </el-table-column>
-            <el-table-column label="成本价格" width="150">
+            <el-table-column label="成本价格" width="180">
               <template slot-scope="scope">
-                <el-input-number v-model="scope.row.price" :min="0" :precision="4" controls-position="right">
+                <el-input-number v-model="scope.row.price" :min="0" :step="0.01" :precision="4" controls-position="right">
                 </el-input-number>
+                <el-tooltip content="资产的建仓成本价格，用于计算持仓成本和盈亏" placement="top">
+                  <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+                </el-tooltip>
+                <span style="margin-left: 4px; color: #909399; font-size: 12px;">元（范围：≥0，步长：0.01）</span>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="100">
@@ -105,7 +120,7 @@
         <div v-if="buildType === 'strategy'">
           <el-form label-width="120px">
             <el-form-item label="选择策略">
-              <el-select v-model="selectedStrategy" placeholder="请选择资产配置策略" @change="handleStrategyChange">
+              <el-select v-model="selectedStrategy" placeholder="请选择资产配置策略" @change="handleStrategyChange" style="width: 100%;">
                 <el-option
                   v-for="strategy in strategyList"
                   :key="strategy.id"
@@ -113,12 +128,18 @@
                   :value="strategy.id"
                 ></el-option>
               </el-select>
+              <el-tooltip content="选择已保存的策略模型，系统将根据策略计算的目标权重自动分配资金" placement="top">
+                <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+              </el-tooltip>
             </el-form-item>
 
             <el-form-item label="交易成本率">
-              <el-input-number v-model="transactionCost" :min="0" :max="0.1" :step="0.0001" :precision="4">
+              <el-input-number v-model="transactionCost" :min="0" :max="0.1" :step="0.0001" :precision="4" style="width: 200px;">
               </el-input-number>
-              <span style="margin-left: 10px; color: #909399;">%</span>
+              <el-tooltip content="交易手续费率，默认0.1%（万分之一），包含买卖双向成本，用于计算交易费用" placement="top">
+                <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+              </el-tooltip>
+              <span style="margin-left: 10px; color: #909399;">%（默认：0.001，范围：0-0.1，步长：0.0001）</span>
             </el-form-item>
 
             <div v-if="selectedStrategyData">
@@ -176,6 +197,16 @@ import { mapState } from 'vuex';
 
 export default {
   name: 'PortfolioCreate',
+  props: {
+    isDialog: {
+      type: Boolean,
+      default: false
+    },
+    strategyId: {
+      type: String,
+      default: ''
+    }
+  },
   data() {
     return {
       currentStep: 0,
@@ -218,13 +249,38 @@ export default {
     }
   },
   created() {
-    if (this.$route.query.strategyId) {
+    const strategyId = this.isDialog ? this.strategyId : this.$route.query.strategyId;
+    if (strategyId) {
       this.buildType = 'strategy';
-      this.selectedStrategy = this.$route.query.strategyId;
+      this.selectedStrategy = strategyId;
       this.handleStrategyChange(this.selectedStrategy);
     }
   },
+  watch: {
+    strategyId(newVal) {
+      if (this.isDialog && newVal) {
+        this.buildType = 'strategy';
+        this.selectedStrategy = newVal;
+        this.handleStrategyChange(newVal);
+      }
+    }
+  },
   methods: {
+    resetForm() {
+      this.currentStep = 0;
+      this.portfolioForm = {
+        name: '',
+        initialCapital: 100000,
+        benchmarks: [],
+        description: '',
+        holdings: []
+      };
+      this.buildType = 'manual';
+      this.selectedStrategy = '';
+      if (this.$refs.portfolioForm) {
+        this.$refs.portfolioForm.resetFields();
+      }
+    },
     nextStep() {
       if (this.currentStep === 0) {
         this.$refs.portfolioForm.validate((valid) => {
@@ -271,18 +327,78 @@ export default {
     async createPortfolio() {
       this.submitting = true;
       try {
-        await this.$store.dispatch('portfolio/createPortfolio', {
-          ...this.portfolioForm,
-          buildType: this.buildType,
-          strategyId: this.buildType === 'strategy' ? this.selectedStrategy : null
-        });
+        // 构建后端 PortfolioCreate 期望的请求体，避免 422 校验失败
+        const payload = this.buildPortfolioCreatePayload();
+        await this.$store.dispatch('portfolio/createPortfolio', payload);
         this.$message.success('组合创建成功');
-        this.$router.push('/portfolio/list');
+        if (this.isDialog) {
+          this.$emit('success');
+        } else {
+          this.$router.push('/portfolio/list');
+        }
       } catch (error) {
-        this.$message.error('创建失败：' + error.message);
+        const d = error.response?.data?.detail;
+        let msg = error.response?.data?.message || error.message;
+        if (d != null) {
+          msg = Array.isArray(d)
+            ? d.map(e => (e.loc && e.loc.length ? e.loc.join('.') + ': ' : '') + (e.msg || '校验失败')).join('； ') || String(d)
+            : (typeof d === 'string' ? d : JSON.stringify(d));
+        }
+        this.$message.error('创建失败：' + msg);
       } finally {
         this.submitting = false;
       }
+    },
+    buildPortfolioCreatePayload() {
+      const capital = Number(this.portfolioForm.initialCapital) || 1000000;
+      const isStrategy = this.buildType === 'strategy';
+
+      let positions = [];
+      if (isStrategy && this.selectedStrategyData) {
+        const s = this.selectedStrategyData;
+        const assets = s.assets?.length
+          ? s.assets
+          : (s.asset_codes || []).map(code => ({ code, name: s.asset_names?.[code] || code }));
+        const weights = s.result?.weights || {};
+        if (Object.keys(weights).length) {
+          positions = assets
+            .filter(a => weights[a.code] != null && Number(weights[a.code]) > 0)
+            .map(a => ({
+              asset_code: a.code,
+              asset_name: a.name || a.code,
+              weight: Number(weights[a.code])
+            }));
+        } else if (assets.length) {
+          const w = 1 / assets.length;
+          positions = assets.map(a => ({
+            asset_code: a.code,
+            asset_name: a.name || a.code,
+            weight: w
+          }));
+        }
+      } else if (this.buildType === 'manual' && this.portfolioForm.holdings?.length) {
+        positions = this.portfolioForm.holdings
+          .filter(h => h.assetCode && (Number(h.quantity) > 0 || Number(h.shares) > 0))
+          .map(h => {
+            const asset = this.assetList?.find(a => a.code === h.assetCode);
+            const shares = Number(h.quantity ?? h.shares ?? 0);
+            return {
+              asset_code: h.assetCode,
+              asset_name: (asset && asset.name) || h.assetCode,
+              shares
+            };
+          });
+      }
+
+      return {
+        name: this.portfolioForm.name || '未命名组合',
+        portfolio_type: isStrategy ? '模型驱动' : '手工创建',
+        description: this.portfolioForm.description || null,
+        model_id: isStrategy ? this.selectedStrategy : null,
+        initial_capital: capital,
+        created_by: '用户',
+        positions
+      };
     },
     getHoldingsCount() {
       if (this.buildType === 'strategy' && this.expectedHoldings.length > 0) {

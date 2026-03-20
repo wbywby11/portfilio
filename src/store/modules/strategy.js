@@ -165,12 +165,11 @@ const actions = {
     }
   },
 
-  // 运行回测
+  // 运行回测（返回完整响应 { code, data, message }，便于组件统一从 result.data 取 payload 含 record_id）
   async runBacktest({ commit }, { modelId, data }) {
     try {
       const res = await runBacktest(modelId, data);
-      const result = res.data || res;
-      return result;
+      return res;
     } catch (error) {
       console.error('运行回测失败:', error);
       throw error;
@@ -198,10 +197,21 @@ const actions = {
   },
 
   // 发布模型
-  async publishModel({ commit }, modelId) {
+  async publishModel({ commit, state }, modelId) {
     try {
       const res = await publishModel(modelId);
       const result = res.data || res;
+      
+      // 更新 store 中对应策略的状态
+      const model = state.strategyModelList.find(m => m.id === modelId);
+      if (model) {
+        commit('UPDATE_STRATEGY_MODEL', {
+          ...model,
+          status: '已发布',
+          published_at: new Date().toISOString()
+        });
+      }
+      
       return result;
     } catch (error) {
       console.error('发布模型失败:', error);
@@ -312,7 +322,9 @@ const getters = {
   },
   getStrategyModelById: state => id => {
     return state.strategyModelList.find(m => m.id === id);
-  }
+  },
+  // 为了兼容性，提供 strategyList 作为 strategyModelList 的别名
+  strategyList: state => state.strategyModelList
 };
 
 export default {

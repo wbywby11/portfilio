@@ -1,0 +1,63 @@
+资产选择策略部分的动量策略选择相关的后端代码差异和增量（简洁版）
+================================================================================
+
+【新增文件】（9个文件，完全新增的模块）
+----------------------------------------
+
+1. app/selection/__init__.py
+2. app/selection/types.py - SelectionResult数据类
+3. app/selection/selectors/__init__.py
+4. app/selection/selectors/base.py - BaseAssetSelector抽象基类
+5. app/selection/selectors/momentum.py - MomentumSelector动量选择器实现
+6. app/selection/services/__init__.py
+7. app/selection/services/selection_service.py - SelectionService选择服务
+8. app/selection/formula/__init__.py
+9. app/selection/formula/momentum_factors.py - 动量因子计算公式
+
+【增量修改文件】（5个文件，在现有文件中添加代码）
+-----------------------------------------------
+
+1. app/models/strategy_model.py
+   - 行 224-230: 添加6个动量选择器参数字段
+   - enable_momentum_selection, selector_type, asset_selection_count
+   - min_history_days, momentum_windows, tie_break_window
+
+2. app/schemas/strategy_model.py
+   - StrategyModelCreate (行 127-132): 添加6个字段
+   - StrategyModelUpdate (行 164-169): 添加6个字段
+   - StrategyModelOut (行 207-212): 添加6个字段
+
+3. app/api/strategy_model.py
+   - GET端点 (行 259-282): 从MongoDB原始文档读取动量选择器参数
+
+4. app/backtesting/strategy_api.py
+   - 行 285-461: 新增StrategyAdapterWithSelection类（177行代码）
+   - 支持资产选择的策略适配器，集成SelectionService
+
+5. app/api/backtests.py
+   - BacktestByModelRequest (行 488-493): 添加6个可选字段
+   - run_backtest_by_model (行 570-623): 参数优先级逻辑
+   - 优先级：前端请求参数 > 数据库模型配置 > 默认值
+
+【关键参数】（6个）
+------------------
+- enable_momentum_selection: 是否启用动量选择
+- selector_type: 选择器类型（momentum/reversal/hybrid）
+- asset_selection_count: 选择资产数量（1-100，默认8）
+- min_history_days: 最小历史数据要求（100-500，默认260）
+- momentum_windows: 动量窗口（如"22,65,260"）
+- tie_break_window: 并列决胜窗口（5-260，默认22）
+
+【核心功能】
+----------
+1. 资产选择模块：完整的selection模块，支持选择器注册和管理
+2. 动量选择器：基于多窗口夏普动量的资产筛选
+3. 回测集成：StrategyAdapterWithSelection适配器，在回测时执行资产选择
+4. 参数覆盖：回测时支持前端参数覆盖模型配置
+
+【数据流】
+--------
+创建策略：前端 → API → MongoDB（保存动量选择器参数）
+回测：前端请求 → 合并参数（请求>模型>默认） → 资产选择 → 策略计算权重
+
+详细说明请参考：动量选择后端增量代码对比清单.md

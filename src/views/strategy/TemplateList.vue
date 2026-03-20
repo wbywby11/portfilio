@@ -91,6 +91,7 @@
       title="模板详情"
       :visible.sync="detailDialogVisible"
       width="600px"
+      append-to-body
     >
       <div v-if="currentTemplate">
         <el-descriptions :column="1" border>
@@ -175,6 +176,38 @@
         <el-button @click="detailDialogVisible = false">关闭</el-button>
       </span>
     </el-dialog>
+
+    <!-- 模板表单对话框 -->
+    <el-dialog
+      :title="isEditTemplate ? '编辑模板' : '新增模板'"
+      :visible.sync="formDialogVisible"
+      width="1000px"
+      append-to-body
+    >
+      <template-form
+        v-if="formDialogVisible"
+        is-dialog
+        :code="currentTemplateCode"
+        @success="handleFormSuccess"
+        @close="formDialogVisible = false"
+      />
+    </el-dialog>
+
+    <!-- 使用模板对话框 (创建策略) -->
+    <el-dialog
+      title="基于模板创建策略"
+      :visible.sync="useTemplateDialogVisible"
+      width="1000px"
+      append-to-body
+    >
+      <strategy-model-form
+        v-if="useTemplateDialogVisible"
+        is-dialog
+        :initial-template-code="currentTemplateCode"
+        @success="handleUseSuccess"
+        @close="useTemplateDialogVisible = false"
+      />
+    </el-dialog>
   </div>
 </template>
 
@@ -188,6 +221,10 @@ import 'codemirror/mode/python/python';
 
 export default {
   name: 'TemplateList',
+  components: {
+    TemplateForm: () => import('./TemplateForm.vue'),
+    StrategyModelForm: () => import('./StrategyModelForm.vue')
+  },
   data() {
     return {
       templateList: [],
@@ -195,7 +232,11 @@ export default {
       loading: false,
       detailDialogVisible: false,
       currentTemplate: null,
-      detailCodeEditor: null  // CodeMirror 实例
+      detailCodeEditor: null,  // CodeMirror 实例
+      formDialogVisible: false,
+      isEditTemplate: false,
+      currentTemplateCode: '',
+      useTemplateDialogVisible: false
     };
   },
   computed: {
@@ -232,7 +273,17 @@ export default {
       this.fetchData();
     },
     handleCreate() {
-      this.$router.push('/strategy/template/add');
+      this.isEditTemplate = false;
+      this.currentTemplateCode = '';
+      this.formDialogVisible = true;
+    },
+    handleFormSuccess() {
+      this.formDialogVisible = false;
+      this.fetchData();
+    },
+    handleUseSuccess() {
+      this.useTemplateDialogVisible = false;
+      this.$message.success('策略创建成功');
     },
     async handleView(template) {
       // 单独获取带有源代码的模板详情
@@ -265,15 +316,13 @@ export default {
       }
     },
     handleEdit(template) {
-      // 使用 code 作为路由参数，因为后端接口需要 code 来获取模板
-      this.$router.push(`/strategy/template/edit/${template.code}`);
+      this.isEditTemplate = true;
+      this.currentTemplateCode = template.code;
+      this.formDialogVisible = true;
     },
     handleUse(template) {
-      // 跳转到策略创建页面，并带上模板ID
-      this.$router.push({
-        path: '/strategy/model/add',
-        query: { templateId: template.id }
-      });
+      this.currentTemplateCode = template.code;
+      this.useTemplateDialogVisible = true;
     },
     handleDelete(template) {
       this.$confirm(`确定要删除模板 "${template.name}" 吗?`, '提示', {

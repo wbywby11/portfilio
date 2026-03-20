@@ -4,6 +4,7 @@
     :visible.sync="visible"
     width="600px"
     :before-close="handleClose"
+    append-to-body
   >
     <el-form
       ref="form"
@@ -20,6 +21,9 @@
           value-format="yyyy-MM-dd"
           style="width: 100%;"
         ></el-date-picker>
+        <el-tooltip content="回测的开始日期，系统将从该日期开始模拟交易，需要确保该日期有足够的历史数据" placement="top">
+          <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+        </el-tooltip>
       </el-form-item>
 
       <el-form-item label="结束日期" prop="end_date">
@@ -31,6 +35,9 @@
           value-format="yyyy-MM-dd"
           style="width: 100%;"
         ></el-date-picker>
+        <el-tooltip content="回测的结束日期，必须大于起始日期，系统将计算该时间段内的策略表现" placement="top">
+          <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+        </el-tooltip>
       </el-form-item>
 
       <el-form-item label="初始资金" prop="initial_capital">
@@ -41,6 +48,9 @@
           :step="10000"
           style="width: 100%;"
         ></el-input-number>
+        <el-tooltip content="回测的初始投资金额，最小1万元，用于计算组合净值和收益，调仓日当天没有收益（资金调整中）" placement="top">
+          <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+        </el-tooltip>
       </el-form-item>
 
       <el-form-item label="业绩基准">
@@ -60,6 +70,9 @@
             <span style="float: right; color: #8492a6; font-size: 13px">{{ benchmark.benchmark_type }}</span>
           </el-option>
         </el-select>
+        <el-tooltip content="用于对比策略业绩表现的基准指数，可选，选择后会在回测结果中显示相对基准的超额收益和跟踪误差" placement="top">
+          <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+        </el-tooltip>
       </el-form-item>
     </el-form>
 

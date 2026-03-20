@@ -2,7 +2,7 @@
   <div class="page-container">
     <div class="page-header">
       <h2 class="page-title">我的策略</h2>
-      <el-button type="primary" icon="el-icon-plus" @click="$router.push('/strategy/develop')">
+      <el-button type="primary" icon="el-icon-plus" @click="handleCreate">
         新建策略
       </el-button>
     </div>
@@ -49,15 +49,44 @@
 
       <el-empty v-if="strategyList.length === 0" description="暂无策略数据"></el-empty>
     </div>
+
+    <!-- 弹窗部分 -->
+    <el-dialog title="策略开发" :visible.sync="strategyDevelopVisible" width="1200px" append-to-body top="5vh">
+      <strategy-develop v-if="strategyDevelopVisible" is-dialog @success="handleDevelopSuccess" @close="strategyDevelopVisible = false" />
+    </el-dialog>
+
+    <el-dialog title="策略详情" :visible.sync="strategyDetailVisible" width="900px" append-to-body>
+      <strategy-detail v-if="strategyDetailVisible" is-dialog :id="currentStrategyId" />
+    </el-dialog>
+
+    <el-dialog title="创建组合" :visible.sync="portfolioCreateVisible" width="1000px" append-to-body>
+      <portfolio-create v-if="portfolioCreateVisible" is-dialog :strategy-id="currentStrategyId" @success="portfolioCreateVisible = false" @close="portfolioCreateVisible = false" />
+    </el-dialog>
   </div>
 </template>
 
 <script>
 import { mapState } from 'vuex';
 import dayjs from 'dayjs';
+import StrategyDevelop from './StrategyDevelop.vue';
+import StrategyDetail from './StrategyDetail.vue';
+import PortfolioCreate from '../portfolio/PortfolioCreate.vue';
 
 export default {
   name: 'StrategyList',
+  components: {
+    StrategyDevelop,
+    StrategyDetail,
+    PortfolioCreate
+  },
+  data() {
+    return {
+      strategyDevelopVisible: false,
+      strategyDetailVisible: false,
+      portfolioCreateVisible: false,
+      currentStrategyId: ''
+    };
+  },
   computed: {
     ...mapState('strategy', ['strategyList', 'templateList'])
   },
@@ -75,14 +104,20 @@ export default {
     formatDate(date) {
       return dayjs(date).format('YYYY-MM-DD HH:mm:ss');
     },
+    handleCreate() {
+      this.strategyDevelopVisible = true;
+    },
     viewDetail(row) {
-      this.$router.push(`/strategy/detail/${row.id}`);
+      this.currentStrategyId = row.id;
+      this.strategyDetailVisible = true;
     },
     createPortfolio(row) {
-      this.$router.push({
-        path: '/portfolio/create',
-        query: { strategyId: row.id }
-      });
+      this.currentStrategyId = row.id;
+      this.portfolioCreateVisible = true;
+    },
+    handleDevelopSuccess() {
+      this.strategyDevelopVisible = false;
+      this.$store.dispatch('strategy/fetchStrategyList');
     },
     deleteStrategy(row) {
       this.$confirm(`确定要删除策略 "${row.name}" 吗?`, '提示', {

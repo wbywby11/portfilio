@@ -1,0 +1,22 @@
+strategyModelList 依赖文件相对路径清单
+==========================================
+
+Store 模块:
+  src/store/modules/strategy.js
+
+直接使用 strategyModelList:
+  src/views/strategy/BacktestExecution.vue
+
+使用 strategyList 别名:
+  src/views/portfolio/PortfolioCreate.vue
+  src/views/portfolio/Rebalance.vue
+  src/views/Dashboard.vue
+  src/views/strategy/StrategyList.vue
+
+调用 fetchStrategyModelList action:
+  src/views/strategy/BacktestExecution.vue
+  src/views/strategy/StrategyModelList.vue
+
+需要修复的问题:
+  src/views/Dashboard.vue (第216行: fetchStrategyList → fetchStrategyModelList)
+  src/views/strategy/StrategyList.vue (第94行: fetchStrategyList → fetchStrategyModelList)

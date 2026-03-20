@@ -1,0 +1,73 @@
+策略模型详情页面中动量选择器及相关参数展示的增量代码（简洁版）
+================================================================================
+
+【文件位置】
+----------
+D:\portfilio\src\views\strategy\StrategyModelDetail.vue
+
+【增量代码1 - 模板部分】（行 94-117）
+------------------------------------
+<!-- 资产选择配置 -->
+<el-card shadow="never" class="info-card" v-if="model.enable_momentum_selection">
+  <div slot="header">资产选择配置</div>
+  <el-descriptions :column="2" border>
+    <el-descriptions-item label="启用状态">
+      <el-tag type="success" size="small">已启用</el-tag>
+    </el-descriptions-item>
+    <el-descriptions-item label="选择器类型">
+      {{ getSelectorName(model.selector_type) }}
+    </el-descriptions-item>
+    <el-descriptions-item label="选择资产数量">
+      {{ model.asset_selection_count || '未设置' }}
+    </el-descriptions-item>
+    <el-descriptions-item label="最小历史数据要求">
+      {{ model.min_history_days || 260 }} 天
+    </el-descriptions-item>
+    <el-descriptions-item label="动量窗口" v-if="model.momentum_windows">
+      {{ model.momentum_windows }}
+    </el-descriptions-item>
+    <el-descriptions-item label="并列决胜窗口" v-if="model.tie_break_window">
+      {{ model.tie_break_window }} 天
+    </el-descriptions-item>
+  </el-descriptions>
+</el-card>
+
+【增量代码2 - 脚本部分】（行 847-855）
+------------------------------------
+// 获取选择器名称
+getSelectorName(selectorType) {
+  const map = {
+    'momentum': 'SHARP动量选择器',
+    'reversal': '反转选择器',
+    'momentum_reversal': '动量-反转混合选择器'
+  };
+  return map[selectorType] || selectorType || '未知';
+}
+
+【关键特性】
+----------
+1. 条件渲染：仅在 enable_momentum_selection 为 true 时显示
+2. 显示6个参数：启用状态、选择器类型、选择资产数量、最小历史数据要求、动量窗口、并列决胜窗口
+3. 选择器类型中文映射：momentum → SHARP动量选择器
+4. 默认值处理：min_history_days 默认 260 天
+
+【调用关系】
+----------
+StrategyModelList.vue (策略列表)
+  → 点击"查看"按钮
+  → 打开 el-dialog
+  → 加载 StrategyModelDetail.vue
+  → 显示资产选择配置卡片（如果启用）
+
+【数据来源】
+----------
+通过 Vuex store 的 fetchStrategyModel action 从后端获取
+后端 API: GET /api/v1/strategy-models/{model_id}
+
+【显示位置】
+----------
+在策略详情页面中，位于：
+- 基本信息卡片之后
+- 策略参数卡片之前
+
+详细说明请参考：策略详情页面-动量选择器增量代码.md

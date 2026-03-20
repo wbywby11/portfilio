@@ -1,6 +1,6 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
+  <div :class="{'page-container': !isDialog}">
+    <div v-if="!isDialog" class="page-header">
       <h2 class="page-title">策略详情</h2>
       <div>
         <el-button @click="$router.back()">返回</el-button>
@@ -19,10 +19,46 @@
         >
           发布策略
         </el-button>
+        <el-button
+          type="warning"
+          icon="el-icon-plus"
+          @click="handleCreatePortfolio"
+          :disabled="model.status !== '已发布' && model.status !== 'published'"
+        >
+          创建模拟组合
+        </el-button>
       </div>
     </div>
+    <div v-else style="margin-bottom: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+        <el-button
+          type="primary"
+          size="small"
+          @click="handleBacktest"
+          :disabled="model.status === '已发布' || model.status === 'published'"
+          :loading="backtesting"
+        >
+          {{ backtesting ? '回测中...' : '运行回测' }}
+        </el-button>
+        <el-button
+          type="success"
+          size="small"
+          @click="handlePublish"
+          :disabled="model.status === '已发布' || model.status === 'published' || !hasBacktestResult"
+        >
+          发布策略
+        </el-button>
+        <el-button
+          type="warning"
+          size="small"
+          icon="el-icon-plus"
+          @click="handleCreatePortfolio"
+          :disabled="model.status !== '已发布' && model.status !== 'published'"
+        >
+          创建模拟组合
+        </el-button>
+    </div>
 
-    <div class="page-content" v-loading="loading">
+    <div :class="{'page-content': !isDialog}" v-loading="loading">
       <el-row :gutter="20">
         <el-col :span="16">
           <!-- 基本信息 -->
@@ -51,6 +87,31 @@
               </el-descriptions-item>
               <el-descriptions-item label="策略描述" :span="2">
                 {{ model.description || '暂无描述' }}
+              </el-descriptions-item>
+            </el-descriptions>
+          </el-card>
+
+          <!-- 资产选择配置 -->
+          <el-card shadow="never" class="info-card" v-if="model.enable_momentum_selection">
+            <div slot="header">资产选择配置</div>
+            <el-descriptions :column="2" border>
+              <el-descriptions-item label="启用状态">
+                <el-tag type="success" size="small">已启用</el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="选择器类型">
+                {{ getSelectorName(model.selector_type) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="选择资产数量">
+                {{ model.asset_selection_count || '未设置' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="最小历史数据要求">
+                {{ model.min_history_days || 260 }} 天
+              </el-descriptions-item>
+              <el-descriptions-item label="动量窗口" v-if="model.momentum_windows">
+                {{ model.momentum_windows }}
+              </el-descriptions-item>
+              <el-descriptions-item label="并列决胜窗口" v-if="model.tie_break_window">
+                {{ model.tie_break_window }} 天
               </el-descriptions-item>
             </el-descriptions>
           </el-card>
@@ -211,6 +272,14 @@
                     <div style="margin-bottom: 5px; font-size: 12px; color: #909399;">
                       初始资金: ￥{{ record.initial_capital.toLocaleString() }}
                     </div>
+                    <div v-if="record.remark || editingRecordId === record.id" style="margin-bottom: 5px; font-size: 12px; color: #606266;">
+                      <span v-if="editingRecordId !== record.id">备注: {{ record.remark || '-' }}</span>
+                      <span v-else style="display: flex; align-items: center; gap: 8px;">
+                        <el-input v-model="editingRemark" size="small" placeholder="输入备注" maxlength="200" show-word-limit style="flex: 1;"></el-input>
+                        <el-button type="primary" size="mini" @click="saveRemark(record)">保存</el-button>
+                        <el-button size="mini" @click="editingRecordId = null; editingRemark = ''">取消</el-button>
+                      </span>
+                    </div>
                   </div>
                   <div class="history-metrics">
                     <div>总收益: <span :style="{ color: getReturnColor(record.result.total_return) }">
@@ -224,14 +293,10 @@
                       {{ (record.result.max_drawdown * 100).toFixed(2) }}%
                     </span></div>
                   </div>
-                  <el-button
-                    type="text"
-                    size="small"
-                    @click="viewBacktestDetail(record)"
-                    style="margin-top: 10px;"
-                  >
-                    查看详情
-                  </el-button>
+                  <div style="margin-top: 10px;">
+                    <el-button type="text" size="small" @click="viewBacktestDetail(record)">查看详情</el-button>
+                    <el-button type="text" size="small" @click="editingRecordId = record.id; editingRemark = record.remark || ''">{{ editingRecordId === record.id ? '' : '编辑备注' }}</el-button>
+                  </div>
                 </el-card>
               </el-timeline-item>
             </el-timeline>
@@ -268,6 +333,120 @@
       v-model="backtestDetailVisible"
       :record="currentBacktestRecord"
     />
+
+    <!-- 创建模拟组合对话框 -->
+    <el-dialog
+      title="创建模拟组合"
+      :visible.sync="createPortfolioVisible"
+      width="600px"
+      :close-on-click-modal="false"
+      append-to-body
+    >
+      <el-form
+        ref="portfolioForm"
+        :model="portfolioForm"
+        :rules="portfolioRules"
+        label-width="120px"
+      >
+        <el-form-item label="组合名称" prop="name">
+          <el-input
+            v-model="portfolioForm.name"
+            placeholder="请输入组合名称"
+            maxlength="50"
+            show-word-limit
+          ></el-input>
+        </el-form-item>
+
+        <el-form-item label="组合描述" prop="description">
+          <el-input
+            type="textarea"
+            v-model="portfolioForm.description"
+            placeholder="请输入组合描述"
+            :rows="3"
+            maxlength="200"
+            show-word-limit
+          ></el-input>
+        </el-form-item>
+
+        <el-form-item label="初始资金" prop="initial_capital">
+          <el-input-number
+            v-model="portfolioForm.initial_capital"
+            :min="100000"
+            :max="1000000000"
+            :step="100000"
+            :precision="2"
+            controls-position="right"
+            style="width: 100%;"
+          ></el-input-number>
+          <span style="margin-left: 10px; color: #909399;">元</span>
+        </el-form-item>
+
+        <el-form-item label="建仓日期" prop="inception_date">
+          <el-date-picker
+            v-model="portfolioForm.inception_date"
+            type="date"
+            placeholder="选择建仓日期"
+            value-format="yyyy-MM-dd"
+            style="width: 100%;"
+          ></el-date-picker>
+        </el-form-item>
+
+        <el-form-item label="策略模型">
+          <el-input :value="model.name" disabled></el-input>
+        </el-form-item>
+
+        <el-form-item label="资产列表">
+          <el-tag
+            v-for="code in model.asset_codes"
+            :key="code"
+            style="margin-right: 10px; margin-bottom: 5px;"
+          >
+            {{ code }}
+          </el-tag>
+        </el-form-item>
+      </el-form>
+
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="createPortfolioVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          @click="handleConfirmCreatePortfolio"
+          :loading="creatingPortfolio"
+        >
+          确定创建
+        </el-button>
+      </div>
+    </el-dialog>
+
+    <!-- 策略编辑弹窗 -->
+    <el-dialog
+      title="编辑策略"
+      :visible.sync="editDialogVisible"
+      width="1000px"
+      append-to-body
+    >
+      <strategy-model-form
+        v-if="editDialogVisible"
+        is-dialog
+        :id="modelId"
+        @success="handleEditSuccess"
+        @close="editDialogVisible = false"
+      />
+    </el-dialog>
+
+    <!-- 组合详情弹窗 -->
+    <el-dialog
+      title="组合详情"
+      :visible.sync="portfolioDetailVisible"
+      width="1200px"
+      append-to-body
+    >
+      <portfolio-detail
+        v-if="portfolioDetailVisible"
+        is-dialog
+        :id="newPortfolioId"
+      />
+    </el-dialog>
   </div>
 </template>
 
@@ -276,12 +455,25 @@ import dayjs from 'dayjs';
 import * as echarts from 'echarts';
 import BacktestDialog from '@/components/BacktestDialog.vue';
 import BacktestDetailDialog from '@/components/BacktestDetailDialog.vue';
+import { updateBacktestRemark } from '@/api/strategy';
 
 export default {
   name: 'StrategyModelDetail',
   components: {
     BacktestDialog,
-    BacktestDetailDialog
+    BacktestDetailDialog,
+    StrategyModelForm: () => import('./StrategyModelForm.vue'),
+    PortfolioDetail: () => import('@/views/portfolio/PortfolioDetail.vue')
+  },
+  props: {
+    isDialog: {
+      type: Boolean,
+      default: false
+    },
+    id: {
+      type: String,
+      default: ''
+    }
   },
   data() {
     return {
@@ -314,7 +506,32 @@ export default {
         initial_capital: 0,
         result: {},
         created_at: ''
-      }
+      },
+      createPortfolioVisible: false,
+      creatingPortfolio: false,
+      portfolioForm: {
+        name: '',
+        description: '',
+        initial_capital: 1000000,
+        inception_date: ''
+      },
+      portfolioRules: {
+        name: [
+          { required: true, message: '请输入组合名称', trigger: 'blur' },
+          { min: 2, max: 50, message: '长度在2到50个字符', trigger: 'blur' }
+        ],
+        initial_capital: [
+          { required: true, message: '请输入初始资金', trigger: 'blur' }
+        ],
+        inception_date: [
+          { required: true, message: '请选择建仓日期', trigger: 'change' }
+        ]
+      },
+      editDialogVisible: false,
+      portfolioDetailVisible: false,
+      newPortfolioId: '',
+      editingRecordId: null,
+      editingRemark: ''
     };
   },
   computed: {
@@ -329,8 +546,16 @@ export default {
     }
   },
   created() {
-    this.modelId = this.$route.params.id;
+    this.modelId = this.isDialog ? this.id : this.$route.params.id;
     this.loadData();
+  },
+  watch: {
+    id(newVal) {
+      if (this.isDialog && newVal) {
+        this.modelId = newVal;
+        this.loadData();
+      }
+    }
   },
   mounted() {
     this.initChart();
@@ -423,11 +648,104 @@ export default {
       }).catch(() => {});
     },
     handleEdit() {
-      this.$router.push(`/strategy/model/edit/${this.modelId}`);
+      this.editDialogVisible = true;
+    },
+    handleEditSuccess() {
+      this.editDialogVisible = false;
+      this.loadData();
+    },
+    handleCreatePortfolio() {
+      // 重置表单
+      this.portfolioForm = {
+        name: `${this.model.name}-模拟组合`,
+        description: `基于策略模型「${this.model.name}」创建的模拟组合`,
+        initial_capital: 1000000,
+        inception_date: new Date().toISOString().split('T')[0]
+      };
+      this.createPortfolioVisible = true;
+    },
+    async handleConfirmCreatePortfolio() {
+      try {
+        // 验证表单
+        await this.$refs.portfolioForm.validate();
+        
+        this.creatingPortfolio = true;
+
+        // 根据最新回测结果获取最近一次的持仓快照
+        let positions = [];
+        if (this.hasBacktestResult && this.latestBacktest.result && this.latestBacktest.result.position_records) {
+          const positionRecords = this.latestBacktest.result.position_records;
+          if (positionRecords.length > 0) {
+            // 获取最后一次调仓的持仓
+            const lastRecord = positionRecords[positionRecords.length - 1];
+            positions = lastRecord.positions.map(pos => ({
+              asset_code: pos.asset_code,
+              asset_name: pos.asset_name,
+              weight: pos.weight
+            }));
+          }
+        }
+        
+        // 如果没有回测结果，使用平均权重
+        if (positions.length === 0 && this.model.asset_codes && this.model.asset_codes.length > 0) {
+          const equalWeight = 1.0 / this.model.asset_codes.length;
+          positions = this.model.asset_codes.map(code => ({
+            asset_code: code,
+            asset_name: this.model.asset_names && this.model.asset_names[code] || code,
+            weight: equalWeight
+          }));
+        }
+
+        // 构造请求数据
+        const portfolioData = {
+          name: this.portfolioForm.name,
+          portfolio_type: '模型驱动',
+          description: this.portfolioForm.description,
+          model_id: this.modelId,
+          initial_capital: this.portfolioForm.initial_capital,
+          inception_date: new Date(this.portfolioForm.inception_date).toISOString(),
+          created_by: '系统',
+          positions: positions
+        };
+
+        // 调用API创建组合
+        const portfolioId = await this.$store.dispatch('portfolio/createPortfolio', portfolioData);
+        
+        this.$message.success('组合创建成功！');
+        this.createPortfolioVisible = false;
+        
+        // 询问是否跳转到组合详情
+        this.$confirm('组合已创建成功，是否立即查看组合详情？', '提示', {
+          confirmButtonText: '查看详情',
+          cancelButtonText: '留在当前页',
+          type: 'success'
+        }).then(() => {
+          this.newPortfolioId = portfolioId;
+          this.portfolioDetailVisible = true;
+        }).catch(() => {});
+        
+      } catch (error) {
+        if (error !== false) { // 表单验证失败不显示错误
+          this.$message.error('创建组合失败：' + (error.response?.data?.message || error.message || '未知错误'));
+        }
+      } finally {
+        this.creatingPortfolio = false;
+      }
     },
     viewBacktestDetail(record) {
       this.currentBacktestRecord = record;
       this.backtestDetailVisible = true;
+    },
+    async saveRemark(record) {
+      try {
+        await updateBacktestRemark(this.modelId, record.id, this.editingRemark);
+        this.$message.success('备注已更新');
+        this.editingRecordId = null;
+        this.editingRemark = '';
+        await this.loadBacktestHistory(true);
+      } catch (err) {
+        this.$message.error(err.response?.data?.detail || err.message || '更新失败');
+      }
     },
     initChart() {
       if (this.$refs.equityChart) {
@@ -543,6 +861,16 @@ export default {
         return JSON.stringify(value, null, 2);
       }
       return value;
+    },
+    // 获取选择器名称
+    getSelectorName(selectorType) {
+      // 兼容处理：将旧的选择器类型映射为 momentum
+      const normalizedType = (selectorType === 'reversal' || selectorType === 'momentum_reversal') ? 'momentum' : selectorType;
+      const map = {
+        'momentum': '动量选择器',
+        'hybrid': '混合动量选择器'
+      };
+      return map[normalizedType] || normalizedType || '未知';
     },
     formatDate(date) {
       return date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-';
