@@ -3,86 +3,105 @@
     <div class="page-header">
       <h2 class="page-title">事件日志</h2>
       <div>
-        <el-button type="primary" icon="el-icon-refresh" @click="refreshData" :loading="loading">
+        <el-button type="primary" icon="el-icon-refresh" @click="refreshData" :loading="loading" :disabled="!dataLoaded">
           刷新
         </el-button>
       </div>
     </div>
 
     <div class="page-content">
-      <!-- 筛选栏 -->
-      <el-card shadow="never" style="margin-bottom: 20px;">
-        <el-form :inline="true" size="small">
-          <el-form-item label="事件类型">
-            <el-select v-model="filterType" placeholder="全部类型" clearable style="width: 150px;">
-              <el-option label="全部" value=""></el-option>
-              <el-option label="初始化" value="init"></el-option>
-              <el-option label="月度调仓" value="monthly"></el-option>
-              <el-option label="波动率重置" value="vol_reset"></el-option>
-              <el-option label="主观调仓" value="subjective"></el-option>
-            </el-select>
-          </el-form-item>
+      <!-- 折叠式事件日志面板 -->
+      <el-collapse v-model="activeCollapse" @change="handleCollapseChange">
+        <el-collapse-item name="eventLog">
+          <template slot="title">
+            <span class="collapse-title">
+              <i class="el-icon-document"></i>
+              事件日志明细
+              <el-tag v-if="dataLoaded" size="mini" type="info" style="margin-left: 10px;">
+                共 {{ totalEventCount }} 条
+              </el-tag>
+              <el-tag v-else size="mini" type="warning" style="margin-left: 10px;">
+                未加载
+              </el-tag>
+            </span>
+          </template>
           
-          <el-form-item label="日期范围">
-            <el-date-picker
-              v-model="dateRange"
-              type="daterange"
-              range-separator="至"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              value-format="yyyy-MM-dd"
-              style="width: 280px;"
-            ></el-date-picker>
-          </el-form-item>
-          
-          <el-form-item>
-            <el-button type="primary" icon="el-icon-search" @click="handleSearch">查询</el-button>
-            <el-button icon="el-icon-refresh" @click="handleReset">重置</el-button>
-          </el-form-item>
-        </el-form>
-      </el-card>
+          <!-- 筛选栏 -->
+          <el-card shadow="never" style="margin-bottom: 20px;">
+            <el-form :inline="true" size="small">
+              <el-form-item label="事件类型">
+                <el-select v-model="filterType" placeholder="全部类型" clearable style="width: 150px;">
+                  <el-option label="全部" value=""></el-option>
+                  <el-option label="初始化" value="init"></el-option>
+                  <el-option label="月度调仓" value="monthly"></el-option>
+                  <el-option label="波动率重置" value="vol_reset"></el-option>
+                  <el-option label="主观调仓" value="subjective"></el-option>
+                </el-select>
+              </el-form-item>
+              
+              <el-form-item label="日期范围">
+                <el-date-picker
+                  v-model="dateRange"
+                  type="daterange"
+                  range-separator="至"
+                  start-placeholder="开始日期"
+                  end-placeholder="结束日期"
+                  value-format="yyyy-MM-dd"
+                  style="width: 280px;"
+                ></el-date-picker>
+              </el-form-item>
+              
+              <el-form-item>
+                <el-button type="primary" icon="el-icon-search" @click="handleSearch">查询</el-button>
+                <el-button icon="el-icon-refresh" @click="handleReset">重置</el-button>
+              </el-form-item>
+            </el-form>
+          </el-card>
 
-      <!-- 时间线视图 -->
-      <el-card shadow="never" v-loading="loading">
-        <div class="timeline-container">
-          <el-timeline>
-            <el-timeline-item
-              v-for="(event, index) in filteredEvents"
-              :key="index"
-              :timestamp="event.date"
-              placement="top"
-              :color="getEventColor(event.type)"
-              :icon="getEventIcon(event.type)"
-            >
-              <el-card class="event-card" @click.native="viewEventDetail(event)">
-                <div class="event-header">
-                  <el-tag :type="getEventTagType(event.type)" size="small">
-                    {{ getEventTypeLabel(event.type) }}
-                  </el-tag>
-                  <span class="event-time">{{ event.time || '' }}</span>
-                </div>
-                <div class="event-summary">
-                  {{ getEventSummary(event) }}
-                </div>
-                <div class="event-action">
-                  <el-button type="text" size="small">
-                    查看详情 <i class="el-icon-arrow-right"></i>
-                  </el-button>
-                </div>
-              </el-card>
-            </el-timeline-item>
-          </el-timeline>
-          
-          <el-empty v-if="filteredEvents.length === 0" description="暂无事件记录"></el-empty>
-          
-          <!-- 加载更多 -->
-          <div class="load-more" v-if="hasMore && filteredEvents.length > 0">
-            <el-button type="text" @click="loadMore" :loading="loadingMore">
-              {{ loadingMore ? '加载中...' : '加载更多' }}
-            </el-button>
-          </div>
-        </div>
-      </el-card>
+          <!-- 时间线视图 -->
+          <el-card shadow="never" v-loading="loading">
+            <div class="timeline-container">
+              <el-timeline v-if="filteredEvents.length > 0">
+                <el-timeline-item
+                  v-for="(event, index) in filteredEvents"
+                  :key="index"
+                  :timestamp="event.date"
+                  placement="top"
+                  :color="getEventColor(event.type)"
+                  :icon="getEventIcon(event.type)"
+                >
+                  <el-card class="event-card" @click.native="viewEventDetail(event)">
+                    <div class="event-header">
+                      <el-tag :type="getEventTagType(event.type)" size="small">
+                        {{ getEventTypeLabel(event.type) }}
+                      </el-tag>
+                      <span class="event-time">{{ event.time || '' }}</span>
+                    </div>
+                    <div class="event-summary">
+                      {{ getEventSummary(event) }}
+                    </div>
+                    <div class="event-action">
+                      <el-button type="text" size="small">
+                        查看详情 <i class="el-icon-arrow-right"></i>
+                      </el-button>
+                    </div>
+                  </el-card>
+                </el-timeline-item>
+              </el-timeline>
+              
+              <el-empty v-if="dataLoaded && filteredEvents.length === 0" description="暂无事件记录"></el-empty>
+              <el-empty v-if="!dataLoaded" description="点击展开面板或点击查询按钮加载数据"></el-empty>
+              
+              <!-- 加载更多 -->
+              <div class="load-more" v-if="hasMore && filteredEvents.length > 0">
+                <el-button type="text" @click="loadMore" :loading="loadingMore">
+                  {{ loadingMore ? '加载中...' : '加载更多' }}
+                </el-button>
+              </div>
+            </div>
+          </el-card>
+        </el-collapse-item>
+      </el-collapse>
     </div>
 
     <!-- 事件详情弹窗 -->
@@ -223,7 +242,9 @@ export default {
       currentEvent: null,
       pageSize: 50,
       currentPage: 1,
-      hasMore: true
+      hasMore: true,
+      activeCollapse: [],  // 默认折叠状态（空数组）
+      dataLoaded: false    // 标记数据是否已加载
     };
   },
   computed: {
@@ -265,17 +286,29 @@ export default {
     },
     
     initialWeightsList() {
-      if (!this.currentEvent?.initial_weights) return [];
+      if (!this.currentEvent || !this.currentEvent.initial_weights) return [];
       return Object.entries(this.currentEvent.initial_weights).map(([asset, weight]) => ({
         asset,
         weight
       }));
+    },
+    
+    totalEventCount() {
+      return (this.events || []).length;
     }
   },
   created() {
-    this.loadData();
+    // 默认不加载数据，等用户展开面板或点击查询时再加载
   },
   methods: {
+    // 折叠面板展开/收起事件处理
+    handleCollapseChange(activeNames) {
+      // 当展开面板且数据未加载时，自动加载数据
+      if (activeNames.includes('eventLog') && !this.dataLoaded) {
+        this.loadData();
+      }
+    },
+    
     async loadData() {
       this.loading = true;
       try {
@@ -284,6 +317,7 @@ export default {
           limit: 100
         });
         this.hasMore = (this.events || []).length >= this.currentPage * this.pageSize;
+        this.dataLoaded = true;  // 标记数据已加载
       } catch (error) {
         this.$message.error('加载事件日志失败：' + error.message);
       } finally {
@@ -370,7 +404,7 @@ export default {
         case 'monthly':
           return `月度调仓执行${event.description ? '：' + event.description : ''}`;
         case 'vol_reset':
-          return `波动率触发重置，触发值 ${this.formatPercent(event.trigger_volatility)}，缩放系数 ${event.scale_factor?.toFixed(4) || '-'}`;
+          return `波动率触发重置，触发值 ${this.formatPercent(event.trigger_volatility)}，缩放系数 ${(event.scale_factor && event.scale_factor.toFixed(4)) || '-'}`;
         case 'subjective':
           return `主观调仓${event.override_description ? '：' + event.override_description : ''}`;
         default:
@@ -419,8 +453,22 @@ export default {
   border-radius: 4px;
 }
 
+.collapse-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: #303133;
+  display: flex;
+  align-items: center;
+}
+
+.collapse-title i {
+  margin-right: 8px;
+  font-size: 16px;
+  color: #409EFF;
+}
+
 .timeline-container {
-  min-height: 400px;
+  min-height: 200px;
 }
 
 .event-card {

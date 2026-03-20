@@ -16,27 +16,27 @@ export function getMonitorState(monitorId = 'default') {
 }
 
 // 获取净值历史
-export function getNavHistory(params) {
+export function getNavHistory(params = {}) {
   return request({
     url: '/api/v1/monitor/nav-history',
     method: 'get',
     params: {
-      monitor_id: params.monitor_id || 'default',
-      start: params.start,
-      end: params.end
+      monitor_id: (params && params.monitor_id) || 'default',
+      start: params && params.start,
+      end: params && params.end
     }
   });
 }
 
 // 获取监控事件日志
-export function getMonitorEvents(params) {
+export function getMonitorEvents(params = {}) {
   return request({
     url: '/api/v1/monitor/events',
     method: 'get',
     params: {
-      monitor_id: params.monitor_id || 'default',
-      type: params.type,
-      limit: params.limit
+      monitor_id: (params && params.monitor_id) || 'default',
+      type: params && params.type,
+      limit: params && params.limit
     }
   });
 }
@@ -121,14 +121,14 @@ export function getMonitorReport(date, monitorId = 'default') {
 }
 
 // 获取日报列表
-export function getMonitorReportList(params) {
+export function getMonitorReportList(params = {}) {
   return request({
     url: '/api/v1/monitor/reports',
     method: 'get',
     params: {
-      monitor_id: params.monitor_id || 'default',
-      skip: params.skip,
-      limit: params.limit
+      monitor_id: (params && params.monitor_id) || 'default',
+      skip: params && params.skip,
+      limit: params && params.limit
     }
   });
 }
@@ -136,13 +136,13 @@ export function getMonitorReportList(params) {
 // ========== 主观调仓 ==========
 
 // 获取主观调仓指令列表
-export function getSubjectiveOverrides(params) {
+export function getSubjectiveOverrides(params = {}) {
   return request({
     url: '/api/v1/monitor/subjective',
     method: 'get',
     params: {
-      monitor_id: params.monitor_id || 'default',
-      status: params.status
+      monitor_id: (params && params.monitor_id) || 'default',
+      status: params && params.status
     }
   });
 }
@@ -154,7 +154,7 @@ export function addSubjectiveOverride(data) {
     method: 'post',
     data: {
       monitor_id: data.monitor_id || 'default',
-      target_weights: data.weights,  // 后端期望 target_weights 字段
+      weights: data.weights,  // 后端期望 weights 字段
       execute_date: data.execute_date,
       description: data.description
     }
@@ -166,5 +166,45 @@ export function cancelSubjectiveOverride(overrideId) {
   return request({
     url: `/api/v1/monitor/subjective/${overrideId}/cancel`,
     method: 'put'
+  });
+}
+
+// ========== 资产分析 ==========
+
+// 获取底层资产相关性矩阵
+export function getPositionsCorrelationMatrix(data) {
+  return request({
+    url: '/api/v1/analysis/correlation-matrix',
+    method: 'post',
+    data: {
+      thscodes: data.thscodes || [],
+      start_date: data.start_date,
+      end_date: data.end_date
+    }
+  });
+}
+
+// 获取底层资产波动率指标
+export function getPositionsAssetMetrics(data) {
+  return request({
+    url: '/api/v1/analysis/asset-metrics',
+    method: 'post',
+    data: {
+      thscodes: data.thscodes || [],
+      start_date: data.start_date,
+      end_date: data.end_date
+    }
+  });
+}
+
+// 获取当日损益归因
+export function getDailyAttribution(params = {}) {
+  return request({
+    url: '/api/v1/monitor/daily-attribution',
+    method: 'get',
+    params: {
+      monitor_id: (params && params.monitor_id) || 'default',
+      date: params && params.date
+    }
   });
 }

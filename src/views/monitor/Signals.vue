@@ -10,299 +10,284 @@
     </div>
 
     <div class="page-content" v-loading="loading">
-      <el-row :gutter="20">
-        <!-- 波动率监测面板 -->
-        <el-col :span="12">
-          <el-card class="info-card">
-            <div slot="header" class="card-header">
-              <span>波动率监测</span>
-              <el-tag :type="volStatusType" size="small">{{ volStatusText }}</el-tag>
-            </div>
-            
-            <div class="vol-display">
-              <div class="vol-value" :class="volValueClass">
-                {{ formatPercent(currentVolatility) }}
-              </div>
-              <div class="vol-label">当前波动率</div>
-            </div>
-            
-            <el-progress
-              :percentage="volPercentage"
-              :color="volProgressColors"
-              :stroke-width="20"
-              :format="volProgressFormat"
-              style="margin: 20px 0;"
-            ></el-progress>
-            
-            <div class="vol-threshold">
-              <span>波动率阈值: </span>
-              <strong>{{ formatPercent(volThreshold) }}</strong>
-            </div>
-
-            <!-- 波动率趋势图 -->
-            <div class="chart-container" ref="volChart" style="height: 250px; margin-top: 20px;"></div>
-          </el-card>
-        </el-col>
-
-        <!-- 月度调仓日历 -->
-        <el-col :span="12">
-          <el-card class="info-card">
-            <div slot="header" class="card-header">
-              <span>月度调仓日历</span>
-              <el-tag type="info" size="small" v-if="daysToNextRebalance !== null">
-                距下次调仓 {{ daysToNextRebalance }} 天
-              </el-tag>
-            </div>
-            
-            <el-table :data="rebalanceCalendar" size="small" stripe border>
-              <el-table-column prop="month" label="月份" width="100" align="center"></el-table-column>
-              <el-table-column prop="calculate_date" label="计算日(月末)" width="120" align="center"></el-table-column>
-              <el-table-column prop="execute_date" label="执行日(T+2)" width="120" align="center"></el-table-column>
-              <el-table-column prop="status" label="状态" width="80" align="center">
-                <template slot-scope="scope">
-                  <el-tag :type="getCalendarStatusType(scope.row.status)" size="mini">
-                    {{ scope.row.status }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="80" align="center">
-                <template slot-scope="scope">
-                  <el-button
-                    v-if="scope.row.status === '已执行'"
-                    type="text"
-                    size="small"
-                    @click="viewRebalanceDetail(scope.row)"
-                  >
-                    详情
-                  </el-button>
-                  <span v-else style="color: #c0c4cc;">-</span>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <el-row :gutter="20" style="margin-top: 20px;">
-        <!-- Pending 调仓详情 -->
-        <el-col :span="12">
-          <el-card class="info-card">
-            <div slot="header" class="card-header">
-              <span>待执行调仓</span>
-            </div>
-            
-            <div v-if="pendingRebalance">
-              <el-descriptions :column="2" border size="small">
-                <el-descriptions-item label="调仓类型">
-                  <el-tag :type="getPendingTypeTag(pendingRebalance.type)" size="small">
-                    {{ getPendingTypeLabel(pendingRebalance.type) }}
-                  </el-tag>
-                </el-descriptions-item>
-                <el-descriptions-item label="信号日期">{{ pendingRebalance.signal_date }}</el-descriptions-item>
-                <el-descriptions-item label="执行日期">{{ pendingRebalance.execute_date }}</el-descriptions-item>
-                <el-descriptions-item label="缩放系数" v-if="pendingRebalance.scale_factor">
-                  {{ pendingRebalance.scale_factor.toFixed(4) }}
-                </el-descriptions-item>
-              </el-descriptions>
-              
-              <div style="margin-top: 15px;">
-                <div class="section-title">目标权重</div>
-                <el-table :data="pendingWeightsList" size="mini" stripe border max-height="200">
-                  <el-table-column prop="asset" label="资产" width="150"></el-table-column>
-                  <el-table-column prop="weight" label="目标权重" align="right">
-                    <template slot-scope="scope">
-                      {{ formatPercent(scope.row.weight) }}
-                    </template>
-                  </el-table-column>
-                </el-table>
-              </div>
-            </div>
-            
-            <el-empty v-else description="暂无待执行调仓"></el-empty>
-          </el-card>
-        </el-col>
-
-        <!-- 波动率重置历史 -->
-        <el-col :span="12">
-          <el-card class="info-card">
-            <div slot="header" class="card-header">
-              <span>波动率重置历史</span>
-            </div>
-            
-            <el-table :data="volResetHistory" size="small" stripe border max-height="350">
-              <el-table-column prop="trigger_date" label="触发日期" width="110" align="center"></el-table-column>
-              <el-table-column prop="execute_date" label="执行日期" width="110" align="center"></el-table-column>
-              <el-table-column prop="trigger_volatility" label="触发波动率" width="100" align="right">
-                <template slot-scope="scope">
-                  {{ formatPercent(scope.row.trigger_volatility) }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="scale_factor" label="缩放系数" width="90" align="right">
-                <template slot-scope="scope">
-                  {{ scope.row.scale_factor ? scope.row.scale_factor.toFixed(4) : '-' }}
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="80" align="center">
-                <template slot-scope="scope">
-                  <el-button type="text" size="small" @click="viewVolResetDetail(scope.row)">
-                    详情
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            
-            <el-empty v-if="volResetHistory.length === 0" description="暂无波动率重置记录"></el-empty>
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <!-- 调仓历史记录 -->
-      <el-row :gutter="20" style="margin-top: 20px;">
-        <el-col :span="24">
-          <el-card class="info-card">
-            <div slot="header" class="card-header">
-              <span>调仓历史记录</span>
-              <el-tag type="info" size="small">近20条</el-tag>
-            </div>
-            
-            <el-table :data="rebalanceHistory" size="small" stripe border max-height="400">
-              <el-table-column prop="date" label="执行日期" width="120" align="center"></el-table-column>
-              <el-table-column prop="typeLabel" label="调仓类型" width="120" align="center">
-                <template slot-scope="scope">
-                  <el-tag :type="getRebalanceTypeTag(scope.row.type)" size="mini">
-                    {{ scope.row.typeLabel }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="description" label="说明" min-width="180">
-                <template slot-scope="scope">
-                  {{ scope.row.description || '-' }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="trading_cost" label="交易成本" width="100" align="right">
-                <template slot-scope="scope">
-                  {{ scope.row.trading_cost ? scope.row.trading_cost.toFixed(2) : '-' }}
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="80" align="center" fixed="right">
-                <template slot-scope="scope">
-                  <el-button type="text" size="small" @click="viewRebalanceEventDetail(scope.row)">
-                    详情
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-            
-            <el-empty v-if="rebalanceHistory.length === 0" description="暂无调仓历史记录"></el-empty>
-          </el-card>
-        </el-col>
-      </el-row>
-    </div>
-
-    <!-- 波动率重置详情弹窗 -->
-    <el-dialog title="波动率重置详情" :visible.sync="volResetDetailVisible" width="700px">
-      <div v-if="currentVolReset">
-        <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="触发日期">{{ currentVolReset.trigger_date }}</el-descriptions-item>
-          <el-descriptions-item label="执行日期">{{ currentVolReset.execute_date }}</el-descriptions-item>
-          <el-descriptions-item label="触发波动率">{{ formatPercent(currentVolReset.trigger_volatility) }}</el-descriptions-item>
-          <el-descriptions-item label="缩放系数">{{ currentVolReset.scale_factor ? currentVolReset.scale_factor.toFixed(4) : '-' }}</el-descriptions-item>
-        </el-descriptions>
-        
-        <div style="margin-top: 20px;" v-if="currentVolReset.weights_before || currentVolReset.weights_after">
-          <div class="section-title">权重变化</div>
-          <el-table :data="volResetWeightsComparison" size="small" stripe border>
-            <el-table-column prop="asset" label="资产" width="150"></el-table-column>
-            <el-table-column prop="before" label="重置前权重" align="right">
-              <template slot-scope="scope">
-                {{ formatPercent(scope.row.before) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="after" label="重置后权重" align="right">
-              <template slot-scope="scope">
-                {{ formatPercent(scope.row.after) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="变化" align="right">
-              <template slot-scope="scope">
-                <span :class="getChangeClass(scope.row.after - scope.row.before)">
-                  {{ formatPercent(scope.row.after - scope.row.before, true) }}
-                </span>
-              </template>
-            </el-table-column>
-          </el-table>
+      <!-- ==================== Section 1: 风险预警区 ==================== -->
+      <div class="section-block alert-section">
+        <div class="section-header">
+          <i class="el-icon-warning-outline"></i>
+          <span>风险预警</span>
         </div>
-      </div>
-      <span slot="footer">
-        <el-button @click="volResetDetailVisible = false">关闭</el-button>
-      </span>
-    </el-dialog>
-
-    <!-- 调仓详情弹窗 -->
-    <el-dialog title="调仓详情" :visible.sync="rebalanceDetailVisible" width="800px">
-      <div v-if="currentRebalance">
-        <!-- 基本信息 -->
-        <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="调仓类型">
-            <el-tag :type="getRebalanceTypeTag(currentRebalance.type)" size="small">
-              {{ currentRebalance.typeLabel }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="执行日期">{{ currentRebalance.date }}</el-descriptions-item>
-          <el-descriptions-item label="计算日期" v-if="currentRebalance.calc_date">
-            {{ currentRebalance.calc_date }}
-          </el-descriptions-item>
-          <el-descriptions-item label="交易成本">
-            {{ currentRebalance.trading_cost ? currentRebalance.trading_cost.toFixed(2) : '-' }}
-          </el-descriptions-item>
-          <el-descriptions-item label="触发原因" :span="2" v-if="currentRebalance.description">
-            {{ currentRebalance.description }}
-          </el-descriptions-item>
-        </el-descriptions>
         
-        <!-- 权重对比表格 -->
-        <div style="margin-top: 20px;" v-if="rebalanceWeightsComparison.length > 0">
-          <div class="section-title">调仓前后权重对比</div>
-          <el-table :data="rebalanceWeightsComparison" size="small" stripe border max-height="350">
-            <el-table-column prop="asset" label="资产" width="150"></el-table-column>
-            <el-table-column label="调仓前权重" align="right" width="120">
+        <!-- 待执行调仓预警 -->
+        <el-alert
+          v-if="pendingRebalance"
+          :title="pendingAlertTitle"
+          type="warning"
+          :description="pendingAlertDesc"
+          show-icon
+          :closable="false"
+          class="alert-item">
+        </el-alert>
+        
+        <!-- 波动率超阈值预警 -->
+        <el-alert
+          v-if="volStatus === 'danger'"
+          title="波动率预警"
+          type="error"
+          :description="'当前波动率 ' + formatPercent(currentVolatility) + ' 已超过阈值 ' + formatPercent(volThreshold)"
+          show-icon
+          :closable="false"
+          class="alert-item">
+        </el-alert>
+        
+        <!-- 波动率临界预警 -->
+        <el-alert
+          v-if="volStatus === 'warning'"
+          title="波动率接近阈值"
+          type="warning"
+          :description="'当前波动率 ' + formatPercent(currentVolatility) + '，距触发阈值还差 ' + formatPercent(distanceToTrigger)"
+          show-icon
+          :closable="false"
+          class="alert-item">
+        </el-alert>
+        
+        <!-- 无风险提示 -->
+        <el-alert
+          v-if="!pendingRebalance && volStatus === 'normal'"
+          title="无待处理事项"
+          type="success"
+          description="当前波动率正常，无待执行调仓"
+          show-icon
+          :closable="false"
+          class="alert-item">
+        </el-alert>
+      </div>
+
+      <!-- ==================== Section 2: 波动率监控区 ==================== -->
+      <div class="section-block">
+        <div class="section-header">
+          <i class="el-icon-odometer"></i>
+          <span>波动率监控</span>
+          <el-tag :type="volStatusType" size="small" style="margin-left: 10px;">{{ volStatusText }}</el-tag>
+        </div>
+        
+        <el-row :gutter="20">
+          <!-- 左侧：波动率状态面板 -->
+          <el-col :span="10">
+            <el-card class="vol-panel" shadow="hover">
+              <!-- 波动率大数字 -->
+              <div class="vol-display">
+                <div class="vol-value" :class="volValueClass">
+                  {{ formatPercent(currentVolatility) }}
+                </div>
+                <div class="vol-label">当前组合波动率</div>
+              </div>
+              
+              <!-- 进度条 -->
+              <div class="vol-progress-wrapper">
+                <el-progress
+                  :percentage="volProgressPercent"
+                  :color="volProgressColors"
+                  :stroke-width="24"
+                  :show-text="false">
+                </el-progress>
+                <div class="vol-progress-labels">
+                  <span>0%</span>
+                  <span>阈值: {{ formatPercent(volThreshold) }}</span>
+                </div>
+              </div>
+              
+              <!-- 距触发阈值 -->
+              <div class="vol-distance" v-if="volStatus !== 'danger'">
+                距触发阈值: <strong :style="{ color: distanceColor }">{{ formatPercent(distanceToTrigger) }}</strong>
+              </div>
+              <div class="vol-distance" v-else>
+                <el-tag type="danger" size="medium">已超过阈值</el-tag>
+              </div>
+              
+              <!-- 各窗口波动率 -->
+              <div class="vol-windows">
+                <div class="vol-window-item" v-for="(val, key) in volWindows" :key="key">
+                  <span class="window-label">{{ key }}</span>
+                  <span class="window-value">{{ formatPercent(val) }}</span>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+          
+          <!-- 右侧：波动率趋势图 -->
+          <el-col :span="14">
+            <el-card shadow="hover" class="chart-card">
+              <div slot="header">
+                <span>波动率趋势（近30日）</span>
+              </div>
+              <div class="chart-container" ref="volChart" style="height: 320px;"></div>
+            </el-card>
+          </el-col>
+        </el-row>
+      </div>
+
+      <!-- ==================== Section 3: 调仓规划区 ==================== -->
+      <div class="section-block">
+        <div class="section-header">
+          <i class="el-icon-date"></i>
+          <span>调仓规划</span>
+        </div>
+        
+        <!-- 调仓概览卡片 -->
+        <el-row :gutter="20" class="rebalance-overview">
+          <el-col :span="12">
+            <el-card shadow="hover" class="overview-card">
+              <div class="overview-icon success">
+                <i class="el-icon-finished"></i>
+              </div>
+              <div class="overview-content">
+                <div class="overview-label">上次调仓日期</div>
+                <div class="overview-value">{{ lastRebalanceDate || '-' }}</div>
+                <div class="overview-sub" v-if="lastRebalanceType">
+                  <el-tag :type="getRebalanceTypeTag(lastRebalanceType)" size="mini">
+                    {{ getRebalanceTypeLabel(lastRebalanceType) }}
+                  </el-tag>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="12">
+            <el-card shadow="hover" class="overview-card" v-if="pendingRebalance">
+              <div class="overview-icon warning">
+                <i class="el-icon-bell"></i>
+              </div>
+              <div class="overview-content">
+                <div class="overview-label">待执行调仓</div>
+                <div class="overview-value">{{ pendingRebalance && pendingRebalance.execute_date }}</div>
+                <div class="overview-sub">
+                  <el-tag type="warning" size="mini">
+                    {{ getPendingTypeLabel(pendingRebalance && pendingRebalance.type) }}
+                  </el-tag>
+                </div>
+              </div>
+            </el-card>
+            <el-card shadow="hover" class="overview-card" v-else>
+              <div class="overview-icon info">
+                <i class="el-icon-check"></i>
+              </div>
+              <div class="overview-content">
+                <div class="overview-label">待执行调仓</div>
+                <div class="overview-value" style="color: #67C23A;">无</div>
+                <div class="overview-sub">
+                  <el-tag type="info" size="mini">暂无待执行</el-tag>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+        
+        <!-- 调仓历史记录表 -->
+        <el-card shadow="hover" class="history-card">
+          <div slot="header">
+            <span>调仓历史记录</span>
+            <el-tag type="info" size="small" style="margin-left: 10px;">近20条</el-tag>
+          </div>
+          
+          <el-table 
+            :data="rebalanceHistory" 
+            size="small" 
+            stripe 
+            border 
+            row-key="id"
+            :expand-row-keys="expandedRows"
+            @expand-change="handleExpandChange">
+            <el-table-column type="expand">
               <template slot-scope="scope">
-                {{ formatPercent(scope.row.before) }}
+                <div class="expand-content" v-if="scope.row.old_weights || scope.row.new_weights">
+                  <div class="expand-title">权重变化详情</div>
+                  <el-table :data="getWeightsComparison(scope.row)" size="mini" stripe>
+                    <el-table-column prop="asset" label="资产" width="150"></el-table-column>
+                    <el-table-column label="调仓前" align="right" width="100">
+                      <template slot-scope="inner">
+                        {{ formatPercent(inner.row.before) }}
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="调仓后" align="right" width="100">
+                      <template slot-scope="inner">
+                        {{ formatPercent(inner.row.after) }}
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="变动" align="right" width="100">
+                      <template slot-scope="inner">
+                        <span :class="getChangeClass(inner.row.change)">
+                          {{ formatPercent(inner.row.change, true) }}
+                        </span>
+                      </template>
+                    </el-table-column>
+                    <el-table-column prop="direction" label="方向" align="center" width="80">
+                      <template slot-scope="inner">
+                        <el-tag :type="getDirectionTag(inner.row.direction)" size="mini">
+                          {{ inner.row.direction }}
+                        </el-tag>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </div>
+                <div class="expand-content" v-else>
+                  <el-empty description="无权重变化数据" :image-size="60"></el-empty>
+                </div>
               </template>
             </el-table-column>
-            <el-table-column label="调仓后权重" align="right" width="120">
+            <el-table-column prop="date" label="执行日期" width="120" align="center"></el-table-column>
+            <el-table-column prop="typeLabel" label="调仓类型" width="120" align="center">
               <template slot-scope="scope">
-                {{ formatPercent(scope.row.after) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="变动" align="right" width="100">
-              <template slot-scope="scope">
-                <span :class="getChangeClass(scope.row.change)">
-                  {{ formatPercent(scope.row.change, true) }}
-                </span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="direction" label="方向" align="center" width="80">
-              <template slot-scope="scope">
-                <el-tag :type="getDirectionTag(scope.row.direction)" size="mini">
-                  {{ scope.row.direction }}
+                <el-tag :type="getRebalanceTypeTag(scope.row.type)" size="mini">
+                  {{ scope.row.typeLabel }}
                 </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="description" label="触发原因" min-width="200">
+              <template slot-scope="scope">
+                {{ scope.row.description || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="trading_cost" label="交易成本" width="100" align="right">
+              <template slot-scope="scope">
+                {{ scope.row.trading_cost ? scope.row.trading_cost.toFixed(4) : '-' }}
               </template>
             </el-table-column>
           </el-table>
           
-          <!-- 汇总信息 -->
-          <div class="weights-summary">
-            <span>调仓前总权重: {{ formatPercent(rebalanceSummary.beforeTotal) }}</span>
-            <span>调仓后总权重: {{ formatPercent(rebalanceSummary.afterTotal) }}</span>
-          </div>
-        </div>
+          <el-empty v-if="rebalanceHistory.length === 0" description="暂无调仓历史记录"></el-empty>
+        </el-card>
+      </div>
+    </div>
+
+    <!-- ==================== 待执行调仓详情弹窗 ==================== -->
+    <el-dialog title="待执行调仓详情" :visible.sync="pendingDetailVisible" width="600px">
+      <div v-if="pendingRebalance">
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="调仓类型">
+            <el-tag :type="getPendingTypeTag(pendingRebalance && pendingRebalance.type)" size="small">
+              {{ getPendingTypeLabel(pendingRebalance && pendingRebalance.type) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="信号日期">{{ pendingRebalance && pendingRebalance.signal_date }}</el-descriptions-item>
+          <el-descriptions-item label="执行日期">{{ pendingRebalance && pendingRebalance.execute_date }}</el-descriptions-item>
+          <el-descriptions-item label="缩放系数" v-if="pendingRebalance && pendingRebalance.scale_factor">
+            {{ pendingRebalance.scale_factor.toFixed(4) }}
+          </el-descriptions-item>
+        </el-descriptions>
         
-        <!-- 无权重数据时的提示 -->
-        <el-empty v-if="rebalanceWeightsComparison.length === 0" description="该调仓记录无权重明细数据"></el-empty>
+        <div style="margin-top: 15px;" v-if="pendingWeightsList.length > 0">
+          <div class="section-title-small">目标权重</div>
+          <el-table :data="pendingWeightsList" size="mini" stripe border max-height="250">
+            <el-table-column prop="asset" label="资产" width="150"></el-table-column>
+            <el-table-column prop="weight" label="目标权重" align="right">
+              <template slot-scope="scope">
+                {{ formatPercent(scope.row.weight) }}
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
       </div>
       <span slot="footer">
-        <el-button @click="rebalanceDetailVisible = false">关闭</el-button>
+        <el-button @click="pendingDetailVisible = false">关闭</el-button>
       </span>
     </el-dialog>
   </div>
@@ -314,135 +299,280 @@ import { mapState } from 'vuex';
 
 export default {
   name: 'Signals',
-  data() {
+  data: function() {
     return {
       loading: false,
-      volThreshold: 0.06,  // 6%波动率阈值
-      volResetDetailVisible: false,
-      currentVolReset: null,
       volChart: null,
+      expandedRows: [],
+      pendingDetailVisible: false,
       volProgressColors: [
-        { color: '#67c23a', percentage: 60 },
-        { color: '#e6a23c', percentage: 80 },
-        { color: '#f56c6c', percentage: 100 }
-      ],
-      // 调仓详情相关
-      rebalanceDetailVisible: false,
-      currentRebalance: null,
-      allRebalanceEvents: []  // 所有调仓事件
+        { color: '#67C23A', percentage: 70 },
+        { color: '#E6A23C', percentage: 90 },
+        { color: '#F56C6C', percentage: 100 }
+      ]
     };
   },
   computed: {
     ...mapState('monitor', ['signals', 'events', 'monitorState']),
     
-    currentVolatility() {
-      return this.signals?.vol_reset?.current_volatility || 0;
+    // ===== 波动率相关 =====
+    volReset: function() {
+      return (this.signals && this.signals.vol_reset) || {};
     },
-    
-    volPercentage() {
+    currentVolatility: function() {
+      return this.volReset.current_volatility || 0;
+    },
+    volThreshold: function() {
+      var threshold = this.volReset.threshold;
+      // 如果是小数形式（如0.06），保持；如果是百分比数字（如6），转为小数
+      if (threshold !== undefined && threshold !== null) {
+        return threshold > 1 ? threshold / 100 : threshold;
+      }
+      return 0.06;  // 默认6%
+    },
+    volStatus: function() {
+      var status = this.volReset.status;
+      if (status) return status;
+      // 兼容：根据当前波动率计算状态
+      var ratio = this.volThreshold > 0 ? this.currentVolatility / this.volThreshold : 0;
+      if (ratio >= 1) return 'danger';
+      if (ratio >= 0.85) return 'warning';
+      return 'normal';
+    },
+    volStatusType: function() {
+      var status = this.volStatus;
+      if (status === 'danger') return 'danger';
+      if (status === 'warning') return 'warning';
+      return 'success';
+    },
+    volStatusText: function() {
+      var status = this.volStatus;
+      if (status === 'danger') return '已触发';
+      if (status === 'warning') return '预警';
+      return '正常';
+    },
+    volValueClass: function() {
+      var status = this.volStatus;
+      if (status === 'danger') return 'vol-danger';
+      if (status === 'warning') return 'vol-warning';
+      return 'vol-normal';
+    },
+    volProgressPercent: function() {
       if (!this.volThreshold) return 0;
-      const pct = (this.currentVolatility / this.volThreshold) * 100;
-      return Math.min(pct, 100);
+      return Math.min(Math.round(this.currentVolatility / this.volThreshold * 100), 100);
+    },
+    distanceToTrigger: function() {
+      if (this.volReset.distance_to_trigger !== undefined) {
+        // 后端返回的可能是百分点形式
+        var dist = this.volReset.distance_to_trigger;
+        return dist > 1 ? dist / 100 : dist;
+      }
+      return Math.max(0, this.volThreshold - this.currentVolatility);
+    },
+    distanceColor: function() {
+      var ratio = this.volThreshold > 0 ? this.currentVolatility / this.volThreshold : 0;
+      if (ratio >= 0.9) return '#F56C6C';
+      if (ratio >= 0.7) return '#E6A23C';
+      return '#67C23A';
+    },
+    volWindows: function() {
+      return this.volReset.vol_windows || {};
+    },
+    volatilityHistory: function() {
+      return (this.signals && this.signals.volatility_history) || [];
     },
     
-    volStatusType() {
-      const ratio = this.currentVolatility / this.volThreshold;
-      if (ratio < 0.7) return 'success';
-      if (ratio < 0.9) return 'warning';
-      return 'danger';
+    // ===== 调仓相关 =====
+    lastRebalanceDate: function() {
+      var signals = this.$store.state.monitor.signals;
+      // 优先用顶层 last_rebalance_date
+      if (signals && signals.last_rebalance_date) {
+        return signals.last_rebalance_date;
+      }
+      // 回退到 monthly_rebalance.last_date
+      if (this.monthlyRebalance && this.monthlyRebalance.last_date) {
+        return this.monthlyRebalance.last_date;
+      }
+      // 最后从历史记录取
+      if (this.rebalanceHistory.length > 0) {
+        return this.rebalanceHistory[0].date;
+      }
+      return null;
     },
-    
-    volStatusText() {
-      const ratio = this.currentVolatility / this.volThreshold;
-      if (ratio < 0.7) return '正常';
-      if (ratio < 0.9) return '接近阈值';
-      if (ratio < 1) return '即将触发';
-      return '已超阈值';
+    lastRebalanceType: function() {
+      if (this.rebalanceHistory.length > 0) return this.rebalanceHistory[0].type;
+      return null;
     },
-    
-    volValueClass() {
-      const ratio = this.currentVolatility / this.volThreshold;
-      if (ratio < 0.7) return 'vol-normal';
-      if (ratio < 0.9) return 'vol-warning';
-      return 'vol-danger';
+    pendingRebalance: function() {
+      return (this.signals && this.signals.pending_rebalance) || null;
     },
-    
-    daysToNextRebalance() {
-      // 从 monthly_rebalance.next_date 计算天数
-      const nextDate = this.signals?.monthly_rebalance?.next_date;
-      if (!nextDate) return null;
-      const today = new Date();
-      const target = new Date(nextDate);
-      const diffTime = target - today;
-      return Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+    pendingAlertTitle: function() {
+      if (!this.pendingRebalance) return '';
+      return '待执行调仓 - ' + this.getPendingTypeLabel(this.pendingRebalance.type);
     },
-    
-    rebalanceCalendar() {
-      // 后端可能不提供此字段，返回空数组
-      return this.signals?.rebalance_calendar || [];
+    pendingAlertDesc: function() {
+      if (!this.pendingRebalance) return '';
+      return '执行日期: ' + this.pendingRebalance.execute_date;
     },
-    
-    pendingRebalance() {
-      return this.signals?.pending_rebalance || null;
+    pendingWeightsList: function() {
+      if (!this.pendingRebalance || !this.pendingRebalance.weights) return [];
+      var weights = this.pendingRebalance.weights;
+      return Object.keys(weights).map(function(asset) {
+        return { asset: asset, weight: weights[asset] };
+      });
     },
-    
-    pendingWeightsList() {
-      if (!this.pendingRebalance?.weights) return [];
-      return Object.entries(this.pendingRebalance.weights).map(([asset, weight]) => ({
-        asset,
-        weight
-      }));
+    rebalanceHistory: function() {
+      // 直接使用后端 signalStatus 中的 rebalance_history
+      var signals = this.$store.state.monitor.signals;
+      if (signals && signals.rebalance_history && Array.isArray(signals.rebalance_history)) {
+        var self = this;
+        return signals.rebalance_history.map(function(e, idx) {
+          return {
+            id: e.id || ('rebalance_' + idx),
+            date: e.date,
+            type: e.type,
+            typeLabel: self.getRebalanceTypeLabel(e.type),
+            description: e.description,
+            trading_cost: e.trading_cost,
+            scale_factor: e.scale_factor,
+            old_weights: e.old_weights,
+            new_weights: e.new_weights
+          };
+        }).slice(0, 20);
+      }
+      return [];
+    }
+  },
+  created: function() {
+    this.loadData();
+  },
+  mounted: function() {
+    var self = this;
+    this.$nextTick(function() {
+      self.initChart();
+    });
+  },
+  beforeDestroy: function() {
+    if (this.volChart) {
+      this.volChart.dispose();
+    }
+  },
+  methods: {
+    loadData: async function() {
+      this.loading = true;
+      try {
+        // 调仓历史现在从 signalStatus 获取，不需要单独 fetchEvents
+        await this.$store.dispatch('monitor/fetchSignals');
+        this.updateChart();
+      } catch (error) {
+        this.$message.error('加载数据失败：' + error.message);
+      } finally {
+        this.loading = false;
+      }
     },
-    
-    volResetHistory() {
-      if (!this.events) return [];
-      return this.events.filter(e => e.type === 'vol_reset').slice(0, 10);
+    refreshData: async function() {
+      await this.loadData();
+      this.$message.success('数据已刷新');
     },
-    
-    volResetWeightsComparison() {
-      if (!this.currentVolReset) return [];
-      const before = this.currentVolReset.weights_before || {};
-      const after = this.currentVolReset.weights_after || {};
-      const assets = [...new Set([...Object.keys(before), ...Object.keys(after)])];
-      return assets.map(asset => ({
-        asset,
-        before: before[asset] || 0,
-        after: after[asset] || 0
-      }));
+    initChart: function() {
+      if (!this.$refs.volChart) return;
+      this.volChart = echarts.init(this.$refs.volChart);
+      this.updateChart();
+      
+      var self = this;
+      window.addEventListener('resize', function() {
+        if (self.volChart) self.volChart.resize();
+      });
     },
-    
-    // 调仓历史记录（所有类型）
-    rebalanceHistory() {
-      const typeLabels = {
-        'monthly_rebalance': '月度调仓',
-        'vol_reset_execute': '波动率重置',
-        'subjective_rebalance': '主观调仓'
+    updateChart: function() {
+      if (!this.volChart) return;
+      
+      var history = this.volatilityHistory;
+      var dates = history.map(function(v) { return v.date; });
+      var values = history.map(function(v) {
+        var val = v.volatility !== undefined ? v.volatility : v.value;
+        // 转为百分比
+        return val > 1 ? val : (val * 100);
+      });
+      
+      var thresholdPct = this.volThreshold * 100;
+      
+      var option = {
+        tooltip: {
+          trigger: 'axis',
+          formatter: function(params) {
+            var p = params[0];
+            return p.axisValue + '<br/>波动率: ' + Number(p.value).toFixed(2) + '%';
+          }
+        },
+        grid: {
+          left: '10%',
+          right: '5%',
+          bottom: '15%',
+          top: '10%'
+        },
+        xAxis: {
+          type: 'category',
+          data: dates,
+          axisLabel: { rotate: 45, fontSize: 10 }
+        },
+        yAxis: {
+          type: 'value',
+          name: '波动率(%)',
+          axisLabel: { formatter: function(v) { return v.toFixed(1) + '%'; } }
+        },
+        series: [{
+          name: '组合波动率',
+          type: 'line',
+          data: values,
+          smooth: true,
+          lineStyle: { width: 2, color: '#409EFF' },
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(64,158,255,0.3)' },
+              { offset: 1, color: 'rgba(64,158,255,0.05)' }
+            ])
+          },
+          markLine: {
+            silent: true,
+            symbol: 'none',
+            data: [{
+              yAxis: thresholdPct,
+              lineStyle: { color: '#F56C6C', type: 'dashed', width: 2 },
+              label: { formatter: '阈值 ' + thresholdPct.toFixed(1) + '%', position: 'end' }
+            }]
+          }
+        }]
       };
       
-      return this.allRebalanceEvents
-        .filter(e => ['monthly_rebalance', 'vol_reset_execute', 'subjective_rebalance'].includes(e.type))
-        .map(e => ({
-          ...e,
-          typeLabel: typeLabels[e.type] || e.type
-        }))
-        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-        .slice(0, 20);
+      this.volChart.setOption(option);
     },
-    
-    // 调仓权重对比
-    rebalanceWeightsComparison() {
-      if (!this.currentRebalance) return [];
-      const oldWeights = this.currentRebalance.old_weights || {};
-      const newWeights = this.currentRebalance.new_weights || {};
-      const assets = [...new Set([...Object.keys(oldWeights), ...Object.keys(newWeights)])];
+    formatPercent: function(val, showSign) {
+      if (val === null || val === undefined) return '-';
+      // 检测是否已是百分比数字（>1）
+      var pct = val > 1 ? val : (val * 100);
+      var formatted = pct.toFixed(2);
+      if (showSign && pct > 0) return '+' + formatted + '%';
+      return formatted + '%';
+    },
+    handleExpandChange: function(row, expandedRows) {
+      this.expandedRows = expandedRows.map(function(r) { return r.id; });
+    },
+    getWeightsComparison: function(row) {
+      var oldWeights = row.old_weights || {};
+      var newWeights = row.new_weights || {};
+      var assetSet = {};
+      Object.keys(oldWeights).forEach(function(k) { assetSet[k] = true; });
+      Object.keys(newWeights).forEach(function(k) { assetSet[k] = true; });
+      var assets = Object.keys(assetSet);
       
       return assets
-        .map(asset => {
-          const before = oldWeights[asset] || 0;
-          const after = newWeights[asset] || 0;
-          const change = after - before;
+        .map(function(asset) {
+          var before = oldWeights[asset] || 0;
+          var after = newWeights[asset] || 0;
+          var change = after - before;
           
-          let direction = '不变';
+          var direction = '不变';
           if (Math.abs(before) < 1e-6 && after > 1e-6) {
             direction = '新增';
           } else if (before > 1e-6 && Math.abs(after) < 1e-6) {
@@ -453,229 +583,55 @@ export default {
             direction = '减持';
           }
           
-          return { asset, before, after, change, direction };
+          return { asset: asset, before: before, after: after, change: change, direction: direction };
         })
-        .filter(item => Math.abs(item.before) > 1e-6 || Math.abs(item.after) > 1e-6)
-        .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+        .filter(function(item) { return Math.abs(item.before) > 1e-6 || Math.abs(item.after) > 1e-6; })
+        .sort(function(a, b) { return Math.abs(b.change) - Math.abs(a.change); });
     },
-    
-    // 调仓汇总
-    rebalanceSummary() {
-      if (!this.currentRebalance) {
-        return { beforeTotal: 0, afterTotal: 0 };
-      }
-      const oldWeights = this.currentRebalance.old_weights || {};
-      const newWeights = this.currentRebalance.new_weights || {};
-      const beforeTotal = Object.values(oldWeights).reduce((sum, v) => sum + (v || 0), 0);
-      const afterTotal = Object.values(newWeights).reduce((sum, v) => sum + (v || 0), 0);
-      return { beforeTotal, afterTotal };
-    }
-  },
-  created() {
-    this.loadData();
-  },
-  mounted() {
-    this.$nextTick(() => {
-      this.initChart();
-    });
-  },
-  beforeDestroy() {
-    if (this.volChart) {
-      this.volChart.dispose();
-    }
-  },
-  methods: {
-    async loadData() {
-      this.loading = true;
-      try {
-        await Promise.all([
-          this.$store.dispatch('monitor/fetchSignals'),
-          this.$store.dispatch('monitor/fetchEvents', { type: 'vol_reset', limit: 50 }),
-          this.fetchAllRebalanceEvents()
-        ]);
-        this.updateChart();
-      } catch (error) {
-        this.$message.error('加载数据失败：' + error.message);
-      } finally {
-        this.loading = false;
-      }
-    },
-    
-    async fetchAllRebalanceEvents() {
-      // 获取所有调仓事件（不指定 type 以获取全部）
-      try {
-        const res = await this.$store.dispatch('monitor/fetchEvents', { limit: 100 });
-        const data = Array.isArray(res) ? res : (res && res.data ? res.data : []);
-        this.allRebalanceEvents = data;
-      } catch (error) {
-        console.error('获取调仓事件失败:', error);
-        this.allRebalanceEvents = [];
-      }
-    },
-    
-    async refreshData() {
-      await this.loadData();
-      this.$message.success('数据已刷新');
-    },
-    
-    initChart() {
-      if (!this.$refs.volChart) return;
-      this.volChart = echarts.init(this.$refs.volChart);
-      this.updateChart();
-      
-      window.addEventListener('resize', () => {
-        this.volChart && this.volChart.resize();
-      });
-    },
-    
-    updateChart() {
-      if (!this.volChart) return;
-      
-      const volHistory = this.signals?.volatility_history || [];
-      const dates = volHistory.map(v => v.date);
-      const values = volHistory.map(v => (v.value * 100).toFixed(2));
-      
-      const option = {
-        title: {
-          text: '波动率趋势(近30日)',
-          textStyle: { fontSize: 14, fontWeight: 'normal' }
-        },
-        tooltip: {
-          trigger: 'axis',
-          formatter: '{b}<br/>波动率: {c}%'
-        },
-        grid: {
-          left: '10%',
-          right: '5%',
-          bottom: '15%',
-          top: '15%'
-        },
-        xAxis: {
-          type: 'category',
-          data: dates,
-          axisLabel: {
-            rotate: 45,
-            fontSize: 10
-          }
-        },
-        yAxis: {
-          type: 'value',
-          axisLabel: {
-            formatter: '{value}%'
-          }
-        },
-        series: [{
-          name: '波动率',
-          type: 'line',
-          data: values,
-          smooth: true,
-          lineStyle: { width: 2 },
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
-              { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
-            ])
-          },
-          markLine: {
-            silent: true,
-            data: [{
-              yAxis: this.volThreshold * 100,
-              lineStyle: { color: '#f56c6c', type: 'dashed' },
-              label: { formatter: '阈值 {c}%' }
-            }]
-          }
-        }]
+    getRebalanceTypeTag: function(type) {
+      var map = {
+        // 新格式
+        'monthly': 'primary',
+        'vol_reset': 'danger',
+        'subjective': 'warning',
+        // 旧格式兼容
+        'monthly_rebalance': 'primary',
+        'vol_reset_execute': 'danger',
+        'subjective_rebalance': 'warning'
       };
-      
-      this.volChart.setOption(option);
+      return map[type] || 'info';
     },
-    
-    formatPercent(val, showSign = false) {
-      if (val === null || val === undefined) return '-';
-      const pct = (val * 100).toFixed(2);
-      if (showSign && val > 0) return '+' + pct + '%';
-      return pct + '%';
-    },
-    
-    volProgressFormat() {
-      return this.formatPercent(this.currentVolatility);
-    },
-    
-    getCalendarStatusType(status) {
-      const map = {
-        '已执行': 'success',
-        '待执行': 'warning',
-        '未到': 'info'
+    getRebalanceTypeLabel: function(type) {
+      var map = {
+        // 新格式
+        'monthly': '月度调仓',
+        'vol_reset': '波动率重置',
+        'subjective': '主观调仓',
+        // 旧格式兼容
+        'monthly_rebalance': '月度调仓',
+        'vol_reset_execute': '波动率重置',
+        'subjective_rebalance': '主观调仓'
       };
-      return map[status] || 'info';
+      return map[type] || type;
     },
-    
-    getPendingTypeTag(type) {
-      const map = {
+    getPendingTypeTag: function(type) {
+      var map = {
         'monthly': 'primary',
         'vol_reset': 'warning',
         'subjective': 'success'
       };
-      return map[type] || '';
+      return map[type] || 'info';
     },
-    
-    getPendingTypeLabel(type) {
-      const map = {
+    getPendingTypeLabel: function(type) {
+      var map = {
         'monthly': '月度调仓',
         'vol_reset': '波动率重置',
         'subjective': '主观调仓'
       };
       return map[type] || type;
     },
-    
-    viewVolResetDetail(row) {
-      this.currentVolReset = row;
-      this.volResetDetailVisible = true;
-    },
-    
-    // 查看调仓日历中的详情
-    viewRebalanceDetail(row) {
-      // 从 allRebalanceEvents 中查找对应日期的调仓事件
-      const event = this.allRebalanceEvents.find(e => 
-        e.date === row.execute_date && 
-        ['monthly_rebalance', 'vol_reset_execute', 'subjective_rebalance'].includes(e.type)
-      );
-      
-      if (event) {
-        const typeLabels = {
-          'monthly_rebalance': '月度调仓',
-          'vol_reset_execute': '波动率重置',
-          'subjective_rebalance': '主观调仓'
-        };
-        this.currentRebalance = {
-          ...event,
-          typeLabel: typeLabels[event.type] || event.type
-        };
-        this.rebalanceDetailVisible = true;
-      } else {
-        this.$message.warning('未找到该日期的调仓详情记录');
-      }
-    },
-    
-    // 查看调仓历史记录的详情
-    viewRebalanceEventDetail(row) {
-      this.currentRebalance = row;
-      this.rebalanceDetailVisible = true;
-    },
-    
-    // 获取调仓类型 tag
-    getRebalanceTypeTag(type) {
-      const map = {
-        'monthly_rebalance': 'primary',
-        'vol_reset_execute': 'warning',
-        'subjective_rebalance': 'success'
-      };
-      return map[type] || 'info';
-    },
-    
-    // 获取方向 tag
-    getDirectionTag(direction) {
-      const map = {
+    getDirectionTag: function(direction) {
+      var map = {
         '新增': 'success',
         '清仓': 'danger',
         '增持': 'primary',
@@ -684,11 +640,13 @@ export default {
       };
       return map[direction] || 'info';
     },
-    
-    getChangeClass(change) {
+    getChangeClass: function(change) {
       if (change > 0) return 'number-positive';
       if (change < 0) return 'number-negative';
       return '';
+    },
+    viewPendingDetail: function() {
+      this.pendingDetailVisible = true;
     }
   }
 };
@@ -719,14 +677,45 @@ export default {
   border-radius: 4px;
 }
 
-.info-card {
+/* Section 通用样式 */
+.section-block {
+  margin-bottom: 25px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.section-header i {
+  margin-right: 8px;
+  font-size: 18px;
+  color: #409EFF;
+}
+
+/* 风险预警区 */
+.alert-section {
+  background: #fff;
+  padding: 20px;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0,0,0,0.05);
+}
+
+.alert-item {
+  margin-bottom: 10px;
+}
+
+.alert-item:last-child {
   margin-bottom: 0;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+/* 波动率面板 */
+.vol-panel {
+  height: 100%;
 }
 
 .vol-display {
@@ -735,7 +724,7 @@ export default {
 }
 
 .vol-value {
-  font-size: 48px;
+  font-size: 56px;
   font-weight: 600;
   line-height: 1;
 }
@@ -746,56 +735,148 @@ export default {
   margin-top: 10px;
 }
 
-.vol-normal {
-  color: #67c23a;
+.vol-normal { color: #67C23A; }
+.vol-warning { color: #E6A23C; }
+.vol-danger { color: #F56C6C; }
+
+.vol-progress-wrapper {
+  padding: 0 20px;
+  margin: 20px 0;
 }
 
-.vol-warning {
-  color: #e6a23c;
+.vol-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
 }
 
-.vol-danger {
-  color: #f56c6c;
-}
-
-.vol-threshold {
+.vol-distance {
   text-align: center;
-  color: #606266;
+  padding: 15px 0;
   font-size: 14px;
+  color: #606266;
+  border-top: 1px solid #EBEEF5;
+  border-bottom: 1px solid #EBEEF5;
 }
 
-.section-title {
+.vol-windows {
+  display: flex;
+  justify-content: space-around;
+  padding: 15px 10px;
+}
+
+.vol-window-item {
+  text-align: center;
+}
+
+.window-label {
+  display: block;
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 5px;
+}
+
+.window-value {
+  font-size: 16px;
+  font-weight: 500;
+  color: #303133;
+}
+
+/* 图表卡片 */
+.chart-card {
+  height: 100%;
+}
+
+.chart-container {
+  width: 100%;
+}
+
+/* 调仓概览 */
+.rebalance-overview {
+  margin-bottom: 20px;
+}
+
+.overview-card {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+}
+
+.overview-card >>> .el-card__body {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.overview-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 15px;
+  flex-shrink: 0;
+}
+
+.overview-icon i {
+  font-size: 24px;
+  color: #fff;
+}
+
+.overview-icon.primary { background: linear-gradient(135deg, #409EFF 0%, #66b1ff 100%); }
+.overview-icon.success { background: linear-gradient(135deg, #67C23A 0%, #85ce61 100%); }
+.overview-icon.warning { background: linear-gradient(135deg, #E6A23C 0%, #ebb563 100%); }
+.overview-icon.info { background: linear-gradient(135deg, #909399 0%, #a6a9ad 100%); }
+
+.overview-content {
+  flex: 1;
+}
+
+.overview-label {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 5px;
+}
+
+.overview-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 5px;
+}
+
+.overview-sub {
+  margin-top: 5px;
+}
+
+/* 历史记录卡片 */
+.history-card {
+  background: #fff;
+}
+
+.expand-content {
+  padding: 15px 20px;
+  background: #fafafa;
+}
+
+.expand-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #606266;
+  margin-bottom: 10px;
+}
+
+.section-title-small {
   font-size: 14px;
   font-weight: 500;
   color: #303133;
   margin-bottom: 10px;
 }
 
-.number-positive {
-  color: #67c23a;
-}
-
-.number-negative {
-  color: #f56c6c;
-}
-
-.chart-container {
-  border-top: 1px solid #ebeef5;
-  padding-top: 15px;
-}
-
-/* 调仓详情样式 */
-.weights-summary {
-  display: flex;
-  justify-content: space-around;
-  padding: 15px;
-  margin-top: 15px;
-  background-color: #f5f7fa;
-  border-radius: 4px;
-}
-
-.weights-summary span {
-  font-size: 14px;
-  color: #606266;
-}
+/* 数字颜色 */
+.number-positive { color: #67C23A; }
+.number-negative { color: #F56C6C; }
 </style>

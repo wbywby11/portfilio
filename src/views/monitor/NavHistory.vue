@@ -91,19 +91,10 @@
             {{ latestDate }}
           </span>
         </div>
-        <div v-if="attributionData.length > 0" ref="attributionChart" style="width: 100%; height: 350px;"></div>
-        <div v-else class="attribution-placeholder">
-          <el-empty description="损益归因需要市场数据接口支持">
-            <template slot="description">
-              <p style="color: #909399; margin-bottom: 5px;">待完整数据接口支持</p>
-              <p style="color: #c0c4cc; font-size: 12px;">需要各资产日价格数据计算收益贡献</p>
-            </template>
-          </el-empty>
-        </div>
-        <div v-if="attributionData.length > 0" class="attribution-summary">
-          <span>合计贡献: {{ formatNumber(totalContribution, 4) }}</span>
-          <span style="margin-left: 20px;">实际净值变动: {{ formatNumber(actualNavChange, 4) }}</span>
-          <span style="margin-left: 20px;">差异: {{ formatNumber(attributionDiff, 4) }}</span>
+        <div v-show="attributionData && attributionData.length > 0" ref="attributionChart" style="width: 100%; height: 400px;"></div>
+        <el-empty v-if="!attributionData || attributionData.length === 0" description="暂无损益归因数据"></el-empty>
+        <div v-if="attributionData && attributionData.length > 0" class="attribution-summary">
+          <span>合计损益: <b :style="{ color: getReturnColor(totalPnl) }">{{ formatSignedNumber(totalPnl, 2) }} 元</b></span>
         </div>
       </el-card>
 
@@ -157,73 +148,7 @@
         <el-empty v-else description="暂无收益数据"></el-empty>
       </el-card>
 
-      <!-- 净值数据表格 -->
-      <el-card shadow="never" class="info-card" style="margin-top: 20px;">
-        <div slot="header" class="card-header">
-          <span>净值数据明细</span>
-          <span style="color: #909399; font-size: 13px; font-weight: normal;">
-            共 {{ navHistory.length }} 条记录
-          </span>
-        </div>
-        <el-table
-          :data="paginatedData"
-          border
-          stripe
-          style="width: 100%;"
-          :default-sort="{ prop: 'date', order: 'descending' }"
-        >
-          <el-table-column prop="date" label="日期" width="120" sortable></el-table-column>
-          <el-table-column prop="nav" label="净值" width="120" align="right">
-            <template slot-scope="scope">
-              {{ scope.row.nav ? scope.row.nav.toFixed(4) : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="daily_return" label="日收益率" width="120" align="right">
-            <template slot-scope="scope">
-              <span :style="{ color: getReturnColor(scope.row.daily_return) }">
-                {{ scope.row.daily_return !== null && scope.row.daily_return !== undefined 
-                   ? (scope.row.daily_return * 100).toFixed(4) + '%' 
-                   : '-' }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="cumulative_return" label="累计收益率" width="130" align="right">
-            <template slot-scope="scope">
-              <span :style="{ color: getReturnColor(scope.row.cumulative_return) }">
-                {{ scope.row.cumulative_return !== null && scope.row.cumulative_return !== undefined 
-                   ? (scope.row.cumulative_return * 100).toFixed(2) + '%' 
-                   : '-' }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="drawdown" label="回撤" width="120" align="right">
-            <template slot-scope="scope">
-              <span style="color: #67C23A;">
-                {{ scope.row.drawdown !== null && scope.row.drawdown !== undefined 
-                   ? (scope.row.drawdown * 100).toFixed(2) + '%' 
-                   : '-' }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="is_rebalance" label="调仓日" width="100" align="center">
-            <template slot-scope="scope">
-              <el-tag v-if="scope.row.is_rebalance" type="warning" size="mini">调仓</el-tag>
-              <span v-else>-</span>
-            </template>
-          </el-table-column>
-        </el-table>
 
-        <el-pagination
-          style="margin-top: 20px; text-align: right;"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentChange"
-          :current-page="currentPage"
-          :page-sizes="[20, 50, 100, 200]"
-          :page-size="pageSize"
-          layout="total, sizes, prev, pager, next, jumper"
-          :total="navHistory.length"
-        ></el-pagination>
-      </el-card>
     </div>
   </div>
 </template>
@@ -231,7 +156,8 @@
 <script>
 import dayjs from 'dayjs';
 import * as echarts from 'echarts';
-import { mapState, mapActions, mapGetters } from 'vuex';
+import { mapState, mapActions } from 'vuex';
+import * as monitorApi from '@/api/monitor';
 
 export default {
   name: 'MonitorNavHistory',
@@ -239,29 +165,22 @@ export default {
     return {
       loading: false,
       dateRange: [],
-      currentPage: 1,
-      pageSize: 50,
       mainChart: null,
       attributionChart: null,
       returnsDisplayDays: 20,
-      // 损益归因数据（简化版，从持仓数据计算）
+      // 损益归因数据
       attributionData: [],
-      totalContribution: 0,
-      actualNavChange: 0
+      totalPnl: 0
     };
   },
   computed: {
-    ...mapState('monitor', ['navHistory', 'positions', 'monitorState']),
+    ...mapState('monitor', ['navHistory', 'monitorState']),
     // 最新日期
     latestDate() {
       if (this.navHistory && this.navHistory.length > 0) {
         return this.navHistory[this.navHistory.length - 1].date;
       }
       return null;
-    },
-    // 归因差异
-    attributionDiff() {
-      return this.actualNavChange - this.totalContribution;
     },
     // 每日收益表格数据
     returnsTableData() {
@@ -286,15 +205,6 @@ export default {
       }
       // 最新在前
       return result.reverse();
-    },
-    paginatedData() {
-      const start = (this.currentPage - 1) * this.pageSize;
-      const end = start + this.pageSize;
-      // 按日期倒序排序
-      const sorted = [...this.navHistory].sort((a, b) => {
-        return new Date(b.date) - new Date(a.date);
-      });
-      return sorted.slice(start, end);
     },
     statistics() {
       if (this.navHistory.length < 2) {
@@ -374,16 +284,33 @@ export default {
     window.removeEventListener('resize', this.handleResize);
   },
   methods: {
-    ...mapActions('monitor', ['fetchNavHistory', 'fetchPositions']),
+    ...mapActions('monitor', ['fetchNavHistory']),
     async loadData() {
       this.loading = true;
       try {
         const params = this.getDateRangeParams();
-        await Promise.all([
-          this.fetchNavHistory(params),
-          this.fetchPositions()
-        ]);
-        this.computeAttribution();
+        await this.fetchNavHistory(params);
+        
+        // 获取最新日期的损益归因
+        const latestDate = this.navHistory && this.navHistory.length > 0 
+          ? this.navHistory[this.navHistory.length - 1].date 
+          : null;
+        if (latestDate) {
+          try {
+            const attrRes = await monitorApi.getDailyAttribution({ 
+              monitor_id: 'default', 
+              date: latestDate 
+            });
+            const attrData = (attrRes && attrRes.data) ? attrRes.data : attrRes;
+            this.attributionData = (attrData && attrData.attributions) ? attrData.attributions : [];
+            this.totalPnl = (attrData && attrData.total_pnl) ? attrData.total_pnl : 0;
+          } catch (err) {
+            console.warn('获取损益归因失败:', err);
+            this.attributionData = [];
+            this.totalPnl = 0;
+          }
+        }
+        
         this.$nextTick(() => {
           this.initChart();
           this.renderMainChart();
@@ -500,7 +427,7 @@ export default {
             name: '日收益率(%)',
             position: 'right',
             axisLabel: {
-              formatter: '{value}%'
+              formatter: (value) => value.toFixed(2) + '%'
             }
           }
         ],
@@ -562,119 +489,87 @@ export default {
         this.attributionChart.resize();
       }
     },
-    // 计算损益归因（简化版，基于持仓权重估算）
-    computeAttribution() {
-      // 简化版损益归因：如果有持仓数据且有日收益率，估算各资产贡献
-      // 注：这是简化实现，真实归因需要各资产日价格数据
-      if (!this.positions || this.positions.length === 0) {
-        this.attributionData = [];
-        return;
-      }
-      if (!this.navHistory || this.navHistory.length < 2) {
-        this.attributionData = [];
-        return;
-      }
-      
-      const latestNav = this.navHistory[this.navHistory.length - 1].nav;
-      const prevNav = this.navHistory[this.navHistory.length - 2].nav;
-      this.actualNavChange = latestNav - prevNav;
-      const dailyReturn = latestNav / prevNav - 1;
-      
-      // 简化归因：假设各资产收益与整体收益率相同（这是一个粗略估计）
-      // 真实归因需要各资产的实际日收益率
-      const attribution = [];
-      let total = 0;
-      for (const pos of this.positions) {
-        if (Math.abs(pos.weight) < 0.0001) continue;
-        // 估算贡献 = 权重 × 日收益率 × 净值
-        const contribution = pos.weight * dailyReturn * prevNav;
-        attribution.push({
-          asset: pos.asset,
-          weight: pos.weight,
-          contribution: contribution
-        });
-        total += contribution;
-      }
-      // 按贡献绝对值排序
-      attribution.sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
-      this.attributionData = attribution;
-      this.totalContribution = total;
-    },
     // 渲染损益归因图
     renderAttributionChart() {
-      if (!this.$refs.attributionChart || this.attributionData.length === 0) {
-        return;
-      }
+      if (!this.$refs.attributionChart) return;
       if (!this.attributionChart) {
         this.attributionChart = echarts.init(this.$refs.attributionChart);
       }
       
-      const assets = this.attributionData.map(d => d.asset);
-      const contributions = this.attributionData.map(d => d.contribution);
-      const colors = contributions.map(c => c >= 0 ? '#00a651' : '#d62728');
+      if (!this.attributionData || this.attributionData.length === 0) return;
       
-      const option = {
+      // 按贡献金额排序（正值在上，负值在下）
+      var sorted = this.attributionData.slice().sort(function(a, b) {
+        return (a.contribution || 0) - (b.contribution || 0);
+      });
+      
+      var names = sorted.map(function(item) { return item.name; });
+      var values = sorted.map(function(item) { return item.contribution || 0; });
+      
+      var option = {
+        title: {
+          text: '当日损益归因',
+          subtext: '各资产对组合损益的贡献（元）',
+          left: 'center',
+          textStyle: { fontSize: 14 }
+        },
         tooltip: {
           trigger: 'axis',
           axisPointer: { type: 'shadow' },
-          formatter: (params) => {
-            const data = params[0];
-            const idx = data.dataIndex;
-            const item = this.attributionData[idx];
-            return `${item.asset}<br/>权重: ${(item.weight * 100).toFixed(2)}%<br/>收益贡献: ${item.contribution >= 0 ? '+' : ''}${item.contribution.toFixed(4)}`;
+          formatter: function(params) {
+            var data = params[0];
+            var item = sorted[data.dataIndex];
+            var lines = [
+              '<b>' + data.name + '</b>',
+              '贡献: ' + (data.value >= 0 ? '+' : '') + data.value.toFixed(2) + ' 元',
+              '权重: ' + ((item && item.weight) || 0).toFixed(2) + '%',
+              '当日涨跌: ' + ((item && item.daily_change) || 0).toFixed(4) + '%'
+            ];
+            return lines.join('<br/>');
           }
         },
         grid: {
-          left: '100px',
-          right: '80px',
-          top: '20px',
-          bottom: '20px'
+          left: '20%',
+          right: '10%',
+          top: '15%',
+          bottom: '5%'
         },
         xAxis: {
           type: 'value',
-          name: '收益贡献',
+          name: '贡献(元)',
           axisLabel: {
-            formatter: '{value}'
+            formatter: function(value) { return value.toFixed(1); }
           }
         },
         yAxis: {
           type: 'category',
-          data: assets,
-          inverse: true,
-          axisLabel: {
-            fontSize: 11
-          }
+          data: names,
+          axisLabel: { fontSize: 11 }
         },
         series: [{
-          name: '收益贡献',
           type: 'bar',
-          data: contributions.map((c, i) => ({
-            value: c,
-            itemStyle: { color: colors[i] }
-          })),
+          data: values,
+          itemStyle: {
+            color: function(params) {
+              return params.value >= 0 ? '#F56C6C' : '#67C23A';
+            }
+          },
           label: {
             show: true,
             position: 'right',
-            formatter: (params) => {
-              const v = params.value;
-              return v >= 0 ? '+' + v.toFixed(4) : v.toFixed(4);
+            formatter: function(params) {
+              return (params.value >= 0 ? '+' : '') + params.value.toFixed(2);
             },
-            fontSize: 10
+            fontSize: 11
           }
         }]
       };
+      
       this.attributionChart.setOption(option, true);
     },
     // 更新收益表格
     updateReturnsTable() {
       // 计算属性会自动响应
-    },
-    handleSizeChange(size) {
-      this.pageSize = size;
-      this.currentPage = 1;
-    },
-    handleCurrentChange(page) {
-      this.currentPage = page;
     },
     handleExport() {
       if (this.navHistory.length === 0) {
@@ -782,13 +677,6 @@ export default {
   justify-content: space-between;
   align-items: center;
   font-weight: 500;
-}
-
-.attribution-placeholder {
-  min-height: 200px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .attribution-summary {
