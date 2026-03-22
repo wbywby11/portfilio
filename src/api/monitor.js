@@ -11,7 +11,8 @@ export function getMonitorState(monitorId = 'default') {
   return request({
     url: '/api/v1/monitor/state',
     method: 'get',
-    params: { monitor_id: monitorId }
+    params: { monitor_id: monitorId },
+    skipGlobal404Message: true
   });
 }
 
@@ -24,7 +25,8 @@ export function getNavHistory(params = {}) {
       monitor_id: (params && params.monitor_id) || 'default',
       start: params && params.start,
       end: params && params.end
-    }
+    },
+    skipGlobal404Message: true
   });
 }
 
@@ -55,7 +57,8 @@ export function getMonitorPerformance(monitorId = 'default') {
   return request({
     url: '/api/v1/monitor/performance',
     method: 'get',
-    params: { monitor_id: monitorId }
+    params: { monitor_id: monitorId },
+    skipGlobal404Message: true
   });
 }
 
@@ -64,7 +67,8 @@ export function getMonitorSignals(monitorId = 'default') {
   return request({
     url: '/api/v1/monitor/signals',
     method: 'get',
-    params: { monitor_id: monitorId }
+    params: { monitor_id: monitorId },
+    skipGlobal404Message: true
   });
 }
 

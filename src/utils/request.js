@@ -42,10 +42,15 @@ service.interceptors.response.use(
           Message.error('未授权，请重新登录');
           store.dispatch('user/logout');
           break;
-        case 403:
-          Message.error('拒绝访问');
+        case 403: {
+          const detail = data && (data.detail || data.message);
+          Message.error(detail ? String(detail) : '拒绝访问');
           break;
+        }
         case 404:
+          if (error.config && error.config.skipGlobal404Message) {
+            break;
+          }
           Message.error('请求的资源不存在');
           break;
         // 500 和其他业务错误由组件级 catch 处理
@@ -56,8 +61,17 @@ service.interceptors.response.use(
       const isTimeout = msg.includes('timeout') || error.code === 'ECONNABORTED';
       const isNetwork = msg.includes('network') || msg.includes('failed to fetch') || msg.includes('load failed');
       if (isTimeout || isNetwork) {
+        const cfg = error.config || {};
+        const reqUrl = String(cfg.url || '');
+        const base = String(cfg.baseURL || process.env.VUE_APP_BASE_URL || '');
+        const isStrategyLight =
+          reqUrl.includes('live-publish') ||
+          reqUrl.includes('live-unpublish') ||
+          reqUrl.includes('/publish') && reqUrl.includes('strategy-models');
         const tip = isTimeout
-          ? '请求超时，请检查后端是否已启动、网络是否正常；若为大量数据可缩小日期范围或使用「同步行情」'
+          ? (isStrategyLight
+            ? `请求超时。实盘/发布类接口通常几秒内完成，若持续超时请检查：① portfilio-end 是否已启动 ② 前端环境变量 VUE_APP_BASE_URL 是否指向正确 API（当前 ${base || '(默认 127.0.0.1:8000)'}）③ MongoDB 是否可连`
+            : '请求超时，请检查后端是否已启动、网络是否正常；若为大量数据可缩小日期范围或使用「同步行情」')
           : '连接失败，请检查：① 后端服务是否已启动 ② 网络是否正常';
         Message.error({
           message: tip,

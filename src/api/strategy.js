@@ -124,20 +124,22 @@ export function getMaxWeightsByCodes(thscodes) {
   });
 }
 
-// 发布模型
+// 发布模型（个别环境 Mongo/网络较慢，单独放宽超时）
 export function publishModel(modelId) {
   return request({
     url: `/api/v1/strategy-models/${modelId}/publish`,
-    method: 'post'
+    method: 'post',
+    timeout: 120000
   });
 }
 
-// 实盘发布（T+1 生效）
+// 实盘发布（T+1 生效；后端为轻量写库，超时多为 API 地址/后端未就绪，仍放宽以避免偶发慢查询）
 export function livePublishModel(modelId, data = {}) {
   return request({
     url: `/api/v1/strategy-models/${modelId}/live-publish`,
     method: 'post',
-    data
+    data,
+    timeout: 180000
   });
 }
 
@@ -146,7 +148,8 @@ export function liveUnpublishModel(modelId, params = {}) {
   return request({
     url: `/api/v1/strategy-models/${modelId}/live-unpublish`,
     method: 'post',
-    params
+    params,
+    timeout: 120000
   });
 }
 
@@ -171,6 +174,15 @@ export function updateLiveConfig(modelId, data) {
 export function getLivePublishedModelList(params) {
   return request({
     url: '/api/v1/strategy-models/live/published',
+    method: 'get',
+    params
+  });
+}
+
+/** 日常监控准入：已实盘发布 + risk_budget_target_vol + 混合动量 */
+export function getLiveEligibleForMonitor(params) {
+  return request({
+    url: '/api/v1/strategy-models/live/eligible-for-monitor',
     method: 'get',
     params
   });

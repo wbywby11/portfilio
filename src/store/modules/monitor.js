@@ -1,21 +1,45 @@
 import * as monitorApi from '@/api/monitor';
 
+function resolveMonitorId(state, explicit) {
+  if (explicit !== undefined && explicit !== null && String(explicit).length > 0) {
+    return explicit;
+  }
+  return state.activeMonitorId;
+}
+
 const state = {
-  monitorState: null,        // 当前监控状态
-  navHistory: [],            // 净值历史
-  positions: [],             // 持仓明细
-  performance: null,         // 绩效指标
-  signals: null,             // 信号状态
-  events: [],                // 事件日志
-  reportList: [],            // 日报列表
-  currentReport: null,       // 当前日报
-  subjectiveOverrides: [],   // 主观调仓指令列表
-  assetMetrics: [],          // 资产波动率指标
-  correlationMatrix: null,   // 资产相关性矩阵
+  activeMonitorId: null,
+  monitorState: null,
+  navHistory: [],
+  positions: [],
+  performance: null,
+  signals: null,
+  events: [],
+  reportList: [],
+  currentReport: null,
+  subjectiveOverrides: [],
+  assetMetrics: [],
+  correlationMatrix: null,
   loading: false
 };
 
 const mutations = {
+  SET_ACTIVE_MONITOR_ID(state, id) {
+    state.activeMonitorId = id || null;
+  },
+  RESET_MONITOR_VIEW(state) {
+    state.monitorState = null;
+    state.navHistory = [];
+    state.positions = [];
+    state.performance = null;
+    state.signals = null;
+    state.events = [];
+    state.reportList = [];
+    state.currentReport = null;
+    state.subjectiveOverrides = [];
+    state.assetMetrics = [];
+    state.correlationMatrix = null;
+  },
   SET_MONITOR_STATE(state, data) {
     state.monitorState = data;
   },
@@ -55,16 +79,24 @@ const mutations = {
 };
 
 const actions = {
-  // 获取监控状态
-  async fetchMonitorState({ commit }, monitorId = 'default') {
+  setActiveMonitorContext({ commit }, { monitorId }) {
+    commit('SET_ACTIVE_MONITOR_ID', monitorId);
+    commit('RESET_MONITOR_VIEW');
+  },
+
+  async fetchMonitorState({ commit, state }, monitorId) {
+    const id = resolveMonitorId(state, monitorId);
+    if (!id) {
+      commit('SET_MONITOR_STATE', null);
+      return null;
+    }
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.getMonitorState(monitorId);
+      const res = await monitorApi.getMonitorState(id);
       const data = res.data || res;
       commit('SET_MONITOR_STATE', data);
       return data;
     } catch (error) {
-      // 404 表示未初始化，不抛异常，保持 monitorState 为 null
       console.warn('获取监控状态失败（可能未初始化）:', error.message);
       commit('SET_MONITOR_STATE', null);
       return null;
@@ -73,11 +105,15 @@ const actions = {
     }
   },
 
-  // 获取净值历史
-  async fetchNavHistory({ commit }, params = {}) {
+  async fetchNavHistory({ commit, state }, params = {}) {
+    const id = resolveMonitorId(state, params.monitor_id);
+    if (!id) {
+      commit('SET_NAV_HISTORY', []);
+      return [];
+    }
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.getNavHistory(params);
+      const res = await monitorApi.getNavHistory({ ...params, monitor_id: id });
       const data = Array.isArray(res) ? res : (res.data || []);
       commit('SET_NAV_HISTORY', data);
       return data;
@@ -90,13 +126,16 @@ const actions = {
     }
   },
 
-  // 获取持仓明细
-  async fetchPositions({ commit }, monitorId = 'default') {
+  async fetchPositions({ commit, state }, monitorId) {
+    const id = resolveMonitorId(state, monitorId);
+    if (!id) {
+      commit('SET_POSITIONS', []);
+      return null;
+    }
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.getMonitorPositions(monitorId);
+      const res = await monitorApi.getMonitorPositions(id);
       const payload = res.data || res;
-      // 如果 payload 是对象且包含 positions 数组，则提取
       const positions = payload.positions || (Array.isArray(payload) ? payload : []);
       commit('SET_POSITIONS', positions);
       return payload;
@@ -108,11 +147,15 @@ const actions = {
     }
   },
 
-  // 获取绩效指标
-  async fetchPerformance({ commit }, monitorId = 'default') {
+  async fetchPerformance({ commit, state }, monitorId) {
+    const id = resolveMonitorId(state, monitorId);
+    if (!id) {
+      commit('SET_PERFORMANCE', null);
+      return null;
+    }
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.getMonitorPerformance(monitorId);
+      const res = await monitorApi.getMonitorPerformance(id);
       const data = res.data || res;
       commit('SET_PERFORMANCE', data);
       return data;
@@ -125,11 +168,15 @@ const actions = {
     }
   },
 
-  // 获取信号状态
-  async fetchSignals({ commit }, monitorId = 'default') {
+  async fetchSignals({ commit, state }, monitorId) {
+    const id = resolveMonitorId(state, monitorId);
+    if (!id) {
+      commit('SET_SIGNALS', null);
+      return null;
+    }
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.getMonitorSignals(monitorId);
+      const res = await monitorApi.getMonitorSignals(id);
       const data = res.data || res;
       commit('SET_SIGNALS', data);
       return data;
@@ -142,11 +189,15 @@ const actions = {
     }
   },
 
-  // 获取事件日志
-  async fetchEvents({ commit }, params = {}) {
+  async fetchEvents({ commit, state }, params = {}) {
+    const id = resolveMonitorId(state, params.monitor_id);
+    if (!id) {
+      commit('SET_EVENTS', []);
+      return [];
+    }
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.getMonitorEvents(params);
+      const res = await monitorApi.getMonitorEvents({ ...params, monitor_id: id });
       const data = Array.isArray(res) ? res : (res.data || []);
       commit('SET_EVENTS', data);
       return data;
@@ -159,11 +210,15 @@ const actions = {
     }
   },
 
-  // 获取日报列表
-  async fetchReportList({ commit }, params = {}) {
+  async fetchReportList({ commit, state }, params = {}) {
+    const id = resolveMonitorId(state, params.monitor_id);
+    if (!id) {
+      commit('SET_REPORT_LIST', []);
+      return [];
+    }
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.getMonitorReportList(params);
+      const res = await monitorApi.getMonitorReportList({ ...params, monitor_id: id });
       const data = Array.isArray(res) ? res : (res.data || []);
       commit('SET_REPORT_LIST', data);
       return data;
@@ -175,11 +230,15 @@ const actions = {
     }
   },
 
-  // 获取指定日期日报
-  async fetchReport({ commit }, { date, monitorId = 'default' }) {
+  async fetchReport({ commit, state }, { date, monitorId }) {
+    const id = resolveMonitorId(state, monitorId);
+    if (!id) {
+      commit('SET_CURRENT_REPORT', null);
+      return null;
+    }
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.getMonitorReport(date, monitorId);
+      const res = await monitorApi.getMonitorReport(date, id);
       const data = res.data || res;
       commit('SET_CURRENT_REPORT', data);
       return data;
@@ -191,11 +250,14 @@ const actions = {
     }
   },
 
-  // 运行监控（单日）
-  async runMonitorAction({ commit }, data) {
+  async runMonitorAction({ commit, state }, data = {}) {
+    const id = resolveMonitorId(state, data.monitor_id);
+    if (!id) {
+      throw new Error('未选择监控策略，无法运行日常监控');
+    }
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.runMonitor(data);
+      const res = await monitorApi.runMonitor({ ...data, monitor_id: id });
       return res.data || res;
     } catch (error) {
       console.error('运行监控失败:', error);
@@ -205,11 +267,14 @@ const actions = {
     }
   },
 
-  // 初始化监控
-  async initMonitorAction({ commit }, data) {
+  async initMonitorAction({ commit, state }, data = {}) {
+    const id = resolveMonitorId(state, data.monitor_id);
+    if (!id) {
+      throw new Error('未选择监控策略，无法初始化监控');
+    }
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.initMonitor(data);
+      const res = await monitorApi.initMonitor({ ...data, monitor_id: id });
       return res.data || res;
     } catch (error) {
       console.error('初始化监控失败:', error);
@@ -219,11 +284,14 @@ const actions = {
     }
   },
 
-  // 运行监控（日期范围）
-  async runMonitorRangeAction({ commit }, data) {
+  async runMonitorRangeAction({ commit, state }, data = {}) {
+    const id = resolveMonitorId(state, data.monitor_id);
+    if (!id) {
+      throw new Error('未选择监控策略，无法运行监控');
+    }
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.runMonitorRange(data);
+      const res = await monitorApi.runMonitorRange({ ...data, monitor_id: id });
       return res.data || res;
     } catch (error) {
       console.error('运行监控（范围）失败:', error);
@@ -233,11 +301,15 @@ const actions = {
     }
   },
 
-  // 获取主观调仓指令列表
-  async fetchSubjectiveOverrides({ commit }, params = {}) {
+  async fetchSubjectiveOverrides({ commit, state }, params = {}) {
+    const id = resolveMonitorId(state, params.monitor_id);
+    if (!id) {
+      commit('SET_SUBJECTIVE_OVERRIDES', []);
+      return [];
+    }
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.getSubjectiveOverrides(params);
+      const res = await monitorApi.getSubjectiveOverrides({ ...params, monitor_id: id });
       const data = Array.isArray(res) ? res : (res.data || []);
       commit('SET_SUBJECTIVE_OVERRIDES', data);
       return data;
@@ -249,13 +321,16 @@ const actions = {
     }
   },
 
-  // 添加主观调仓指令
-  async addSubjectiveOverrideAction({ commit, dispatch }, data) {
+  async addSubjectiveOverrideAction({ commit, dispatch, state }, data) {
+    const id = resolveMonitorId(state, data.monitor_id);
+    if (!id) {
+      throw new Error('未选择监控策略，无法提交主观调仓');
+    }
+    const payload = { ...data, monitor_id: id };
     try {
       commit('SET_LOADING', true);
-      const res = await monitorApi.addSubjectiveOverride(data);
-      // 重新获取列表以更新状态
-      await dispatch('fetchSubjectiveOverrides', { monitor_id: data.monitor_id });
+      const res = await monitorApi.addSubjectiveOverride(payload);
+      await dispatch('fetchSubjectiveOverrides', { monitor_id: id });
       return res.data || res;
     } catch (error) {
       console.error('添加主观调仓指令失败:', error);
@@ -265,13 +340,15 @@ const actions = {
     }
   },
 
-  // 取消主观调仓指令
-  async cancelSubjectiveOverrideAction({ commit, dispatch }, { overrideId, monitorId = 'default' }) {
+  async cancelSubjectiveOverrideAction({ commit, dispatch, state }, { overrideId, monitorId }) {
+    const id = resolveMonitorId(state, monitorId);
+    if (!id) {
+      throw new Error('未选择监控策略，无法取消指令');
+    }
     try {
       commit('SET_LOADING', true);
       const res = await monitorApi.cancelSubjectiveOverride(overrideId);
-      // 重新获取列表以更新状态
-      await dispatch('fetchSubjectiveOverrides', { monitor_id: monitorId });
+      await dispatch('fetchSubjectiveOverrides', { monitor_id: id });
       return res.data || res;
     } catch (error) {
       console.error('取消主观调仓指令失败:', error);
@@ -281,12 +358,11 @@ const actions = {
     }
   },
 
-  // 获取资产分析数据（相关性矩阵和波动率指标）
   async fetchAssetAnalysis({ commit }, { thscodes, startDate, endDate }) {
     try {
       var start = startDate.replace(/-/g, '');
       var end = endDate.replace(/-/g, '');
-      
+
       var results = await Promise.all([
         monitorApi.getPositionsCorrelationMatrix({
           thscodes: thscodes,
@@ -299,17 +375,16 @@ const actions = {
           end_date: end
         })
       ]);
-      
+
       var correlationRes = results[0];
       var metricsRes = results[1];
-      
-      // 后端返回格式可能是 {code: 0, data: {...}} 或直接是数据
+
       var correlationData = (correlationRes && correlationRes.data) ? correlationRes.data : correlationRes;
       var metricsData = (metricsRes && metricsRes.data) ? metricsRes.data : metricsRes;
-      
+
       commit('SET_CORRELATION_MATRIX', correlationData);
       commit('SET_ASSET_METRICS', Array.isArray(metricsData) ? metricsData : []);
-      
+
       return { correlationData: correlationData, metricsData: metricsData };
     } catch (error) {
       console.warn('获取资产分析数据失败:', error);
@@ -322,6 +397,7 @@ const actions = {
 
 const getters = {
   monitorState: state => state.monitorState,
+  activeMonitorId: state => state.activeMonitorId,
   isLoading: state => state.loading,
   latestNav: state => state.monitorState && state.monitorState.nav,
   hasActiveSignals: state => {

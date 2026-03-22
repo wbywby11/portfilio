@@ -50,6 +50,16 @@
           class="alert-item">
         </el-alert>
         
+        <el-alert
+          v-if="volStatus === 'nodata'"
+          title="暂无信号数据"
+          type="info"
+          description="请先完成日常监控初始化并运行，或等待数据加载。"
+          show-icon
+          :closable="false"
+          class="alert-item">
+        </el-alert>
+
         <!-- 无风险提示 -->
         <el-alert
           v-if="!pendingRebalance && volStatus === 'normal'"
@@ -317,66 +327,79 @@ export default {
     
     // ===== 波动率相关 =====
     volReset: function() {
-      return (this.signals && this.signals.vol_reset) || {};
+      return (this.signals && this.signals.vol_reset) ? this.signals.vol_reset : null;
     },
     currentVolatility: function() {
-      return this.volReset.current_volatility || 0;
+      if (!this.volReset) return null;
+      var v = this.volReset.current_volatility;
+      if (v === undefined || v === null) return null;
+      return v;
     },
     volThreshold: function() {
+      if (!this.volReset) return null;
       var threshold = this.volReset.threshold;
-      // 如果是小数形式（如0.06），保持；如果是百分比数字（如6），转为小数
       if (threshold !== undefined && threshold !== null) {
         return threshold > 1 ? threshold / 100 : threshold;
       }
-      return 0.06;  // 默认6%
+      return null;
     },
     volStatus: function() {
+      if (!this.signals || !this.volReset) return 'nodata';
+      if (this.currentVolatility === null || this.volThreshold === null || this.volThreshold <= 0) {
+        return 'nodata';
+      }
       var status = this.volReset.status;
       if (status) return status;
-      // 兼容：根据当前波动率计算状态
-      var ratio = this.volThreshold > 0 ? this.currentVolatility / this.volThreshold : 0;
+      var ratio = this.currentVolatility / this.volThreshold;
       if (ratio >= 1) return 'danger';
       if (ratio >= 0.85) return 'warning';
       return 'normal';
     },
     volStatusType: function() {
       var status = this.volStatus;
+      if (status === 'nodata') return 'info';
       if (status === 'danger') return 'danger';
       if (status === 'warning') return 'warning';
       return 'success';
     },
     volStatusText: function() {
       var status = this.volStatus;
+      if (status === 'nodata') return '未加载';
       if (status === 'danger') return '已触发';
       if (status === 'warning') return '预警';
       return '正常';
     },
     volValueClass: function() {
       var status = this.volStatus;
+      if (status === 'nodata') return 'vol-normal';
       if (status === 'danger') return 'vol-danger';
       if (status === 'warning') return 'vol-warning';
       return 'vol-normal';
     },
     volProgressPercent: function() {
-      if (!this.volThreshold) return 0;
+      if (this.currentVolatility === null || !this.volThreshold || this.volThreshold <= 0) return 0;
       return Math.min(Math.round(this.currentVolatility / this.volThreshold * 100), 100);
     },
     distanceToTrigger: function() {
-      if (this.volReset.distance_to_trigger !== undefined) {
-        // 后端返回的可能是百分点形式
+      if (!this.volReset) return null;
+      if (this.volReset.distance_to_trigger !== undefined && this.volReset.distance_to_trigger !== null) {
         var dist = this.volReset.distance_to_trigger;
         return dist > 1 ? dist / 100 : dist;
       }
+      if (this.currentVolatility === null || this.volThreshold === null) return null;
       return Math.max(0, this.volThreshold - this.currentVolatility);
     },
     distanceColor: function() {
-      var ratio = this.volThreshold > 0 ? this.currentVolatility / this.volThreshold : 0;
+      if (this.volStatus === 'nodata' || !this.volThreshold || this.volThreshold <= 0) return '#909399';
+      var cv = this.currentVolatility;
+      if (cv === null) return '#909399';
+      var ratio = cv / this.volThreshold;
       if (ratio >= 0.9) return '#F56C6C';
       if (ratio >= 0.7) return '#E6A23C';
       return '#67C23A';
     },
     volWindows: function() {
-      return this.volReset.vol_windows || {};
+      return (this.volReset && this.volReset.vol_windows) ? this.volReset.vol_windows : {};
     },
     volatilityHistory: function() {
       return (this.signals && this.signals.volatility_history) || [];
@@ -495,7 +518,9 @@ export default {
         return val > 1 ? val : (val * 100);
       });
       
-      var thresholdPct = this.volThreshold * 100;
+      var thresholdPct = (this.volThreshold != null && !Number.isNaN(this.volThreshold))
+        ? this.volThreshold * 100
+        : 6;
       
       var option = {
         tooltip: {
@@ -591,8 +616,10 @@ export default {
     getRebalanceTypeTag: function(type) {
       var map = {
         // 新格式
+        'init': 'success',
         'monthly': 'primary',
         'vol_reset': 'danger',
+        'vol_reset_trigger': 'warning',
         'subjective': 'warning',
         // 旧格式兼容
         'monthly_rebalance': 'primary',
@@ -604,8 +631,10 @@ export default {
     getRebalanceTypeLabel: function(type) {
       var map = {
         // 新格式
+        'init': '策略初始化',
         'monthly': '月度调仓',
         'vol_reset': '波动率重置',
+        'vol_reset_trigger': '波动率重置(触发)',
         'subjective': '主观调仓',
         // 旧格式兼容
         'monthly_rebalance': '月度调仓',

@@ -174,7 +174,7 @@ export default {
     };
   },
   computed: {
-    ...mapState('monitor', ['navHistory', 'monitorState']),
+    ...mapState('monitor', ['navHistory', 'monitorState', 'activeMonitorId']),
     // 最新日期
     latestDate() {
       if (this.navHistory && this.navHistory.length > 0) {
@@ -297,9 +297,9 @@ export default {
           : null;
         if (latestDate) {
           try {
-            const attrRes = await monitorApi.getDailyAttribution({ 
-              monitor_id: 'default', 
-              date: latestDate 
+            const attrRes = await monitorApi.getDailyAttribution({
+              monitor_id: this.activeMonitorId,
+              date: latestDate
             });
             const attrData = (attrRes && attrRes.data) ? attrRes.data : attrRes;
             this.attributionData = (attrData && attrData.attributions) ? attrData.attributions : [];

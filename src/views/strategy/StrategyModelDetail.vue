@@ -27,6 +27,36 @@
         >
           创建模拟组合
         </el-button>
+        <el-button
+          type="primary"
+          plain
+          icon="el-icon-upload2"
+          :disabled="!canOperateLivePublish"
+          :loading="livePublishing"
+          @click="handleLivePublish"
+        >
+          实盘发布
+        </el-button>
+        <el-button
+          v-if="model.live_publish_enabled"
+          type="danger"
+          plain
+          icon="el-icon-close"
+          :disabled="isArchivedModel"
+          :loading="liveUnpublishing"
+          @click="handleLiveUnpublish"
+        >
+          取消实盘发布
+        </el-button>
+        <el-button
+          v-if="model.live_publish_enabled && model.live_snapshot_outdated"
+          type="warning"
+          plain
+          :loading="liveRepublishing"
+          @click="handleLiveRepublish"
+        >
+          同步到最新实盘
+        </el-button>
       </div>
     </div>
     <div v-else style="margin-bottom: 20px; display: flex; justify-content: flex-end; gap: 10px;">
@@ -56,6 +86,39 @@
         >
           创建模拟组合
         </el-button>
+        <el-button
+          type="primary"
+          size="small"
+          plain
+          icon="el-icon-upload2"
+          :disabled="!canOperateLivePublish"
+          :loading="livePublishing"
+          @click="handleLivePublish"
+        >
+          实盘发布
+        </el-button>
+        <el-button
+          v-if="model.live_publish_enabled"
+          type="danger"
+          size="small"
+          plain
+          icon="el-icon-close"
+          :disabled="isArchivedModel"
+          :loading="liveUnpublishing"
+          @click="handleLiveUnpublish"
+        >
+          取消实盘
+        </el-button>
+        <el-button
+          v-if="model.live_publish_enabled && model.live_snapshot_outdated"
+          type="warning"
+          size="small"
+          plain
+          :loading="liveRepublishing"
+          @click="handleLiveRepublish"
+        >
+          同步实盘
+        </el-button>
     </div>
 
     <div :class="{'page-content': !isDialog}" v-loading="loading">
@@ -74,6 +137,20 @@
                 <el-tag :type="getStatusType(model.status)" size="small">
                   {{ getStatusLabel(model.status) }}
                 </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="实盘发布">
+                <el-tag :type="model.live_publish_enabled ? 'success' : 'info'" size="small">
+                  {{ model.live_publish_enabled ? '已实盘发布' : '未实盘发布' }}
+                </el-tag>
+                <span v-if="model.live_publish_enabled && model.live_effective_date" style="margin-left: 8px; color: #909399; font-size: 13px;">
+                  生效日 {{ formatDateShort(model.live_effective_date) }}
+                </span>
+                <el-tag v-if="model.live_publish_enabled && model.live_snapshot_outdated" type="warning" size="mini" style="margin-left: 8px;">
+                  快照待同步
+                </el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="日常监控" v-if="model.template_code === 'risk_budget_target_vol' && model.selector_type === 'hybrid'">
+                <span style="color: #606266; font-size: 13px;">已实盘发布后可在「分析 → 日常监控」中按本策略实例跟踪；monitor_id 为本模型 ID。</span>
               </el-descriptions-item>
               <el-descriptions-item label="算法模板">
                 {{ model.template_name || model.template_code }}
@@ -486,8 +563,15 @@ export default {
         parameters: {},
         asset_codes: [],
         rebalance_frequency: '',
-        created_at: null
+        created_at: null,
+        live_publish_enabled: false,
+        live_snapshot_outdated: false,
+        live_effective_date: null,
+        selector_type: null
       },
+      livePublishing: false,
+      liveUnpublishing: false,
+      liveRepublishing: false,
       backtestHistory: [],
       backtestPagination: {
         skip: 0,
@@ -543,6 +627,16 @@ export default {
     },
     currentPage() {
       return Math.floor(this.backtestPagination.skip / this.backtestPagination.limit) + 1;
+    },
+    isPublishedModel() {
+      return this.model.status === '已发布' || this.model.status === 'published';
+    },
+    isArchivedModel() {
+      return this.model.status === '已归档' || this.model.status === 'archived';
+    },
+    /** 已发布且未归档、尚未实盘发布时可点「实盘发布」 */
+    canOperateLivePublish() {
+      return this.isPublishedModel && !this.isArchivedModel && !this.model.live_publish_enabled;
     }
   },
   created() {
@@ -644,6 +738,81 @@ export default {
           await this.loadData();
         } catch (error) {
           this.$message.error('发布失败：' + (error.response?.data?.detail || error.message));
+        }
+      }).catch(() => {});
+    },
+    liveOperator() {
+      return this.$store.getters['user/userName']
+        || this.$store.state.user?.userInfo?.name
+        || this.$store.state.user?.userInfo?.username
+        || 'unknown';
+    },
+    async handleLivePublish() {
+      if (!this.canOperateLivePublish) return;
+      this.$confirm(
+        '确认将该策略实盘发布？新版本将于次交易日生效；可与「日常监控」关联（risk_budget_target_vol + 混合动量策略将出现在监控准入列表）。',
+        '实盘发布',
+        { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+      ).then(async () => {
+        this.livePublishing = true;
+        try {
+          await this.$store.dispatch('strategy/livePublishModel', {
+            modelId: this.modelId,
+            data: { source: 'strategy_model_detail', operator: this.liveOperator() }
+          });
+          this.$message.success('实盘发布成功');
+          await this.loadData();
+        } catch (error) {
+          this.$message.error(error.response?.data?.detail || error.message || '实盘发布失败');
+        } finally {
+          this.livePublishing = false;
+        }
+      }).catch(() => {});
+    },
+    async handleLiveUnpublish() {
+      this.$confirm('确认取消该策略的实盘发布？日常监控将不再包含此策略实例（已写入的监控数据仍保留）。', '取消实盘发布', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(async () => {
+        this.liveUnpublishing = true;
+        try {
+          await this.$store.dispatch('strategy/liveUnpublishModel', {
+            modelId: this.modelId,
+            params: { source: 'strategy_model_detail', operator: this.liveOperator() }
+          });
+          this.$message.success('已取消实盘发布');
+          await this.loadData();
+        } catch (error) {
+          this.$message.error(error.response?.data?.detail || error.message || '操作失败');
+        } finally {
+          this.liveUnpublishing = false;
+        }
+      }).catch(() => {});
+    },
+    async handleLiveRepublish() {
+      this.$confirm('将当前配置同步到最新实盘版本？将于次交易日生效。', '同步实盘', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(async () => {
+        this.liveRepublishing = true;
+        try {
+          await this.$store.dispatch('strategy/livePublishModel', {
+            modelId: this.modelId,
+            data: {
+              source: 'strategy_model_detail',
+              operator: this.liveOperator(),
+              rebalance_mode: this.model.live_rebalance_mode,
+              volatility_threshold: this.model.live_volatility_threshold
+            }
+          });
+          this.$message.success('已同步到最新实盘');
+          await this.loadData();
+        } catch (error) {
+          this.$message.error(error.response?.data?.detail || error.message || '同步失败');
+        } finally {
+          this.liveRepublishing = false;
         }
       }).catch(() => {});
     },

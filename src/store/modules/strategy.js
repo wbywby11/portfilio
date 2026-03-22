@@ -231,7 +231,13 @@ const actions = {
   async livePublishModel({ commit, state }, { modelId, data }) {
     try {
       const res = await livePublishModelApi(modelId, data || {});
-      const result = res.data || res;
+      if (res && res.code !== undefined && res.code !== 200) {
+        throw new Error(res.message || '实盘发布失败');
+      }
+      const result = res.data !== undefined ? res.data : res;
+      if (result === false) {
+        throw new Error('实盘发布未生效：数据库未更新（模型不存在或状态不允许）');
+      }
 
       const model = state.strategyModelList.find(m => m.id === modelId);
       if (model) {
@@ -252,7 +258,13 @@ const actions = {
   async liveUnpublishModel({ commit, state }, { modelId, params }) {
     try {
       const res = await liveUnpublishModelApi(modelId, params || {});
-      const result = res.data || res;
+      if (res && res.code !== undefined && res.code !== 200) {
+        throw new Error(res.message || '取消实盘发布失败');
+      }
+      const result = res.data !== undefined ? res.data : res;
+      if (result === false) {
+        throw new Error('取消实盘发布未生效：数据库未更新');
+      }
       const model = state.strategyModelList.find(m => m.id === modelId);
       if (model) {
         commit('UPDATE_STRATEGY_MODEL', {

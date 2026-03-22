@@ -472,7 +472,8 @@ export default {
       }).then(async () => {
         try {
           await this.$store.dispatch('monitor/cancelSubjectiveOverrideAction', {
-            overrideId: row.override_id
+            overrideId: row.override_id,
+            monitorId: this.$store.getters['monitor/activeMonitorId']
           });
           this.$message.success('指令已取消');
         } catch (error) {

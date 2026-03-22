@@ -8,6 +8,16 @@
     </div>
 
     <div class="page-content" v-loading="loading">
+      <template v-if="!monitorState">
+        <el-empty :image-size="100">
+          <template slot="description">
+            <p class="empty-desc-title">尚未建立本策略的日常监控数据</p>
+            <p class="empty-desc-line">该策略实例（monitor_id = 模型 ID）还未执行过「初始化」。</p>
+            <p class="empty-desc-line">实盘发布仅完成准入，不会产生净值/绩效/信号；请在页面顶部点击「初始化」，完成后再使用「运行监控」滚动至最新交易日。</p>
+          </template>
+        </el-empty>
+      </template>
+      <template v-else>
       <!-- 策略表现指标卡片区 -->
       <div class="section-title">
         <span>策略表现</span>
@@ -117,6 +127,7 @@
           </el-card>
         </el-col>
       </el-row>
+      </template>
     </div>
   </div>
 </template>
@@ -135,7 +146,10 @@ export default {
   computed: {
     ...mapState('monitor', ['monitorState', 'navHistory', 'performance', 'signals']),
     currentNav() {
-      return (this.monitorState && this.monitorState.nav) ? this.monitorState.nav : 1;
+      if (!this.monitorState || this.monitorState.nav === undefined || this.monitorState.nav === null) {
+        return null;
+      }
+      return this.monitorState.nav;
     },
     // 计算总杠杆：target_weights 所有值的绝对值之和（权重为百分比形式，需除以100）
     totalLeverage() {
@@ -217,6 +231,7 @@ export default {
         var pendingDate = new Date(this.signals.pending_rebalance.execute_date);
         var today = this.monitorState && this.monitorState.date ? new Date(this.monitorState.date) : new Date();
         var diff = Math.ceil((pendingDate - today) / (1000 * 60 * 60 * 24));
+        if (Number.isNaN(diff)) return null;
         return diff >= 0 ? diff : 0;
       }
       
@@ -232,6 +247,7 @@ export default {
       var todayDate = new Date(this.monitorState.date);
       var target = new Date(nextDate);
       var diffTime = target - todayDate;
+      if (Number.isNaN(diffTime)) return null;
       return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     }
   },
@@ -252,7 +268,7 @@ export default {
           this.fetchMonitorState(),
           this.fetchPerformance(),
           this.fetchSignals(),
-          this.fetchNavHistory({ monitor_id: 'default' })
+          this.fetchNavHistory({})
         ]);
       } catch (error) {
         this.$message.error('加载数据失败：' + ((error.response && error.response.data && error.response.data.message) ? error.response.data.message : error.message));
@@ -362,5 +378,23 @@ export default {
 .metric-sub {
   font-size: 12px;
   color: #c0c4cc;
+}
+
+.empty-desc-title {
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 10px 0;
+  font-size: 15px;
+}
+
+.empty-desc-line {
+  margin: 6px 0;
+  color: #606266;
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 520px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left;
 }
 </style>
