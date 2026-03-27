@@ -59,7 +59,16 @@
         </el-button>
       </div>
     </div>
-    <div v-else style="margin-bottom: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+    <el-alert
+      v-if="!isDialog && fromMonitorHint"
+      type="info"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 16px;"
+      title="来自日常监控"
+      description="修改策略参数后，请使用「实盘发布」或「同步到最新实盘」写入快照；实盘变更会记录在实盘发布记录中。保存策略后若未实盘发布，日常监控顶部参数与下方绩效仍可能不一致。">
+    </el-alert>
+    <div v-if="isDialog" style="margin-bottom: 20px; display: flex; justify-content: flex-end; gap: 10px;">
         <el-button
           type="primary"
           size="small"
@@ -132,7 +141,9 @@
             </div>
 
             <el-descriptions :column="2" border>
-              <el-descriptions-item label="策略名称">{{ model.name }}</el-descriptions-item>
+              <el-descriptions-item label="策略名称">
+                {{ model.name }}
+              </el-descriptions-item>
               <el-descriptions-item label="状态">
                 <el-tag :type="getStatusType(model.status)" size="small">
                   {{ getStatusLabel(model.status) }}
@@ -637,6 +648,10 @@ export default {
     /** 已发布且未归档、尚未实盘发布时可点「实盘发布」 */
     canOperateLivePublish() {
       return this.isPublishedModel && !this.isArchivedModel && !this.model.live_publish_enabled;
+    },
+    /** 从日常监控跳转：提示实盘发布与记录 */
+    fromMonitorHint() {
+      return this.$route && this.$route.query && String(this.$route.query.fromMonitor) === '1';
     }
   },
   created() {

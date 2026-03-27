@@ -108,19 +108,50 @@ export function downloadPriceTemplate() {
 }
 
 // 从Excel导入资产行情数据（大批量可能较慢，单独延长超时）
-export function importPricesFromExcel(assetCode, file, replaceExisting = false) {
+// onlyDate: 可选 YYYY-MM-DD，仅导入 Excel 中该日期的行（补单日）
+export function importPricesFromExcel(assetCode, file, replaceExisting = false, onlyDate = null) {
+  const params = {
+    asset_code: assetCode,
+    replace_existing: replaceExisting
+  };
+  if (onlyDate) {
+    params.only_date = onlyDate;
+  }
   const formData = new FormData();
   formData.append('file', file);
   return request({
     url: '/api/v1/assets/prices/import/excel',
     method: 'post',
-    params: {
-      asset_code: assetCode,
-      replace_existing: replaceExisting
-    },
+    params,
     data: formData,
     timeout: 120000
-    // 不设置 Content-Type，由浏览器自动带 boundary；超时 2 分钟，适应大批量导入
+  });
+}
+
+/** JSON 导入行情（可单条补录） */
+export function importPricesJson(payload) {
+  return request({
+    url: '/api/v1/assets/prices/import',
+    method: 'post',
+    data: {
+      asset_code: payload.asset_code,
+      replace_existing: !!payload.replace_existing,
+      prices: payload.prices || []
+    },
+    timeout: 60000
+  });
+}
+
+/** 区间内相对交易日历缺失的行情日期 */
+export function getPriceCoverageGaps(params) {
+  return request({
+    url: '/api/v1/assets/prices/coverage-gaps',
+    method: 'get',
+    params: {
+      asset_code: params.asset_code,
+      start_date: params.start_date,
+      end_date: params.end_date
+    }
   });
 }
 

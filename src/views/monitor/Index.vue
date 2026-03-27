@@ -18,6 +18,110 @@
         </el-empty>
       </template>
       <template v-else>
+      <el-alert
+        v-if="performanceMismatch"
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px;"
+        title="绩效与下方曲线可能与顶部「当前实盘生效参数」不一致"
+        description="下方指标基于「最近一次初始化」时冻结的实盘快照；若已修改策略或再次实盘发布但未重新初始化，请重新执行初始化后再查看。">
+      </el-alert>
+      <div v-if="monitorState && monitorState.performance_basis" class="perf-basis-block">
+        <div class="section-title">
+          <span>本页绩效对应的实盘参数</span>
+        </div>
+        <p class="perf-basis-line muted">
+          {{ performanceBasisMeta }}
+        </p>
+        <p v-if="perfBasisSummary" class="perf-basis-summary">{{ perfBasisSummary }}</p>
+        <div v-if="perfBasisParams" class="perf-basis-metrics">
+          <div class="perf-basis-metric">
+            <span class="lbl">目标波动</span>
+            <span class="val">{{ perfBasisParams.target_vol_pct }}%</span>
+          </div>
+          <div class="perf-basis-metric">
+            <span class="lbl">波动重置阈值</span>
+            <span class="val">{{ perfBasisParams.vol_reset_threshold_pct }}%</span>
+          </div>
+          <div class="perf-basis-metric">
+            <span class="lbl">总杠杆上限</span>
+            <span class="val">{{ perfBasisParams.max_total_leverage }}</span>
+          </div>
+        </div>
+        <div
+          v-if="perfBasisParams && perfBasisParams.asset_classes && perfBasisParams.asset_classes.length"
+          class="perf-basis-asset-classes">
+          <span class="perf-basis-block-label">资产类别</span>
+          <el-tag
+            v-for="(cls, cidx) in perfBasisParams.asset_classes"
+            :key="'pb-cls-' + cidx"
+            size="small"
+            :type="assetClassTagType(cls)"
+            effect="plain"
+            class="perf-basis-class-tag">
+            {{ cls }}
+          </el-tag>
+        </div>
+        <div v-if="hasPerfBasisWindowParams" class="perf-basis-window-block">
+          <div class="perf-basis-subtitle">动量与反转窗口（交易日）</div>
+          <div class="perf-basis-metrics perf-basis-metrics--wrap">
+            <div v-if="perfBasisParams.mom_windows" class="perf-basis-metric perf-basis-metric--wide">
+              <span class="lbl">MOM</span>
+              <span class="val val--subtle">{{ perfBasisParams.mom_windows }}</span>
+            </div>
+            <div v-if="perfBasisParams.posi_windows" class="perf-basis-metric perf-basis-metric--wide">
+              <span class="lbl">POSI</span>
+              <span class="val val--subtle">{{ perfBasisParams.posi_windows }}</span>
+            </div>
+            <div v-if="perfBasisParams.smom_windows" class="perf-basis-metric perf-basis-metric--wide">
+              <span class="lbl">SMOM</span>
+              <span class="val val--subtle">{{ perfBasisParams.smom_windows }}</span>
+            </div>
+            <div v-if="perfBasisParams.macd_windows" class="perf-basis-metric perf-basis-metric--wide">
+              <span class="lbl">MACD 短期</span>
+              <span class="val val--subtle">{{ perfBasisParams.macd_windows }}</span>
+            </div>
+            <div
+              v-if="perfBasisParams.macd_long_window != null && perfBasisParams.macd_long_window !== ''"
+              class="perf-basis-metric">
+              <span class="lbl">MACD 长期</span>
+              <span class="val val--subtle">{{ perfBasisParams.macd_long_window }}</span>
+            </div>
+            <div v-if="perfBasisParams.reversal_windows" class="perf-basis-metric perf-basis-metric--wide">
+              <span class="lbl">反转</span>
+              <span class="val val--subtle">{{ perfBasisParams.reversal_windows }}</span>
+            </div>
+            <div
+              v-if="perfBasisParams.min_history_days != null && perfBasisParams.min_history_days !== ''"
+              class="perf-basis-metric">
+              <span class="lbl">最小历史天数</span>
+              <span class="val val--subtle">{{ perfBasisParams.min_history_days }} 日</span>
+            </div>
+            <div
+              v-if="perfBasisParams.min_history_momentum != null && perfBasisParams.min_history_momentum !== ''"
+              class="perf-basis-metric">
+              <span class="lbl">动量最小历史</span>
+              <span class="val val--subtle">{{ perfBasisParams.min_history_momentum }} 日</span>
+            </div>
+            <div
+              v-if="perfBasisParams.min_history_reversal != null && perfBasisParams.min_history_reversal !== ''"
+              class="perf-basis-metric">
+              <span class="lbl">反转最小历史</span>
+              <span class="val val--subtle">{{ perfBasisParams.min_history_reversal }} 日</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <el-alert
+        v-else
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 16px;"
+        title="未记录绩效对应的参数快照"
+        description="请重新执行页面顶部「初始化」后，此处将展示与净值曲线一致的实盘参数说明。">
+      </el-alert>
       <!-- 策略表现指标卡片区 -->
       <div class="section-title">
         <span>策略表现</span>
@@ -138,6 +242,12 @@ import { mapState, mapActions } from 'vuex';
 
 export default {
   name: 'MonitorIndex',
+  props: {
+    strategyContext: {
+      type: Object,
+      default: null
+    }
+  },
   data() {
     return {
       loading: false
@@ -145,17 +255,57 @@ export default {
   },
   computed: {
     ...mapState('monitor', ['monitorState', 'navHistory', 'performance', 'signals']),
+    perfBasisParams() {
+      const pb = this.monitorState && this.monitorState.performance_basis;
+      if (!pb || !pb.live_effective_params) return null;
+      return pb.live_effective_params;
+    },
+    perfBasisSummary() {
+      const pb = this.monitorState && this.monitorState.performance_basis;
+      return pb && pb.live_effective_summary ? pb.live_effective_summary : '';
+    },
+    performanceBasisMeta() {
+      const pb = this.monitorState && this.monitorState.performance_basis;
+      if (!pb) return '';
+      const v = pb.live_version != null ? `v${pb.live_version}` : '—';
+      const cap = pb.captured_at ? this.formatPerfCaptured(pb.captured_at) : '—';
+      return `初始化快照 · 实盘版本 ${v} · 记录时间 ${cap}`;
+    },
+    performanceMismatch() {
+      const pb = this.monitorState && this.monitorState.performance_basis;
+      const cur = this.strategyContext;
+      if (!pb || !cur || cur.is_config_baseline) return false;
+      const pv = pb.live_version;
+      const cv = cur.live_version;
+      if (pv == null || cv == null) return false;
+      return Number(pv) !== Number(cv);
+    },
+    /** 与日常监控顶部「实盘生效参数」窗口块一致，用于绩效说明区展示 */
+    hasPerfBasisWindowParams() {
+      const p = this.perfBasisParams;
+      if (!p) return false;
+      return !!(
+        p.mom_windows ||
+        p.posi_windows ||
+        p.smom_windows ||
+        p.reversal_windows ||
+        p.macd_windows ||
+        (p.macd_long_window != null && p.macd_long_window !== '') ||
+        (p.min_history_days != null && p.min_history_days !== '') ||
+        (p.min_history_momentum != null && p.min_history_momentum !== '') ||
+        (p.min_history_reversal != null && p.min_history_reversal !== '')
+      );
+    },
     currentNav() {
       if (!this.monitorState || this.monitorState.nav === undefined || this.monitorState.nav === null) {
         return null;
       }
       return this.monitorState.nav;
     },
-    // 计算总杠杆：target_weights 所有值的绝对值之和（权重为百分比形式，需除以100）
+    // 总杠杆 = target_weights 绝对值之和（与后端 monitor 一致：小数权重，非百分比）
     totalLeverage() {
       const weights = (this.monitorState && this.monitorState.target_weights) ? this.monitorState.target_weights : {};
-      const sum = Object.values(weights).reduce((sum, w) => sum + Math.abs(w), 0);
-      return sum / 100;
+      return Object.values(weights).reduce((s, w) => s + Math.abs(Number(w) || 0), 0);
     },
     // 当前波动率
     currentVolatility() {
@@ -193,7 +343,7 @@ export default {
       }
       return (currentNav / peak) - 1;  // 负数表示回撤
     },
-    // 持仓资产数（权重大于0的资产数量，权重为百分比形式，阈值用0.01过滤接近0的值）
+    // 持仓资产数（小数权重，|w|>0.01 视为有效持仓，约 1% 以上）
     positionCount() {
       const weights = this.monitorState && this.monitorState.target_weights ? this.monitorState.target_weights : {};
       return Object.values(weights).filter(w => Math.abs(w) > 0.01).length;
@@ -293,11 +443,20 @@ export default {
     formatDate(date) {
       return date ? dayjs(date).format('YYYY-MM-DD') : '-';
     },
+    formatPerfCaptured(iso) {
+      if (!iso) return '—';
+      const d = dayjs(iso);
+      return d.isValid() ? d.format('YYYY-MM-DD HH:mm:ss') : String(iso);
+    },
     getReturnColor(value) {
       if (value === null || value === undefined) return '#909399';
       if (value > 0) return '#F56C6C';  // 涨用红色
       if (value < 0) return '#67C23A';  // 跌用绿色
       return '#909399';
+    },
+    assetClassTagType(assetClass) {
+      const map = { '权益': 'primary', '固定收益': 'success', '大宗商品': 'warning', '其他': 'info' };
+      return map[assetClass] || 'info';
     }
   }
 };
@@ -378,6 +537,104 @@ export default {
 .metric-sub {
   font-size: 12px;
   color: #c0c4cc;
+}
+
+.perf-basis-block {
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+}
+
+.perf-basis-line.muted {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: #909399;
+}
+
+.perf-basis-summary {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.5;
+}
+
+.perf-basis-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.perf-basis-metric {
+  min-width: 100px;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #ebeef5;
+}
+
+.perf-basis-metric .lbl {
+  display: block;
+  font-size: 11px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+
+.perf-basis-metric .val {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  font-variant-numeric: tabular-nums;
+}
+
+.perf-basis-metric .val.val--subtle {
+  font-size: 14px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.perf-basis-metric--wide {
+  flex: 1 1 200px;
+  min-width: 160px;
+}
+
+.perf-basis-metrics--wrap {
+  margin-top: 6px;
+}
+
+.perf-basis-asset-classes {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #e4e7ed;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.perf-basis-block-label {
+  font-size: 12px;
+  color: #909399;
+  margin-right: 4px;
+}
+
+.perf-basis-class-tag {
+  margin: 0 !important;
+}
+
+.perf-basis-window-block {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #e4e7ed;
+}
+
+.perf-basis-subtitle {
+  font-size: 12px;
+  color: #909399;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
 }
 
 .empty-desc-title {

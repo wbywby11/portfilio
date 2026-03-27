@@ -48,7 +48,7 @@
         :scroll-y="{enabled: true, gt: 0}"
         show-overflow
       >
-        <vxe-column field="name" title="策略名称" width="200"></vxe-column>
+        <vxe-column field="name" title="策略名称" min-width="200" show-overflow></vxe-column>
         <vxe-column field="template_code" title="所用模板" width="150">
           <template #default="{ row }">
             <el-tag size="small">
@@ -81,9 +81,11 @@
               <div v-for="assetCode in row.asset_codes" :key="assetCode" style="padding: 5px 0;">
                 {{ assetCode }} - {{ row.asset_names && row.asset_names[assetCode] || '未知资产' }}
               </div>
-              <el-tag slot="reference" size="small" type="info" style="margin-right: 5px;">
-                {{ row.asset_codes.length }}个资产
-              </el-tag>
+              <template slot="reference">
+                <el-tag size="small" type="info" style="margin-right: 5px;">
+                  {{ row.asset_codes.length }}个资产
+                </el-tag>
+              </template>
             </el-popover>
           </template>
         </vxe-column>
@@ -148,7 +150,7 @@
         layout="total, sizes, prev, pager, next, jumper"
         :total="pagination.total"
         style="margin-top: 20px; text-align: right;"
-      </el-pagination>
+      />
     </div>
 
     <!-- 回测配置对话框 -->
@@ -232,8 +234,7 @@ export default {
   methods: {
     async fetchTemplates() {
       try {
-        const res = await this.$store.dispatch('strategy/fetchTemplateList');
-        this.templateOptions = res;
+        this.templateOptions = await this.$store.dispatch('strategy/fetchTemplateList');
       } catch (error) {
         console.error('获取模板列表失败:', error);
       }

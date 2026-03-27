@@ -300,34 +300,80 @@
               <span style="margin-left: 10px; color: #909399; font-size: 13px;">天（默认：260，范围：100-500，步长：10）</span>
             </el-form-item>
 
-            <!-- 动量窗口（MOM/POSI/SMOM） -->
-            <el-form-item label="动量窗口">
+            <!-- 四因子各 4 档窗口（逗号分隔）；未填则回退到 legacy「动量窗口」同值 -->
+            <el-form-item label="MOM 窗口">
               <el-input
-                  v-model="form.momentum_windows"
+                  v-model="form.mom_windows"
                   placeholder="如：20,60,120,250"
                   style="width: 300px;"
               ></el-input>
-              <el-tooltip content="MOM、POSI、SMOM 因子计算窗口（交易日），逗号分隔，默认 20/60/120/250，与编制规则一致" placement="top">
+              <el-tooltip content="简单时序动量 MOM，四个交易日窗口，逗号分隔" placement="top">
                 <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
               </el-tooltip>
-              <span style="margin-left: 10px; color: #909399; font-size: 13px;">
-                默认 20,60,120,250（与编制规则一致）
-              </span>
+            </el-form-item>
+            <el-form-item label="POSI 窗口">
+              <el-input
+                  v-model="form.posi_windows"
+                  placeholder="如：20,60,120,250"
+                  style="width: 300px;"
+              ></el-input>
+              <el-tooltip content="收益正负差因子 POSI，四个窗口" placement="top">
+                <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+              </el-tooltip>
+            </el-form-item>
+            <el-form-item label="SMOM 窗口">
+              <el-input
+                  v-model="form.smom_windows"
+                  placeholder="如：20,60,120,250"
+                  style="width: 300px;"
+              ></el-input>
+              <el-tooltip content="缩放动量 SMOM，四个窗口" placement="top">
+                <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+              </el-tooltip>
             </el-form-item>
 
-            <!-- MACD 窗口（仅混合选择器） -->
-            <el-form-item v-if="form.selector_type === 'hybrid'" label="MACD 窗口">
+            <el-form-item v-if="form.selector_type === 'hybrid'" label="MACD 短期窗">
               <el-input
                   v-model="form.macd_windows"
                   placeholder="如：40,80,120,160"
                   style="width: 300px;"
               ></el-input>
-              <el-tooltip content="双均线动量 MACD 因子计算窗口（交易日），逗号分隔，默认 40/80/120/160，与编制规则一致" placement="top">
+              <el-tooltip content="双均线 MACD 的短期均线窗口（四档），长期均线见下项" placement="top">
                 <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
               </el-tooltip>
-              <span style="margin-left: 10px; color: #909399; font-size: 13px;">
-                默认 40,80,120,160（与编制规则一致）
-              </span>
+            </el-form-item>
+            <el-form-item v-if="form.selector_type === 'hybrid'" label="MACD 长期窗">
+              <el-input-number
+                  v-model="form.macd_long_window"
+                  :min="20"
+                  :max="500"
+                  :step="10"
+                  controls-position="right"
+                  style="width: 200px;"
+              ></el-input-number>
+              <span style="margin-left: 10px; color: #909399; font-size: 13px;">交易日（默认 250）</span>
+            </el-form-item>
+
+            <el-form-item v-if="form.selector_type === 'hybrid'" label="反转窗口">
+              <el-input
+                  v-model="form.reversal_windows"
+                  placeholder="如：10,22"
+                  style="width: 200px;"
+              ></el-input>
+              <el-tooltip content="反转因子为双窗口偏度，固定两个整数（逗号分隔），与日常监控一致" placement="top">
+                <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+              </el-tooltip>
+            </el-form-item>
+
+            <el-form-item label="兼容：共用动量窗">
+              <el-input
+                  v-model="form.momentum_windows"
+                  placeholder="旧版字段：未单独填 MOM/POSI/SMOM 时作默认"
+                  style="width: 320px;"
+              ></el-input>
+              <el-tooltip content="兼容旧数据。若已填写上方 MOM/POSI/SMOM，可不填此项" placement="top">
+                <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+              </el-tooltip>
             </el-form-item>
 
             <!-- 新增：并列决胜窗口 -->
@@ -387,7 +433,7 @@
             v-for="param in currentTemplate.parameters"
             :key="param.name"
             :label="param.label || param.name"
-            v-show="!(isManualAllocationTemplate && param.name === 'manual_weights')"
+            v-show="!(isManualAllocationTemplate && param.name === 'manual_weights') && param.name !== 'risk_budget_both' && param.name !== 'risk_budget_single'"
           >
             <!-- 数字类型 -->
             <el-input-number
@@ -536,7 +582,12 @@ export default {
         // 新增：动量资产选择相关参数（与编制规则一致）
         min_history_days: 260,
         momentum_windows: '20,60,120,250',
+        mom_windows: '20,60,120,250',
+        posi_windows: '20,60,120,250',
+        smom_windows: '20,60,120,250',
         macd_windows: '40,80,120,160',
+        macd_long_window: 250,
+        reversal_windows: '10,22',
         tie_break_window: 22,
         // 波动率阈值重置（所有策略可选）
         enable_vol_reset: true,
@@ -676,7 +727,12 @@ export default {
         this.form.asset_selection_count = 1;
         this.form.min_history_days = 260;
         this.form.momentum_windows = '20,60,120,250';
+        this.form.mom_windows = '20,60,120,250';
+        this.form.posi_windows = '20,60,120,250';
+        this.form.smom_windows = '20,60,120,250';
         this.form.macd_windows = '40,80,120,160';
+        this.form.macd_long_window = 250;
+        this.form.reversal_windows = '10,22';
         this.form.tie_break_window = 22;
       }
     },
@@ -696,7 +752,12 @@ export default {
         // 新增：动量资产选择相关参数重置（与编制规则一致）
         min_history_days: 260,
         momentum_windows: '20,60,120,250',
+        mom_windows: '20,60,120,250',
+        posi_windows: '20,60,120,250',
+        smom_windows: '20,60,120,250',
         macd_windows: '40,80,120,160',
+        macd_long_window: 250,
+        reversal_windows: '10,22',
         tie_break_window: 22,
         enable_vol_reset: true,
         vol_reset_threshold: 0.06
@@ -804,7 +865,12 @@ export default {
           // 新增：动量资产选择相关参数加载
           min_history_days: model.min_history_days !== undefined ? model.min_history_days : 260,
           momentum_windows: model.momentum_windows || '20,60,120,250',
+          mom_windows: model.mom_windows || model.momentum_windows || '20,60,120,250',
+          posi_windows: model.posi_windows || model.momentum_windows || '20,60,120,250',
+          smom_windows: model.smom_windows || model.momentum_windows || '20,60,120,250',
           macd_windows: model.macd_windows || '40,80,120,160',
+          macd_long_window: model.macd_long_window !== undefined && model.macd_long_window !== null ? model.macd_long_window : 250,
+          reversal_windows: model.reversal_windows || '10,22',
           tie_break_window: model.tie_break_window !== undefined ? model.tie_break_window : 22,
           // 波动率阈值重置（从 parameters 读取，兼容旧数据）
           enable_vol_reset: (model.parameters && model.parameters.enable_vol_reset !== undefined) ? model.parameters.enable_vol_reset : true,
@@ -1055,7 +1121,12 @@ export default {
             // 新增：动量资产选择相关参数提交
             min_history_days: this.form.enable_momentum_selection ? this.form.min_history_days : 260,
             momentum_windows: this.form.enable_momentum_selection ? this.form.momentum_windows : '20,60,120,250',
+            mom_windows: this.form.enable_momentum_selection ? (this.form.mom_windows || this.form.momentum_windows) : undefined,
+            posi_windows: this.form.enable_momentum_selection ? (this.form.posi_windows || this.form.momentum_windows) : undefined,
+            smom_windows: this.form.enable_momentum_selection ? (this.form.smom_windows || this.form.momentum_windows) : undefined,
             macd_windows: this.form.enable_momentum_selection && this.form.selector_type === 'hybrid' ? (this.form.macd_windows || '40,80,120,160') : undefined,
+            macd_long_window: this.form.enable_momentum_selection && this.form.selector_type === 'hybrid' ? this.form.macd_long_window : undefined,
+            reversal_windows: this.form.enable_momentum_selection && this.form.selector_type === 'hybrid' ? (this.form.reversal_windows || '10,22') : undefined,
             tie_break_window: this.form.enable_momentum_selection ? this.form.tie_break_window : 22
           };
 

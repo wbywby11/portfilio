@@ -39,6 +39,16 @@
             <el-option label="8位" :value="8"></el-option>
           </el-select>
         </el-form-item>
+        <el-form-item label="Excel仅导入日">
+          <el-date-picker
+            v-model="excelOnlyDate"
+            type="date"
+            value-format="yyyy-MM-dd"
+            placeholder="不选则导入全部行"
+            clearable
+            style="width: 160px;"
+          />
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" icon="el-icon-search" @click="fetchData">查询</el-button>
           <el-button type="success" icon="el-icon-refresh" @click="handleSyncToday">同步行情</el-button>
@@ -54,6 +64,115 @@
           >
             <el-button icon="el-icon-upload2">批量导入行情</el-button>
           </el-upload>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
+    <el-alert
+      v-if="priceCoverage && priceCoverage.missing_dates && priceCoverage.missing_dates.length"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="coverage-alert"
+      style="margin-bottom: 16px;">
+      <template slot="title">
+        <span>区间内缺失 <strong>{{ priceCoverage.missing_dates.length }}</strong> 个交易日行情</span>
+        <span class="coverage-meta">（日历：{{ priceCoverage.calendar_mode === 'trade_calendar' ? 'trade_dates.xlsx' : '工作日近似' }}）</span>
+      </template>
+      <div class="coverage-body">
+        <span>应有交易日 {{ priceCoverage.expected_trade_days }} 天，库中已有 {{ priceCoverage.existing_days }} 天。</span>
+        <span v-if="recentMissingDate" class="coverage-first">
+          最近缺失：<el-button type="text" @click="applyMissingToManual(recentMissingDate)">{{ recentMissingDate }}</el-button>
+        </span>
+        <span v-if="priceCoverage.first_missing && priceCoverage.first_missing !== recentMissingDate" class="coverage-first">
+          最早缺失：<el-button type="text" @click="applyMissingToManual(priceCoverage.first_missing)">{{ priceCoverage.first_missing }}</el-button>
+        </span>
+        <div class="coverage-dates">{{ missingDatesPreview }}</div>
+      </div>
+    </el-alert>
+
+    <el-card v-if="selectedAsset" class="manual-import-card" shadow="never">
+      <div slot="header" class="manual-import-header">
+        <span>手动录入行情</span>
+        <span class="manual-import-hint">收盘价必填；填写后开盘、最高、最低默认与收盘价一致，可单独修改。</span>
+      </div>
+      <el-form :inline="true" size="small" @submit.native.prevent="submitManualImport">
+        <el-form-item label="日期">
+          <el-date-picker
+            v-model="manualForm.date"
+            type="date"
+            value-format="yyyy-MM-dd"
+            placeholder="交易日"
+            style="width: 150px;"
+          />
+        </el-form-item>
+        <el-form-item label="收盘">
+          <el-input-number
+            v-model="manualForm.close"
+            :precision="pricePrecision"
+            :step="priceStep"
+            :min="0"
+            controls-position="right"
+            class="manual-price-input"
+            @change="onManualCloseChange"
+          />
+        </el-form-item>
+        <el-form-item label="开盘">
+          <el-input-number
+            v-model="manualForm.open"
+            :precision="pricePrecision"
+            :step="priceStep"
+            :min="0"
+            controls-position="right"
+            class="manual-price-input narrow"
+            @change="markManualOpenEdited"
+          />
+        </el-form-item>
+        <el-form-item label="最高">
+          <el-input-number
+            v-model="manualForm.high"
+            :precision="pricePrecision"
+            :step="priceStep"
+            :min="0"
+            controls-position="right"
+            class="manual-price-input narrow"
+            @change="markManualHighEdited"
+          />
+        </el-form-item>
+        <el-form-item label="最低">
+          <el-input-number
+            v-model="manualForm.low"
+            :precision="pricePrecision"
+            :step="priceStep"
+            :min="0"
+            controls-position="right"
+            class="manual-price-input narrow"
+            @change="markManualLowEdited"
+          />
+        </el-form-item>
+        <el-form-item label="成交量">
+          <el-input-number
+            v-model="manualForm.volume"
+            :precision="0"
+            :step="1"
+            :min="0"
+            controls-position="right"
+            class="manual-vol-input"
+          />
+        </el-form-item>
+        <el-form-item label="成交额">
+          <el-input-number
+            v-model="manualForm.amount"
+            :precision="2"
+            :step="0.01"
+            :min="0"
+            controls-position="right"
+            class="manual-vol-input"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="manualSubmitting" @click="submitManualImport">保存该日行情</el-button>
+          <el-button type="text" @click="setManualDateToday">设为今日</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -115,7 +234,12 @@
 
 <script>
 import { getAssetOptions, getAssetKline } from '@/api/asset';
-import { downloadPriceTemplate, importPricesFromExcel } from '@/api/asset';
+import {
+  downloadPriceTemplate,
+  importPricesFromExcel,
+  importPricesJson,
+  getPriceCoverageGaps
+} from '@/api/asset';
 import SyncProgressDialog from '@/components/SyncProgressDialog.vue';
 import * as echarts from 'echarts';
 
@@ -142,8 +266,47 @@ export default {
       loading: false,
       quoteData: [],
       chartInstance: null,
-      pricePrecision: 2  // 价格精度，默认2位小数
+      pricePrecision: 2, // 价格精度，默认2位小数
+      priceCoverage: null,
+      excelOnlyDate: null,
+      manualForm: {
+        date: '',
+        open: null,
+        high: null,
+        low: null,
+        close: null,
+        volume: null,
+        amount: null
+      },
+      manualSubmitting: false,
+      /** 用户是否曾单独改过开/高/低；改过则不再随收盘价联动 */
+      manualOhlcEdited: {
+        open: false,
+        high: false,
+        low: false
+      }
     };
+  },
+  computed: {
+    missingDatesPreview() {
+      const m = this.priceCoverage && this.priceCoverage.missing_dates;
+      if (!m || !m.length) return '';
+      const head = m.slice(0, 12);
+      const tail = m.length > 12 ? ` … 共 ${m.length} 天` : '';
+      return head.join('、') + tail;
+    },
+    /** 与「价格精度」联动，便于输入小数 */
+    priceStep() {
+      const p = Number(this.pricePrecision);
+      const prec = Number.isFinite(p) ? Math.min(Math.max(p, 0), 8) : 2;
+      return Math.pow(10, -prec);
+    },
+    /** 区间内时间顺序最后一个缺失日（与后端 last_missing 一致；兼容旧接口无该字段时从 missing_dates 推算） */
+    recentMissingDate() {
+      const p = this.priceCoverage;
+      if (!p || !p.missing_dates || !p.missing_dates.length) return null;
+      return p.last_missing || p.missing_dates[p.missing_dates.length - 1];
+    }
   },
   mounted() {
     this.initDateRange();
@@ -153,6 +316,8 @@ export default {
     assetCode(newVal) {
       if (this.isDialog && newVal) {
         this.selectedAsset = newVal;
+        this.manualForm.date = '';
+        this.resetManualOhlcEdited();
         this.fetchData();
       }
     },
@@ -164,6 +329,11 @@ export default {
           }
         });
       }
+    },
+    'manualForm.date'(newVal, oldVal) {
+      if (newVal === oldVal) return;
+      this.resetManualOhlcEdited();
+      this.$nextTick(() => this.syncOhlcFromClose());
     }
   },
   methods: {
@@ -207,6 +377,8 @@ export default {
       }
     },
     handleAssetChange() {
+      this.manualForm.date = '';
+      this.resetManualOhlcEdited();
       this.fetchData();
     },
     handleDateChange() {
@@ -241,10 +413,150 @@ export default {
         }));
         
         this.renderChart();
+        await this.fetchCoverageGaps();
       } catch (error) {
         this.$message.error('获取行情数据失败');
       } finally {
         this.loading = false;
+      }
+    },
+    async fetchCoverageGaps() {
+      if (!this.selectedAsset || !this.dateRange || this.dateRange.length !== 2) {
+        this.priceCoverage = null;
+        return;
+      }
+      try {
+        const res = await getPriceCoverageGaps({
+          asset_code: this.selectedAsset,
+          start_date: this.dateRange[0],
+          end_date: this.dateRange[1]
+        });
+        const body = res.data !== undefined ? res.data : res;
+        this.priceCoverage = body || null;
+        // 默认日期：区间内按 trade_dates（或工作日近似）得到的缺失日中，时间最晚的一天
+        if (body && body.missing_dates && body.missing_dates.length && !this.manualForm.date) {
+          const last =
+            body.last_missing ||
+            body.missing_dates[body.missing_dates.length - 1];
+          if (last) this.manualForm.date = last;
+        }
+      } catch (e) {
+        this.priceCoverage = null;
+      }
+    },
+    applyMissingToManual(d) {
+      this.manualForm.date = d;
+      this.$message.success('已填入手动录入日期：' + d);
+    },
+    setManualDateToday() {
+      const t = new Date();
+      const y = t.getFullYear();
+      const m = String(t.getMonth() + 1).padStart(2, '0');
+      const da = String(t.getDate()).padStart(2, '0');
+      this.manualForm.date = `${y}-${m}-${da}`;
+    },
+    resetManualOhlcEdited() {
+      this.manualOhlcEdited = { open: false, high: false, low: false };
+    },
+    markManualOpenEdited() {
+      if (this._syncingOhlcFromClose) return;
+      this.manualOhlcEdited.open = true;
+    },
+    markManualHighEdited() {
+      if (this._syncingOhlcFromClose) return;
+      this.manualOhlcEdited.high = true;
+    },
+    markManualLowEdited() {
+      if (this._syncingOhlcFromClose) return;
+      this.manualOhlcEdited.low = true;
+    },
+    /** 收盘价变化时：未单独编辑过的开/高/低与收盘价保持一致 */
+    onManualCloseChange(val) {
+      if (val === null || val === undefined || val === '' || Number.isNaN(Number(val))) {
+        return;
+      }
+      const c = Number(val);
+      if (!Number.isFinite(c)) return;
+      this._syncingOhlcFromClose = true;
+      try {
+        if (!this.manualOhlcEdited.open) this.$set(this.manualForm, 'open', c);
+        if (!this.manualOhlcEdited.high) this.$set(this.manualForm, 'high', c);
+        if (!this.manualOhlcEdited.low) this.$set(this.manualForm, 'low', c);
+      } finally {
+        this.$nextTick(() => {
+          this._syncingOhlcFromClose = false;
+        });
+      }
+    },
+    syncOhlcFromClose() {
+      const c = this.manualForm.close;
+      if (c === null || c === undefined || c === '' || Number.isNaN(Number(c))) return;
+      const n = Number(c);
+      if (!Number.isFinite(n)) return;
+      this._syncingOhlcFromClose = true;
+      try {
+        if (!this.manualOhlcEdited.open) this.$set(this.manualForm, 'open', n);
+        if (!this.manualOhlcEdited.high) this.$set(this.manualForm, 'high', n);
+        if (!this.manualOhlcEdited.low) this.$set(this.manualForm, 'low', n);
+      } finally {
+        this.$nextTick(() => {
+          this._syncingOhlcFromClose = false;
+        });
+      }
+    },
+    async submitManualImport() {
+      if (!this.selectedAsset) {
+        this.$message.warning('请先选择资产');
+        return;
+      }
+      if (!this.manualForm.date) {
+        this.$message.warning('请选择日期');
+        return;
+      }
+      const c = this.manualForm.close;
+      if (c === null || c === undefined || c === '' || Number.isNaN(Number(c))) {
+        this.$message.warning('请填写收盘价');
+        return;
+      }
+      const close = Number(c);
+      if (!Number.isFinite(close)) {
+        this.$message.warning('收盘价格式不正确');
+        return;
+      }
+      let open = this.manualForm.open;
+      let high = this.manualForm.high;
+      let low = this.manualForm.low;
+      if (open === null || open === undefined || open === '') open = close;
+      if (high === null || high === undefined || high === '') high = Math.max(close, Number(open));
+      if (low === null || low === undefined || low === '') low = Math.min(close, Number(open));
+      open = Number(open);
+      high = Number(high);
+      low = Number(low);
+      const row = {
+        date: this.manualForm.date,
+        open,
+        high,
+        low,
+        close,
+        volume: this.manualForm.volume !== null && this.manualForm.volume !== '' ? Number(this.manualForm.volume) : undefined,
+        amount: this.manualForm.amount !== null && this.manualForm.amount !== '' ? Number(this.manualForm.amount) : undefined
+      };
+      this.manualSubmitting = true;
+      try {
+        await importPricesJson({
+          asset_code: this.selectedAsset,
+          replace_existing: false,
+          prices: [row]
+        });
+        this.$message.success('已保存该日行情');
+        this.resetManualOhlcEdited();
+        this.manualForm.date = '';
+        await this.fetchData();
+      } catch (err) {
+        const msg = (err.response && err.response.data && err.response.data.detail) || err.message || '保存失败';
+        this.$message.error(String(msg));
+      } finally {
+        this.manualSubmitting = false;
       }
     },
     renderChart() {
@@ -452,7 +764,12 @@ export default {
       });
       
       try {
-        const result = await importPricesFromExcel(this.selectedAsset, file, replaceExisting);
+        const result = await importPricesFromExcel(
+          this.selectedAsset,
+          file,
+          replaceExisting,
+          this.excelOnlyDate || null
+        );
         const data = result.data || result;
         
         this.$message.success(
@@ -488,6 +805,50 @@ export default {
 </script>
 
 <style scoped>
+.coverage-alert .coverage-meta {
+  margin-left: 8px;
+  font-size: 12px;
+  color: #909399;
+  font-weight: normal;
+}
+.coverage-body {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #606266;
+}
+.coverage-first {
+  margin-left: 12px;
+}
+.coverage-dates {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #909399;
+  word-break: break-all;
+}
+.manual-import-card {
+  margin-bottom: 16px;
+  border: 1px solid #ebeef5;
+}
+.manual-import-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+.manual-import-hint {
+  font-size: 12px;
+  color: #909399;
+  font-weight: normal;
+}
+.manual-import-card .manual-price-input {
+  width: 140px;
+}
+.manual-import-card .manual-price-input.narrow {
+  width: 128px;
+}
+.manual-import-card .manual-vol-input {
+  width: 140px;
+}
 .asset-quote-container {
   padding: 10px;
 }

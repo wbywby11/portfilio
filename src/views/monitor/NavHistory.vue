@@ -288,7 +288,7 @@ export default {
     async loadData() {
       this.loading = true;
       try {
-        const params = this.getDateRangeParams();
+        const params = { ...this.getDateRangeParams(), monitor_id: this.activeMonitorId };
         await this.fetchNavHistory(params);
         
         // 获取最新日期的损益归因

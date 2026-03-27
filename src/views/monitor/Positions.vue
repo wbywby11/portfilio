@@ -196,7 +196,7 @@ export default {
     };
   },
   computed: {
-    ...mapState('monitor', ['positions', 'monitorState', 'assetMetrics', 'correlationMatrix']),
+    ...mapState('monitor', ['positions', 'monitorState', 'assetMetrics', 'correlationMatrix', 'activeMonitorId']),
     assetCodes() {
       return ['SH000300', 'SZ399006', 'ZZ000001', 'HSTECH', 'SPX', 'GDAXI', 'ZQGZ10', 'ZQGZ2', 'B00Y', 'GLD', 'IRON', 'YSJS'];
     },
@@ -215,7 +215,10 @@ export default {
         };
       }
 
-      const totalValue = this.positions.reduce((sum, p) => sum + (p.value_cnh || 0), 0);
+      let totalValue = this.positions.reduce((sum, p) => sum + (p.value_cnh != null ? Number(p.value_cnh) : 0), 0);
+      if (totalValue <= 0 && this.monitorState && this.monitorState.nav) {
+        totalValue = Number(this.monitorState.nav);
+      }
       const weights = this.positions.map(p => this.getCurrentWeight(p));
       const totalLeverage = weights.reduce((sum, w) => sum + Math.abs(w), 0) / 100;
       const maxWeight = Math.max(...weights);
@@ -272,8 +275,8 @@ export default {
       this.loading = true;
       try {
         await Promise.all([
-          this.fetchPositions(),
-          this.fetchMonitorState()
+          this.fetchPositions(this.activeMonitorId),
+          this.fetchMonitorState(this.activeMonitorId)
         ]);
         
         // 在获取持仓数据后，获取资产分析数据
@@ -305,10 +308,17 @@ export default {
         return;
       }
 
-      const data = this.positions.map(p => ({
-        name: this.getAssetName(p),
-        value: Math.abs(this.getCurrentWeight(p))
-      }));
+      const data = this.positions
+        .map(p => ({
+          name: this.getAssetName(p),
+          value: Math.abs(this.getCurrentWeight(p))
+        }))
+        .filter(d => d.value > 0.0001);
+
+      if (data.length === 0) {
+        this.pieChart.clear();
+        return;
+      }
 
       const option = {
         tooltip: {

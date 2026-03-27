@@ -222,12 +222,13 @@ export function deleteStrategyModel(modelId) {
   });
 }
 
-// 更新策略模型
-export function updateStrategyModel(modelId, data) {
+// 更新策略模型（可传 axios 附加配置，如 params: { source: 'live_monitoring' }）
+export function updateStrategyModel(modelId, data, axiosConfig = {}) {
   return request({
     url: `/api/v1/strategy-models/${modelId}`,
     method: 'put',
-    data
+    data,
+    ...axiosConfig
   });
 }
 
