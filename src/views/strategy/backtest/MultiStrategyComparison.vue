@@ -11,42 +11,42 @@
         <el-table-column prop="strategy_name" label="策略名称" width="200" fixed="left"></el-table-column>
         <el-table-column prop="total_return" label="总收益率" width="120" align="right">
           <template slot-scope="scope">
-            <span :class="getBestClass(scope.row.total_return, 'max', 'total_return')">
+            <span class="metric-cell" :class="getBestClass(scope.row.total_return, 'max', 'total_return')">
               {{ formatPercent(scope.row.total_return) }}
             </span>
           </template>
         </el-table-column>
         <el-table-column prop="annual_return" label="年化收益率" width="120" align="right">
           <template slot-scope="scope">
-            <span :class="getBestClass(scope.row.annual_return, 'max', 'annual_return')">
+            <span class="metric-cell" :class="getBestClass(scope.row.annual_return, 'max', 'annual_return')">
               {{ formatPercent(scope.row.annual_return) }}
             </span>
           </template>
         </el-table-column>
         <el-table-column prop="volatility" label="年化波动率" width="120" align="right">
           <template slot-scope="scope">
-            <span :class="getBestClass(scope.row.volatility, 'min', 'volatility')">
+            <span class="metric-cell" :class="getBestClass(scope.row.volatility, 'min', 'volatility')">
               {{ formatPercent(scope.row.volatility) }}
             </span>
           </template>
         </el-table-column>
         <el-table-column prop="max_drawdown" label="最大回撤" width="120" align="right">
           <template slot-scope="scope">
-            <span :class="getBestClass(scope.row.max_drawdown, 'max', 'max_drawdown')">
+            <span class="metric-cell" :class="getBestClass(scope.row.max_drawdown, 'max', 'max_drawdown')">
               {{ formatPercent(scope.row.max_drawdown) }}
             </span>
           </template>
         </el-table-column>
         <el-table-column prop="sharpe_ratio" label="夏普比率" width="120" align="right">
           <template slot-scope="scope">
-            <span :class="getBestClass(scope.row.sharpe_ratio, 'max', 'sharpe_ratio')">
+            <span class="metric-cell" :class="getBestClass(scope.row.sharpe_ratio, 'max', 'sharpe_ratio')">
               {{ formatNumber(scope.row.sharpe_ratio, 3) }}
             </span>
           </template>
         </el-table-column>
         <el-table-column prop="calmar_ratio" label="Calmar比率" width="120" align="right">
           <template slot-scope="scope">
-            <span :class="getBestClass(scope.row.calmar_ratio, 'max', 'calmar_ratio')">
+            <span class="metric-cell" :class="getBestClass(scope.row.calmar_ratio, 'max', 'calmar_ratio')">
               {{ formatNumber(scope.row.calmar_ratio, 3) }}
             </span>
           </template>
@@ -288,7 +288,8 @@ export default {
           name: strategyName,
           type: 'line',
           data: navs,
-          smooth: true,
+          smooth: 0.3,
+          lineStyle: { width: 2 },
           itemStyle: {
             color: colors[colorIndex % colors.length]
           }
@@ -300,7 +301,8 @@ export default {
         tooltip: {
           trigger: 'axis',
           axisPointer: {
-            type: 'cross'
+            type: 'cross',
+            crossStyle: { color: '#999' }
           }
         },
         legend: {
@@ -444,9 +446,25 @@ export default {
   padding: 20px 0;
 }
 
+>>> .el-table th {
+  background-color: #f5f7fa;
+  border-bottom: 2px solid #dcdfe6;
+  font-weight: 600;
+  color: #303133;
+}
+
+.metric-cell {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .best-value {
   color: #67C23A;
-  font-weight: 600;
+  font-weight: 700;
+  background: rgba(103, 194, 58, 0.08);
+  border-radius: 4px;
+  padding: 2px 6px;
+  display: inline-block;
 }
 
 #comparison-nav-chart {

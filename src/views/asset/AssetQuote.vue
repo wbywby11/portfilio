@@ -11,8 +11,8 @@
             style="width: 250px"
           >
             <el-option
-              v-for="item in assetOptions"
-              :key="item.code"
+              v-for="(item, idx) in assetOptions"
+              :key="'opt-' + idx + '-' + (item.id || '') + '-' + (item.code || '')"
               :label="`${item.name} (${item.code})`"
               :value="item.code"
             >
@@ -52,7 +52,28 @@
         <el-form-item>
           <el-button type="primary" icon="el-icon-search" @click="fetchData">查询</el-button>
           <el-button type="success" icon="el-icon-refresh" @click="handleSyncToday">同步行情</el-button>
-          <el-button icon="el-icon-download" @click="handleDownloadPriceTemplate">下载行情模板</el-button>
+          <el-dropdown trigger="click" @command="handlePriceTemplateCommand">
+            <el-button icon="el-icon-download">
+              下载行情模板<i class="el-icon-arrow-down el-icon--right"></i>
+            </el-button>
+            <el-dropdown-menu slot="dropdown">
+              <el-dropdown-item command="single_full">单资产：全列（含规模）</el-dropdown-item>
+              <el-dropdown-item command="single_close">单资产：仅收盘价</el-dropdown-item>
+              <el-dropdown-item command="single_open">单资产：仅开盘价</el-dropdown-item>
+              <el-dropdown-item command="single_high">单资产：仅最高价</el-dropdown-item>
+              <el-dropdown-item command="single_low">单资产：仅最低价</el-dropdown-item>
+              <el-dropdown-item command="single_amount">单资产：仅成交额</el-dropdown-item>
+              <el-dropdown-item command="single_volume">单资产：仅成交量</el-dropdown-item>
+              <el-dropdown-item command="single_scale">单资产：仅规模</el-dropdown-item>
+              <el-dropdown-item divided command="multi_close">多资产宽表：收盘价</el-dropdown-item>
+              <el-dropdown-item command="multi_open">多资产宽表：开盘价</el-dropdown-item>
+              <el-dropdown-item command="multi_high">多资产宽表：最高价</el-dropdown-item>
+              <el-dropdown-item command="multi_low">多资产宽表：最低价</el-dropdown-item>
+              <el-dropdown-item command="multi_amount">多资产宽表：成交额</el-dropdown-item>
+              <el-dropdown-item command="multi_volume">多资产宽表：成交量</el-dropdown-item>
+              <el-dropdown-item command="multi_scale">多资产宽表：规模</el-dropdown-item>
+            </el-dropdown-menu>
+          </el-dropdown>
           <el-upload
             ref="priceUpload"
             action=""
@@ -63,6 +84,33 @@
             style="display: inline-block; margin-left: 10px;"
           >
             <el-button icon="el-icon-upload2">批量导入行情</el-button>
+          </el-upload>
+          <el-form-item label="宽表列含义" class="multi-metric-form-item">
+            <el-tooltip
+              content="与「多资产Excel导入」解析一致：数值列写入该字段（按日合并）。非收盘价时须库中或本行已有有效收盘价，详见多资产弹窗说明。"
+              placement="top"
+            >
+              <el-select v-model="multiImportMetric" size="small" style="width: 118px">
+                <el-option label="收盘价" value="close" />
+                <el-option label="开盘价" value="open" />
+                <el-option label="最高价" value="high" />
+                <el-option label="最低价" value="low" />
+                <el-option label="成交额" value="amount" />
+                <el-option label="成交量" value="volume" />
+                <el-option label="规模" value="scale" />
+              </el-select>
+            </el-tooltip>
+          </el-form-item>
+          <el-upload
+            ref="multiAssetUpload"
+            action=""
+            :auto-upload="false"
+            :show-file-list="false"
+            :on-change="handleMultiAssetFileChange"
+            accept=".xlsx,.xls"
+            style="display: inline-block; margin-left: 10px;"
+          >
+            <el-button type="warning" plain icon="el-icon-folder-add">多资产Excel导入</el-button>
           </el-upload>
         </el-form-item>
       </el-form>
@@ -94,26 +142,32 @@
     <el-card v-if="selectedAsset" class="manual-import-card" shadow="never">
       <div slot="header" class="manual-import-header">
         <span>手动录入行情</span>
-        <span class="manual-import-hint">收盘价必填；填写后开盘、最高、最低默认与收盘价一致，可单独修改。</span>
+        <span class="manual-import-hint">
+          <strong>收盘价</strong>为<strong class="manual-required-text">必填</strong>项，须填写且<strong>不可为 0 或留空</strong>；填写后开盘、最高、最低默认与收盘价一致，可单独修改。
+        </span>
       </div>
       <el-form :inline="true" size="small" @submit.native.prevent="submitManualImport">
-        <el-form-item label="日期">
+        <el-form-item label="日期" required>
           <el-date-picker
             v-model="manualForm.date"
             type="date"
             value-format="yyyy-MM-dd"
-            placeholder="交易日"
+            placeholder="请选择交易日"
             style="width: 150px;"
           />
         </el-form-item>
-        <el-form-item label="收盘">
+        <el-form-item class="manual-close-form-item">
+          <span slot="label" class="manual-close-label">
+            收盘价
+            <span class="manual-close-required-mark" title="必填，须大于 0">*</span>
+          </span>
           <el-input-number
             v-model="manualForm.close"
             :precision="pricePrecision"
             :step="priceStep"
-            :min="0"
             controls-position="right"
             class="manual-price-input"
+            placeholder="必填，大于 0"
             @change="onManualCloseChange"
           />
         </el-form-item>
@@ -170,6 +224,16 @@
             class="manual-vol-input"
           />
         </el-form-item>
+        <el-form-item label="规模">
+          <el-input-number
+            v-model="manualForm.scale"
+            :precision="2"
+            :step="0.01"
+            :min="0"
+            controls-position="right"
+            class="manual-vol-input"
+          />
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="manualSubmitting" @click="submitManualImport">保存该日行情</el-button>
           <el-button type="text" @click="setManualDateToday">设为今日</el-button>
@@ -189,7 +253,7 @@
           :loading="loading"
           :data="quoteData"
           :scroll-y="{enabled: true, gt: 0}"
-          show-overflow
+          show-overflow="title"
         >
           <vxe-column field="date" title="日期" sortable width="150"></vxe-column>
           <vxe-column field="open" title="开盘价" width="120">
@@ -224,28 +288,262 @@
               {{ row.amount != null ? formatAmount(row.amount) : '-' }}
             </template>
           </vxe-column>
+          <vxe-column field="scale" title="规模" width="150">
+            <template #default="{ row }">
+              {{ row.scale != null && row.scale !== '' ? formatAmount(row.scale) : '-' }}
+            </template>
+          </vxe-column>
         </vxe-table>
       </el-tab-pane>
     </el-tabs>
 
     <sync-progress-dialog ref="syncProgressDialog" @sync-success="handleSyncSuccess" />
+
+    <el-dialog
+      title="多资产行情导入"
+      :visible.sync="multiAssetDialogVisible"
+      width="95%"
+      top="3vh"
+      append-to-body
+      :close-on-click-modal="false"
+      @closed="onMultiAssetDialogClosed"
+    >
+      <div v-loading="multiAssetLoading" class="multi-asset-import-body">
+        <p class="multi-asset-hint">
+          支持两种宽表：<strong>Wind 类</strong>（约第 4 行名称、第 5 行代码、第 6 行起日期+数值）；
+          <strong>基金/证券类</strong>（第 1 行「基金代码」+ 各列代码、第 2 行「基金名称」+ 各列名称、第 3 行起日期+数值）。
+          另支持按 A 列连续日期自动对齐表头。请先选择「宽表列含义」再选文件，勾选资产并确认匹配后导入。
+          「系统中无匹配」的资产可在导入时<strong>自动新建</strong>（与文件代码、名称一致）并写入行情；亦可先「批量新建所选无匹配资产」再导入。
+          「仅代码一致」时可选择沿用已有（可选覆盖名称）或填写<strong>新资产代码</strong>新建一条并导入行情。
+        </p>
+        <el-form :inline="true" size="small" class="multi-asset-toolbar">
+          <el-form-item label="导入模式">
+            <el-radio-group v-model="multiImportMode" size="small">
+              <el-radio-button label="merge">按日合并（重叠日更新 + 新日插入）</el-radio-button>
+              <el-radio-button label="only_new">仅新增缺日（已有日期跳过）</el-radio-button>
+              <el-radio-button label="replace">全量覆盖（先删该资产全部行情）</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="multiImportSubmitting" :disabled="!multiAssetRows.length" @click="submitMultiAssetImport">
+              执行导入
+            </el-button>
+            <el-button
+              type="success"
+              plain
+              :loading="multiBatchCreateLoading"
+              :disabled="!multiAssetRows.length"
+              @click="batchCreateSelectedNewAssets"
+            >
+              批量新建所选无匹配资产
+            </el-button>
+            <el-button @click="multiAssetDialogVisible = false">关 闭</el-button>
+          </el-form-item>
+        </el-form>
+        <p class="multi-asset-mode-hint">
+          <template v-if="multiImportMode === 'merge'">
+            当前为<strong>按日合并</strong>：与库内同一交易日则更新该行，库中没有的日期则新增。下表「本次导入影响」按按日合并估算。
+          </template>
+          <template v-else-if="multiImportMode === 'only_new'">
+            当前为<strong>仅新增缺日</strong>：库中<strong>已有</strong>的交易日整行跳过（不更新）；仅对<strong>尚无</strong>行情的日期插入。下表中「更新」类提示表示这些日在按日合并下会改库，本模式下将<strong>全部跳过</strong>。
+          </template>
+          <template v-else>
+            当前为<strong>全量覆盖</strong>：会先删除该资产在库中的全部行情，再写入本次文件中的全部行。
+          </template>
+        </p>
+        <p v-if="multiImportProgressLine" class="multi-import-live-progress">
+          {{ multiImportProgressLine }}
+        </p>
+        <el-alert
+          v-if="multiImportMetric !== 'close'"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="multi-metric-anchor-alert"
+          title="当前为「收盘价之外」的宽表列（补充字段）"
+          description="须先完成对应交易日的收盘价导入：新日期必须在文件中提供大于 0 的收盘价才会入库；仅规模/成交额/成交量/OHLC 等时，对应日期在库中须已有有效收盘价，否则该行会被拒绝。缺少有效资产代码或名称的列不会出现在表中、也不会导入。"
+        />
+        <el-table
+          :data="multiAssetRows"
+          border
+          stripe
+          max-height="420"
+          size="small"
+          :row-key="multiAssetTableRowKey"
+        >
+          <el-table-column label="导入" width="56" align="center">
+            <template slot-scope="{ row }">
+              <el-checkbox v-model="row.selected" />
+            </template>
+          </el-table-column>
+          <el-table-column prop="file_code" label="文件代码" min-width="110" show-overflow-tooltip />
+          <el-table-column prop="file_name" label="文件名称" min-width="120" show-overflow-tooltip />
+          <el-table-column label="匹配情况" min-width="200">
+            <template slot-scope="{ row }">
+              <el-tag :type="multiMatchTagType(row.match_kind)" size="mini">{{ multiMatchLabel(row.match_kind) }}</el-tag>
+              <div v-if="row.match_kind === 'code_name_diff'" class="multi-asset-cell-sub">
+                系统中名称：{{ row.system_name || '—' }}
+              </div>
+              <div v-if="row.match_kind === 'name_code_diff'" class="multi-asset-cell-sub">
+                系统代码 {{ row.system_code }}（与文件代码不一致）
+              </div>
+              <div v-if="row.match_kind === 'name_ambiguous'" class="multi-asset-cell-sub warn">
+                同名资产多条，请在下栏选择导入目标代码
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="将导入至" min-width="130">
+            <template slot-scope="{ row }">
+              <span v-if="row.match_kind === 'exact' || row.match_kind === 'new_asset'">
+                {{ row.file_code }}
+              </span>
+              <span v-else-if="row.match_kind === 'code_name_diff'">
+                <template v-if="row.codeDiffMode === 'new'">{{ (row.newAssetCode || '').trim() || '（请填写新代码）' }}</template>
+                <template v-else>{{ row.file_code }}</template>
+              </span>
+              <template v-else-if="row.match_kind === 'name_code_diff'">
+                <span>{{ row.importAsCode }}</span>
+              </template>
+              <el-select
+                v-else-if="row.match_kind === 'name_ambiguous'"
+                v-model="row.importAsCode"
+                filterable
+                size="mini"
+                style="width: 100%"
+                placeholder="选择系统代码"
+                @change="onMultiImportTargetChange(row)"
+              >
+                <el-option
+                  v-for="(c, cidx) in row.name_match_candidates"
+                  :key="(row.file_code || '') + '-cand-' + cidx + '-' + (c.code || '')"
+                  :label="`${c.name} (${c.code})`"
+                  :value="c.code"
+                />
+              </el-select>
+            </template>
+          </el-table-column>
+          <el-table-column label="文件行数" width="88" align="center">
+            <template slot-scope="{ row }">{{ row.price_count }}</template>
+          </el-table-column>
+          <el-table-column label="文件日期范围" min-width="158">
+            <template slot-scope="{ row }">
+              <span v-if="row.date_min && row.date_max">{{ row.date_min }} ~ {{ row.date_max }}</span>
+              <span v-else>—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="库内已有行情" min-width="168">
+            <template slot-scope="{ row }">
+              <template v-if="row.import_preview && row.import_preview.existing_price_count">
+                <div>{{ row.import_preview.existing_date_min }} ~ {{ row.import_preview.existing_date_max }}</div>
+                <div class="multi-asset-cell-sub">共 {{ row.import_preview.existing_price_count }} 条</div>
+              </template>
+              <span v-else>无</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="本次导入影响" min-width="280">
+            <template slot-scope="{ row }">
+              <span class="multi-import-effect">{{ formatMultiImportEffect(row) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="仅代码一致时" min-width="220" align="left">
+            <template slot-scope="{ row }">
+              <template v-if="row.match_kind === 'code_name_diff'">
+                <el-radio-group v-model="row.codeDiffMode" size="mini" class="multi-code-diff-rg">
+                  <el-radio label="keep">沿用已有</el-radio>
+                  <el-radio label="new">新建资产</el-radio>
+                </el-radio-group>
+                <div v-if="row.codeDiffMode === 'keep'" class="multi-asset-cell-sub">
+                  <el-checkbox v-model="row.overwriteName">用文件名称覆盖系统名称</el-checkbox>
+                </div>
+                <div v-else class="multi-asset-cell-sub">
+                  <el-input
+                    v-model="row.newAssetCode"
+                    size="mini"
+                    clearable
+                    placeholder="新资产代码（须不与已有重复）"
+                  />
+                </div>
+              </template>
+              <span v-else>—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="确认绑定" width="100" align="center">
+            <template slot-scope="{ row }">
+              <el-checkbox
+                v-if="row.match_kind === 'name_code_diff'"
+                v-model="row.bindConfirmed"
+              />
+              <span v-else-if="row.match_kind === 'name_ambiguous'">{{ row.importAsCode ? '已选' : '—' }}</span>
+              <span v-else>—</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="100" align="center" fixed="right">
+            <template slot-scope="{ row, $index }">
+              <el-button
+                v-if="row.match_kind === 'new_asset'"
+                type="text"
+                size="mini"
+                @click="openMultiAssetCreate($index)"
+              >
+                新建资产
+              </el-button>
+              <span v-else>—</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-dialog>
+
+    <el-dialog
+      title="新建资产（多资产导入）"
+      :visible.sync="multiAssetCreateVisible"
+      width="640px"
+      append-to-body
+      :close-on-click-modal="false"
+      @closed="multiAssetCreatePreset = null"
+    >
+      <asset-form
+        v-if="multiAssetCreateVisible"
+        :key="multiAssetFormKey"
+        is-dialog
+        :preset-create="multiAssetCreatePreset"
+        @success="onMultiAssetCreateSuccess"
+        @close="multiAssetCreateVisible = false"
+      />
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { getAssetOptions, getAssetKline } from '@/api/asset';
 import {
+  getAssetOptions,
+  getAssetKline,
   downloadPriceTemplate,
+  downloadMultiAssetPriceTemplate,
   importPricesFromExcel,
   importPricesJson,
-  getPriceCoverageGaps
+  getPriceCoverageGaps,
+  analyzeMultiAssetImport,
+  importSingleAssetFromMulti,
+  getPriceImportProgress,
+  getMultiAssetRowPreviewStats,
+  createAsset
 } from '@/api/asset';
 import SyncProgressDialog from '@/components/SyncProgressDialog.vue';
+import AssetForm from '@/views/asset/AssetForm.vue';
+import {
+  unwrapPriceImportProgressPayload,
+  formatPriceImportProgressLine,
+  PRICE_IMPORT_PROGRESS_POLL_MS
+} from '@/utils/priceImportProgress';
 import * as echarts from 'echarts';
 
 export default {
   name: 'AssetQuote',
-  components: { SyncProgressDialog },
+  components: { SyncProgressDialog, AssetForm },
+  beforeDestroy() {
+    this.stopMultiImportProgressPoll();
+  },
   props: {
     isDialog: {
       type: Boolean,
@@ -276,7 +574,8 @@ export default {
         low: null,
         close: null,
         volume: null,
-        amount: null
+        amount: null,
+        scale: null
       },
       manualSubmitting: false,
       /** 用户是否曾单独改过开/高/低；改过则不再随收盘价联动 */
@@ -284,7 +583,23 @@ export default {
         open: false,
         high: false,
         low: false
-      }
+      },
+      multiAssetDialogVisible: false,
+      multiAssetLoading: false,
+      multiAssetRows: [],
+      /** merge | only_new | replace */
+      multiImportMode: 'merge',
+      multiImportSubmitting: false,
+      multiAssetCreateVisible: false,
+      multiAssetCreatePreset: null,
+      multiAssetFormKey: 0,
+      multiAssetCreateRowIndex: -1,
+      /** 多资产宽表每列数值映射到行情字段，与后端 metric 一致 */
+      multiImportMetric: 'close',
+      multiBatchCreateLoading: false,
+      /** 当前单资产导入时由后端进度接口填充 */
+      multiImportProgressLine: '',
+      _multiImportProgressTimer: null
     };
   },
   computed: {
@@ -306,6 +621,18 @@ export default {
       const p = this.priceCoverage;
       if (!p || !p.missing_dates || !p.missing_dates.length) return null;
       return p.last_missing || p.missing_dates[p.missing_dates.length - 1];
+    },
+    multiImportMetricLabel() {
+      const m = {
+        close: '收盘价',
+        open: '开盘价',
+        high: '最高价',
+        low: '最低价',
+        amount: '成交额',
+        volume: '成交量',
+        scale: '规模'
+      };
+      return m[this.multiImportMetric] || '收盘价';
     }
   },
   mounted() {
@@ -351,10 +678,25 @@ export default {
       d = d < 10 ? '0' + d : d;
       return `${y}-${m}-${d}`;
     },
+    /** el-table 行唯一键：避免 file_code 重复或同代码多行时 DOM 复用错乱 */
+    multiAssetTableRowKey(row) {
+      const fc = (row && row.file_code) || '';
+      const fn = (row && row.file_name) || '';
+      const mk = (row && row.match_kind) || '';
+      return `${fc}__${fn}__${mk}`;
+    },
     async fetchAssetOptions() {
       try {
         const res = await getAssetOptions();
-        this.assetOptions = res.data || res;
+        const raw = res.data || res;
+        const list = Array.isArray(raw) ? raw : [];
+        const seen = new Set();
+        this.assetOptions = list.filter((item) => {
+          const c = item && String(item.code || '').trim();
+          if (!c || seen.has(c)) return false;
+          seen.add(c);
+          return true;
+        });
         
         // 优先使用 props 的 assetCode
         if (this.isDialog && this.assetCode) {
@@ -409,7 +751,8 @@ export default {
           low: item.low ?? item.close ?? 0,
           close: item.close ?? 0,
           volume: item.volume ?? 0,
-          amount: item.amount ?? 0
+          amount: item.amount ?? 0,
+          scale: item.scale != null ? item.scale : null
         }));
         
         this.renderChart();
@@ -515,12 +858,16 @@ export default {
       }
       const c = this.manualForm.close;
       if (c === null || c === undefined || c === '' || Number.isNaN(Number(c))) {
-        this.$message.warning('请填写收盘价');
+        this.$message.warning('请填写收盘价（不能为空）');
         return;
       }
       const close = Number(c);
       if (!Number.isFinite(close)) {
         this.$message.warning('收盘价格式不正确');
+        return;
+      }
+      if (!(close > 0)) {
+        this.$message.warning('收盘价须大于 0，不能为 0 或负数');
         return;
       }
       let open = this.manualForm.open;
@@ -539,7 +886,8 @@ export default {
         low,
         close,
         volume: this.manualForm.volume !== null && this.manualForm.volume !== '' ? Number(this.manualForm.volume) : undefined,
-        amount: this.manualForm.amount !== null && this.manualForm.amount !== '' ? Number(this.manualForm.amount) : undefined
+        amount: this.manualForm.amount !== null && this.manualForm.amount !== '' ? Number(this.manualForm.amount) : undefined,
+        scale: this.manualForm.scale !== null && this.manualForm.scale !== '' ? Number(this.manualForm.scale) : undefined
       };
       this.manualSubmitting = true;
       try {
@@ -558,6 +906,25 @@ export default {
       } finally {
         this.manualSubmitting = false;
       }
+    },
+    /**
+     * 绘图时跳过占位/异常行（折线与 K 线共用）：
+     * 开、高、低均为 0 时，无论收盘是否为 0，多为非交易日占位或仅补了收盘价的不完整数据，避免拖到 0 或畸变 K 线。
+     */
+    isZeroOhlcChartPlaceholder(row) {
+      const n = (v) => {
+        if (v == null || v === '') return 0;
+        const x = Number(v);
+        return Number.isFinite(x) ? x : NaN;
+      };
+      const o = n(row.open);
+      const c = n(row.close);
+      const h = n(row.high);
+      const l = n(row.low);
+      if (!Number.isFinite(o) || !Number.isFinite(c) || !Number.isFinite(h) || !Number.isFinite(l)) {
+        return false;
+      }
+      return o === 0 && h === 0 && l === 0;
     },
     renderChart() {
       this.$nextTick(() => {
@@ -583,16 +950,33 @@ export default {
           return;
         }
 
-        const dates = this.quoteData.map(item => item.date);
-        const closeData = this.quoteData.map(item => item.close);
-        const klineData = this.quoteData.map(item => [item.open, item.close, item.low, item.high]);
+        const chartRows = this.quoteData.filter((row) => !this.isZeroOhlcChartPlaceholder(row));
+        if (chartRows.length === 0) {
+          this.chartInstance.clear();
+          this.chartInstance.setOption({
+            title: {
+              text: this.getAssetName(this.selectedAsset) + ' K线图',
+              left: 0,
+              subtext: '无有效K线数据（已跳过开高低为0的占位行情）',
+              subtextStyle: { color: '#999' }
+            },
+            xAxis: { type: 'category', data: [] },
+            yAxis: { type: 'value' },
+            series: []
+          });
+          return;
+        }
+
+        const dates = chartRows.map(item => item.date);
+        const closeData = chartRows.map(item => item.close);
+        const klineData = chartRows.map(item => [item.open, item.close, item.low, item.high]);
         
         // 检测是否所有数据都只有收盘价（open=high=low=close）
-        const hasOnlyClose = this.quoteData.every(item => 
+        const hasOnlyClose = chartRows.every(item => 
           item.open === item.close && item.high === item.close && item.low === item.close
         );
 
-        const quoteData = this.quoteData;
+        const quoteData = chartRows;
         const option = {
           title: {
             text: this.getAssetName(this.selectedAsset) + (hasOnlyClose ? ' 收盘价走势' : ' K线图'),
@@ -720,19 +1104,104 @@ export default {
       if (n >= 10000) return (n / 10000).toFixed(2) + '万';
       return n.toLocaleString();
     },
-    // 下载行情导入模板
-    async handleDownloadPriceTemplate() {
+    async handlePriceTemplateCommand(cmd) {
       try {
-        const blob = await downloadPriceTemplate();
+        let blob;
+        let filename;
+        if (String(cmd).startsWith('single_')) {
+          const kind = String(cmd).slice('single_'.length) || 'full';
+          blob = await downloadPriceTemplate(kind);
+          filename =
+            kind === 'full'
+              ? '行情导入模板-单资产-全列.xlsx'
+              : `行情导入模板-单资产-${kind}.xlsx`;
+        } else if (String(cmd).startsWith('multi_')) {
+          const metric = String(cmd).slice('multi_'.length) || 'close';
+          blob = await downloadMultiAssetPriceTemplate(metric);
+          filename = `行情导入模板-多资产宽表-${metric}.xlsx`;
+        } else {
+          return;
+        }
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = '资产行情导入模板.xlsx';
+        link.download = filename;
         link.click();
         window.URL.revokeObjectURL(url);
         this.$message.success('模板下载成功');
       } catch (error) {
         this.$message.error('模板下载失败');
+      }
+    },
+    formatMultiImportEffect(row) {
+      const p = row.import_preview;
+      if (!p) return '—';
+      const skippedCalRows = p.skipped_non_trade_rows != null ? p.skipped_non_trade_rows : 0;
+      const calHint =
+        skippedCalRows > 0
+          ? `（已按系统交易日历排除 ${skippedCalRows} 行非交易日，与真实导入一致）`
+          : '';
+      if (this.multiImportMode === 'replace') {
+        const fr = p.full_replace || {};
+        const delc = fr.will_delete_count != null ? fr.will_delete_count : 0;
+        const ins = fr.will_insert_count != null ? fr.will_insert_count : 0;
+        let tail = '';
+        if (fr.result_date_min && fr.result_date_max) {
+          tail = `写入后日期约 ${fr.result_date_min}～${fr.result_date_max}（以文件为准）。`;
+        }
+        return `将删除库内全部 ${delc} 条，再写入文件 ${ins} 行。${tail}${calHint}`;
+      }
+      const m = p.merge_import || {};
+      if (this.multiImportMode === 'only_new') {
+        const ins = m.will_insert_count != null ? m.will_insert_count : 0;
+        const skip = m.will_update_count != null ? m.will_update_count : 0;
+        const rg =
+          m.new_dates_min && m.new_dates_max
+            ? ` 新增区间约 ${m.new_dates_min}～${m.new_dates_max}。`
+            : '';
+        if (!ins && !skip) {
+          return (
+            (p.file_unique_date_count ? '按合并估算无可插入新日（或文件无有效新日）' : '无') + calHint
+          );
+        }
+        return (`仅新增：预计插入 ${ins} 个交易日；${skip} 个与库重叠的交易日将跳过不更新。${rg}`.trim() + calHint);
+      }
+      const parts = [];
+      if (m.will_insert_count) {
+        const rg =
+          m.new_dates_min && m.new_dates_max
+            ? `，日期约 ${m.new_dates_min}～${m.new_dates_max}`
+            : '';
+        parts.push(`新增 ${m.will_insert_count} 个交易日${rg}`);
+      }
+      if (m.will_update_count) {
+        const rg =
+          m.overlap_dates_min && m.overlap_dates_max
+            ? `，日期约 ${m.overlap_dates_min}～${m.overlap_dates_max}`
+            : '';
+        parts.push(`更新 ${m.will_update_count} 个交易日${rg}`);
+      }
+      if (!parts.length) {
+        return (p.file_unique_date_count ? '无有效可导入日期' : '无') + calHint;
+      }
+      return parts.join('；') + '。' + calHint;
+    },
+    async onMultiImportTargetChange(row) {
+      if (row) {
+        this.$set(row, 'bindConfirmed', true);
+      }
+      if (!row || !row.importAsCode || !row.prices || !row.prices.length) return;
+      try {
+        const res = await getMultiAssetRowPreviewStats({
+          target_code: row.importAsCode,
+          prices: row.prices
+        });
+        const inner = res && res.data !== undefined ? res.data : res;
+        if (inner && typeof inner === 'object') {
+          this.$set(row, 'import_preview', inner);
+        }
+      } catch (e) {
+        this.$message.warning('刷新导入预览失败，仍以默认目标估算');
       }
     },
     // 处理行情文件选择
@@ -742,21 +1211,457 @@ export default {
         return;
       }
       
-      this.$confirm('是否覆盖已存在的行情数据？', '提示', {
-        confirmButtonText: '覆盖',
-        cancelButtonText: '仅新增',
-        distinguishCancelAndClose: true,
-        type: 'warning'
-      }).then(async () => {
-        await this.importPriceData(file.raw, true);
-      }).catch((action) => {
-        if (action === 'cancel') {
-          this.importPriceData(file.raw, false);
+      try {
+        await this.$confirm(
+          '「确定」= 全量覆盖：删除该资产全部历史行情后写入 Excel 全部行；「取消」进入非全量（按日合并或仅新增缺日）。',
+          '单资产 Excel 导入',
+          {
+            confirmButtonText: '全量覆盖',
+            cancelButtonText: '非全量',
+            distinguishCancelAndClose: true,
+            type: 'warning'
+          }
+        );
+        await this.importPriceData(file.raw, true, false);
+        return;
+      } catch (e) {
+        if (e === 'close') return;
+        if (e !== 'cancel') return;
+      }
+      try {
+        await this.$confirm(
+          '「确定」= 仅新增缺日：库中已有日期跳过；「取消」= 按日合并（重叠日更新、新日插入）。',
+          '非全量导入',
+          {
+            confirmButtonText: '仅新增缺日',
+            cancelButtonText: '按日合并',
+            distinguishCancelAndClose: true,
+            type: 'info'
+          }
+        );
+        await this.importPriceData(file.raw, false, true);
+      } catch (e2) {
+        if (e2 === 'close') return;
+        if (e2 === 'cancel') {
+          await this.importPriceData(file.raw, false, false);
         }
-      });
+      }
+    },
+    multiMatchLabel(kind) {
+      const m = {
+        exact: '代码与名称均一致',
+        code_name_diff: '仅代码一致',
+        name_code_diff: '仅名称一致',
+        name_ambiguous: '名称多条',
+        new_asset: '系统中无匹配'
+      };
+      return m[kind] || kind || '—';
+    },
+    multiMatchTagType(kind) {
+      const m = {
+        exact: 'success',
+        code_name_diff: 'warning',
+        name_code_diff: 'warning',
+        name_ambiguous: 'danger',
+        new_asset: 'info'
+      };
+      return m[kind] || '';
+    },
+    /** 行情页用 options 接口拉全量代码，与 store.assetList（分页）解耦 */
+    hasAssetCodeInOptions(code) {
+      return this.assetOptions.some((a) => a.code === code);
+    },
+    /** 与后端 asset_service._infer_asset_type 规则对齐，供批量新建前端调用 */
+    inferAssetTypeForBatchCreate(name, code) {
+      const n = String(name || '');
+      const c = String(code || '').toUpperCase();
+      if (n.includes('债') || c.includes('.CS')) return '债券';
+      if (n.includes('质押') || n.includes('DR007') || c.includes('.IB')) return '货币';
+      if (
+        n.includes('商品') ||
+        n.includes('黄金') ||
+        n.includes('有色') ||
+        n.includes('化工') ||
+        n.includes('能源') ||
+        n.includes('贵金属') ||
+        n.includes('原油') ||
+        n.includes('豆粕')
+      ) {
+        return '商品';
+      }
+      if (
+        n.includes('ETF') ||
+        n.includes('LOF') ||
+        c.includes('518') ||
+        c.includes('159') ||
+        c.includes('501') ||
+        c.includes('160') ||
+        c.includes('164') ||
+        c.includes('161')
+      ) {
+        return '基金';
+      }
+      if (n.includes('指数') || c.includes('300') || c.includes('.WI') || c.includes('000300')) return '指数';
+      if (c.includes('.SH') || c.includes('.SZ')) {
+        return n.includes('ETF') || n.includes('LOF') ? '基金' : '指数';
+      }
+      return '指数';
+    },
+    /** 与后端 _infer_exchange 对齐 */
+    inferExchangeForBatchCreate(code) {
+      const c = String(code || '').toUpperCase();
+      if (c.includes('.SH') || c.endsWith('SH')) return 'SSE';
+      if (c.includes('.SZ') || c.endsWith('SZ')) return 'SZSE';
+      if (c.includes('.CS')) return 'CBB';
+      if (c.includes('.IB')) return 'IB';
+      if (c.includes('.WI')) return 'Wind';
+      return null;
+    },
+    /** 对勾选的「系统中无匹配」且库中尚无代码的行，批量调用创建资产（类型/交易所与导入逻辑推断一致） */
+    async batchCreateSelectedNewAssets() {
+      await this.fetchAssetOptions();
+      const targets = this.multiAssetRows.filter(
+        (r) => r.selected && r.match_kind === 'new_asset' && !this.hasAssetCodeInOptions(r.file_code)
+      );
+      if (!targets.length) {
+        this.$message.info('当前勾选中没有「系统中无匹配」且尚未建立的资产，无需批量新建。');
+        return;
+      }
+      try {
+        await this.$confirm(
+          `将为 ${targets.length} 个所选资产创建记录（代码、名称与文件一致；资产类型与交易所按规则推断）。是否继续？`,
+          '批量新建',
+          { type: 'warning' }
+        );
+      } catch (e) {
+        return;
+      }
+      this.multiBatchCreateLoading = true;
+      const errs = [];
+      let ok = 0;
+      try {
+        for (let i = 0; i < targets.length; i++) {
+          const row = targets[i];
+          const ex = this.inferExchangeForBatchCreate(row.file_code);
+          const body = {
+            code: row.file_code,
+            name: row.file_name,
+            asset_type: this.inferAssetTypeForBatchCreate(row.file_name, row.file_code)
+          };
+          if (ex) body.exchange = ex;
+          try {
+            await createAsset(body);
+            ok += 1;
+          } catch (err) {
+            const msg =
+              (err.response && err.response.data && err.response.data.detail) || err.message || '失败';
+            errs.push(`${row.file_code}: ${msg}`);
+          }
+        }
+        await this.fetchAssetOptions();
+        this.$message.success(`批量新建结束：成功 ${ok} 个，失败 ${errs.length} 个`);
+        if (errs.length) {
+          this.$alert(errs.slice(0, 12).join('\n') + (errs.length > 12 ? '\n…' : ''), '失败明细', {
+            type: 'error'
+          });
+        }
+      } finally {
+        this.multiBatchCreateLoading = false;
+      }
+    },
+    onMultiAssetDialogClosed() {
+      this.stopMultiImportProgressPoll();
+      this.multiImportProgressLine = '';
+      this.multiAssetRows = [];
+      this.multiImportSubmitting = false;
+      this.multiImportMode = 'merge';
+    },
+    newPriceImportProgressId() {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      return `p-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    },
+    stopMultiImportProgressPoll() {
+      if (this._multiImportProgressTimer) {
+        clearInterval(this._multiImportProgressTimer);
+        this._multiImportProgressTimer = null;
+      }
+    },
+    startMultiImportProgressPoll(progressId) {
+      this.stopMultiImportProgressPoll();
+      if (!progressId) return;
+      let hadSnap = false;
+      let inFlight = false;
+      const tick = () => {
+        if (inFlight) return;
+        inFlight = true;
+        getPriceImportProgress(progressId)
+          .then((res) => {
+            const snap = unwrapPriceImportProgressPayload(res);
+            if (snap) {
+              hadSnap = true;
+              this.multiImportProgressLine = formatPriceImportProgressLine(snap);
+            } else if (!hadSnap) {
+              this.multiImportProgressLine = '正在连接导入任务，等待服务端进度…';
+            }
+          })
+          .catch(() => {
+            if (!hadSnap) {
+              this.multiImportProgressLine = '无法拉取进度（请检查网络或登录态）';
+            }
+          })
+          .finally(() => {
+            inFlight = false;
+          });
+      };
+      tick();
+      this._multiImportProgressTimer = setInterval(tick, PRICE_IMPORT_PROGRESS_POLL_MS);
+    },
+    openMultiAssetCreate(rowIndex) {
+      const row = this.multiAssetRows[rowIndex];
+      if (!row) return;
+      this.multiAssetCreateRowIndex = rowIndex;
+      this.multiAssetCreatePreset = { code: row.file_code, name: row.file_name };
+      this.multiAssetFormKey += 1;
+      this.multiAssetCreateVisible = true;
+    },
+    async onMultiAssetCreateSuccess() {
+      this.multiAssetCreateVisible = false;
+      await this.fetchAssetOptions();
+      const row = this.multiAssetRows[this.multiAssetCreateRowIndex];
+      if (row && row.match_kind === 'new_asset') {
+        if (this.hasAssetCodeInOptions(row.file_code)) {
+          this.$set(row, 'selected', true);
+          this.$message.success('已创建资产，可勾选并导入行情');
+        }
+      }
+      this.multiAssetCreateRowIndex = -1;
+    },
+    normalizeMultiAssetResponse(res) {
+      const body = res && res.data !== undefined ? res.data : res;
+      return (body && body.assets) || [];
+    },
+    async handleMultiAssetFileChange(file) {
+      if (!file || !file.raw) return;
+      this.multiAssetLoading = true;
+      this.multiAssetDialogVisible = true;
+      try {
+        await this.fetchAssetOptions();
+        const res = await analyzeMultiAssetImport(file.raw, this.multiImportMetric);
+        const assets = this.normalizeMultiAssetResponse(res);
+        if (!assets.length) {
+          this.$message.warning(
+            `未解析到任何资产列，请确认宽表布局及工具栏「宽表列含义」与文件一致（当前：${this.multiImportMetricLabel}）`
+          );
+          this.multiAssetDialogVisible = false;
+          return;
+        }
+        this.multiAssetRows = assets.map((a) => {
+          const kind = a.match_kind;
+          const base = {
+            ...a,
+            selected: kind !== 'name_code_diff' && kind !== 'name_ambiguous',
+            overwriteName: false,
+            codeDiffMode: 'keep',
+            newAssetCode: '',
+            importAsCode: a.suggested_import_code || a.file_code,
+            bindConfirmed:
+              kind === 'exact' ||
+              kind === 'code_name_diff' ||
+              kind === 'new_asset' ||
+              kind === 'name_ambiguous'
+          };
+          if (kind === 'name_code_diff') {
+            base.bindConfirmed = false;
+            base.importAsCode = a.system_code || a.suggested_import_code;
+          }
+          return base;
+        });
+        this.multiImportMode = 'merge';
+        if (this.multiImportMetric !== 'close') {
+          this.$message.warning(
+            '当前为收盘价之外的补充字段：请先确保各交易日已导入有效收盘价；无收盘价锚点的日期将无法写入。'
+          );
+        }
+      } catch (err) {
+        const msg = (err.response && err.response.data && err.response.data.detail) || err.message || '解析失败';
+        this.$message.error(String(msg));
+        this.multiAssetDialogVisible = false;
+      } finally {
+        this.multiAssetLoading = false;
+        if (this.$refs.multiAssetUpload) {
+          this.$refs.multiAssetUpload.clearFiles();
+        }
+      }
+    },
+    async submitMultiAssetImport() {
+      await this.fetchAssetOptions();
+      const rows = this.multiAssetRows.filter((r) => r.selected);
+      if (!rows.length) {
+        this.$message.warning('请至少勾选一条要导入的资产');
+        return;
+      }
+      if (this.multiImportMetric !== 'close') {
+        try {
+          await this.$confirm(
+            `当前宽表列为「${this.multiImportMetricLabel}」（非收盘价）。规则：① 库中尚无该日的行情时，本行必须含大于 0 的收盘价才会新建该日；② 库中已有该日行情时，须该日已有有效收盘价，或本行提供大于 0 的收盘价；③ 缺少有效代码或名称的列不会出现在表中。是否继续导入？`,
+            '补充行情导入确认',
+            { type: 'warning', confirmButtonText: '继续导入', cancelButtonText: '取消' }
+          );
+        } catch (e) {
+          return;
+        }
+      }
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (row.match_kind === 'code_name_diff' && row.codeDiffMode === 'new') {
+          const nc = (row.newAssetCode || '').trim();
+          if (!nc) {
+            this.$message.warning(`「仅代码一致」选择新建资产时，请填写新资产代码：${row.file_code}`);
+            return;
+          }
+          if (this.hasAssetCodeInOptions(nc)) {
+            this.$message.warning(`新资产代码已在系统中存在：${nc}`);
+            return;
+          }
+        }
+        if (row.match_kind === 'name_code_diff' && !row.bindConfirmed) {
+          this.$message.warning(`请勾选「确认绑定」：${row.file_name} 将导入到系统代码 ${row.importAsCode}`);
+          return;
+        }
+        if (row.match_kind === 'name_ambiguous') {
+          if (!row.importAsCode) {
+            this.$message.warning(`请为「${row.file_name}」选择导入目标代码`);
+            return;
+          }
+        }
+      }
+
+      const nameBindLines = rows
+        .filter((r) => r.match_kind === 'name_code_diff')
+        .map((r) => `• ${r.file_name}：文件代码 ${r.file_code} → 行情写入 ${r.importAsCode}`);
+      if (nameBindLines.length) {
+        try {
+          await this.$confirm(
+            `以下资产仅名称与系统一致，行情将写入「系统代码」而非文件代码：\n${nameBindLines.join('\n')}`,
+            '确认导入目标',
+            { type: 'warning', confirmButtonText: '确认导入', cancelButtonText: '取消' }
+          );
+        } catch (e) {
+          return;
+        }
+      }
+
+      const ambiguous = rows.filter((r) => r.match_kind === 'name_ambiguous');
+      for (let i = 0; i < ambiguous.length; i++) {
+        const r = ambiguous[i];
+        try {
+          await this.$confirm(
+            `「${r.file_name}」在系统中存在多条同名资产，您已选择将行情导入至 ${r.importAsCode}，是否继续？`,
+            '确认同名资产',
+            { type: 'warning', confirmButtonText: '继续', cancelButtonText: '取消' }
+          );
+        } catch (e) {
+          return;
+        }
+      }
+
+      const newRows = rows.filter((r) => r.match_kind === 'new_asset');
+      if (newRows.length) {
+        try {
+          await this.$confirm(
+            `将导入 ${newRows.length} 条「系统中无匹配」资产：若代码尚不存在将自动新建（名称、代码与文件一致），并写入行情。是否继续？`,
+            '确认导入',
+            { type: 'warning' }
+          );
+        } catch (e) {
+          return;
+        }
+      }
+
+      const createNewByCodeDiff = rows.filter(
+        (r) => r.match_kind === 'code_name_diff' && r.codeDiffMode === 'new'
+      );
+      if (createNewByCodeDiff.length) {
+        const lines = createNewByCodeDiff.map(
+          (r) => `• 文件代码 ${r.file_code} → 新建 ${(r.newAssetCode || '').trim()} 并导入行情（不修改原代码资产）`
+        );
+        try {
+          await this.$confirm(
+            `以下将新建资产并导入行情：\n${lines.join('\n')}`,
+            '确认新建资产',
+            { type: 'warning', confirmButtonText: '继续', cancelButtonText: '取消' }
+          );
+        } catch (e) {
+          return;
+        }
+      }
+
+      this.multiImportSubmitting = true;
+      this.multiImportProgressLine = '';
+      let ok = 0;
+      let fail = 0;
+      let totalSkippedNonTrade = 0;
+      const errs = [];
+      try {
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          const useBind = row.match_kind === 'name_code_diff' || row.match_kind === 'name_ambiguous';
+          const importAs = useBind ? row.importAsCode : null;
+          const createNew =
+            row.match_kind === 'code_name_diff' && row.codeDiffMode === 'new';
+          const progressId = this.newPriceImportProgressId();
+          const payload = {
+            code: row.file_code,
+            name: row.file_name,
+            prices: row.prices || [],
+            overwrite_name: row.match_kind === 'code_name_diff' && !createNew ? !!row.overwriteName : false,
+            replace_existing: this.multiImportMode === 'replace',
+            only_missing_dates: this.multiImportMode === 'only_new',
+            import_as_code: importAs || undefined,
+            create_new_asset: !!createNew,
+            new_asset_code: createNew ? (row.newAssetCode || '').trim() : undefined,
+            progress_id: progressId,
+            import_metric: this.multiImportMetric
+          };
+          this.startMultiImportProgressPoll(progressId);
+          try {
+            const importRes = await importSingleAssetFromMulti(payload);
+            const inner = importRes && importRes.data !== undefined ? importRes.data : importRes;
+            const nt = inner && inner.skipped_non_trade_days != null ? inner.skipped_non_trade_days : 0;
+            if (nt > 0) {
+              totalSkippedNonTrade += nt;
+            }
+            ok += 1;
+          } catch (err) {
+            fail += 1;
+            const msg = (err.response && err.response.data && err.response.data.detail) || err.message || '失败';
+            errs.push(`${row.file_code}: ${msg}`);
+          } finally {
+            this.stopMultiImportProgressPoll();
+          }
+        }
+        const ntTip =
+          totalSkippedNonTrade > 0
+            ? `；有 ${totalSkippedNonTrade} 条因不在系统交易日历内已跳过（请更新 trade_dates / trade_dates.xlsx）`
+            : '';
+        this.$message.success(`导入结束：成功 ${ok} 个，失败 ${fail} 个${ntTip}`);
+        if (errs.length) {
+          this.$alert(errs.slice(0, 8).join('\n') + (errs.length > 8 ? '\n…' : ''), '失败明细', { type: 'error' });
+        }
+        this.multiAssetDialogVisible = false;
+        await this.fetchAssetOptions();
+        if (this.selectedAsset) {
+          this.fetchData();
+        }
+      } finally {
+        this.multiImportSubmitting = false;
+      }
     },
     // 导入行情数据
-    async importPriceData(file, replaceExisting) {
+    async importPriceData(file, replaceExisting, onlyMissingDates = false) {
       const loading = this.$loading({
         lock: true,
         text: '正在导入行情数据...',
@@ -768,12 +1673,15 @@ export default {
           this.selectedAsset,
           file,
           replaceExisting,
-          this.excelOnlyDate || null
+          this.excelOnlyDate || null,
+          onlyMissingDates
         );
         const data = result.data || result;
-        
+        const sk = data.skipped_count != null ? data.skipped_count : 0;
+        const nt = data.skipped_non_trade_days != null ? data.skipped_non_trade_days : 0;
+        const ntTip = nt > 0 ? `（非交易日历内 ${nt} 条已跳过）` : '';
         this.$message.success(
-          `导入完成！成功: ${data.success_count || 0}条，失败: ${data.error_count || 0}条`
+          `导入完成！新增 ${data.inserted_count != null ? data.inserted_count : 0} 条，更新 ${data.updated_count != null ? data.updated_count : 0} 条，跳过 ${sk} 条，失败 ${data.error_count != null ? data.error_count : 0} 条${ntTip}`
         );
         
         if (data.errors && data.errors.length > 0) {
@@ -840,6 +1748,19 @@ export default {
   color: #909399;
   font-weight: normal;
 }
+.manual-required-text {
+  color: #f56c6c;
+}
+.manual-close-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.manual-close-required-mark {
+  color: #f56c6c;
+  font-weight: 600;
+  margin-left: 2px;
+}
 .manual-import-card .manual-price-input {
   width: 140px;
 }
@@ -848,6 +1769,60 @@ export default {
 }
 .manual-import-card .manual-vol-input {
   width: 140px;
+}
+.multi-metric-form-item {
+  margin-bottom: 0;
+}
+
+.multi-asset-import-body {
+  min-height: 120px;
+}
+.multi-asset-hint {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+.multi-asset-mode-hint {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+.multi-import-live-progress {
+  font-size: 13px;
+  color: #303133;
+  line-height: 1.5;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  background: #f4f4f5;
+  border-radius: 4px;
+  font-family: Consolas, 'Courier New', monospace;
+}
+.multi-asset-toolbar {
+  margin-bottom: 12px;
+}
+.multi-import-effect {
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: normal;
+  word-break: break-word;
+}
+.multi-asset-cell-sub {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+}
+.multi-asset-cell-sub.warn {
+  color: #e6a23c;
+}
+.multi-metric-anchor-alert {
+  margin-bottom: 12px;
+}
+.multi-code-diff-rg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
 }
 .asset-quote-container {
   padding: 10px;

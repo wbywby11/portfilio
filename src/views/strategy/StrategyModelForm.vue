@@ -110,132 +110,26 @@
           </el-form-item>
         </el-card>
 
-        <!-- 主观配置策略：默认资产权重（紧跟策略配置，无周期性调仓） -->
+        <!-- 主观配置：与日常监控相同的权重编辑（滑块 + 条形示意 + 归一化） -->
         <el-card shadow="never" class="form-card manual-weights-card" v-if="isManualAllocationTemplate">
           <div slot="header" class="card-header">
-            <span>默认资产权重</span>
-            <el-tooltip content="主观配置策略按预设调仓日调仓，无周期性调仓。请为每个资产设置默认权重；主观策略不受指数编制规则限制，单资产上限 100%，总仓位不得超过「最大杠杆」。" placement="top">
+            <span>主观配置权重</span>
+            <el-tooltip
+              content="默认权重用于期初建仓；预设调仓用于指定日期的目标权重。交互与日常监控页「实盘生效参数」一致，支持归一化到 100%。主观策略无周期性调仓，总仓位不超过 100%（实盘固定杠杆上限 1 倍）。"
+              placement="top">
               <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
             </el-tooltip>
           </div>
-          <div class="vol-reset-hint" style="margin-bottom: 16px; color: #909399; font-size: 13px;">
-            请先在上方「选择资产」中至少选择一个资产；为每个资产配置权重（0～1），步长 0.05。主观策略不受指数编制规则限制，单资产上限 100%；总仓位不得超过「最大杠杆」（见模型参数）。
-          </div>
-          <el-form-item label="资产权重" required>
-            <div v-if="!form.asset_codes || form.asset_codes.length === 0" class="manual-weights-empty">
-              请先在上方「选择资产」中至少选择一个资产
-            </div>
-            <div v-else class="manual-weights-grid">
-              <div
-                v-for="code in form.asset_codes"
-                :key="code"
-                class="manual-weight-item"
-              >
-                <el-tooltip :content="getMaxWeightTooltip(code)" placement="top" :open-delay="200">
-                  <div class="manual-weight-row" :title="getMaxWeightTooltip(code)">
-                    <span class="manual-weight-label" :title="code">{{ getAssetLabel(code) }}</span>
-                    <el-input-number
-                      v-model="manualWeightsByCode[code]"
-                      :min="0"
-                      :max="effectiveMaxWeight(code)"
-                      :step="0.05"
-                      :precision="2"
-                      size="small"
-                      controls-position="right"
-                      class="manual-weight-input"
-                    ></el-input-number>
-                    <span class="manual-weight-max-hint">{{ getMaxWeightHint(code) }}</span>
-                  </div>
-                </el-tooltip>
-              </div>
-            </div>
-            <div v-if="manualWeightsSum !== null" style="margin-top: 12px; font-size: 13px;" :style="{ color: manualWeightsSum <= (maxLeverageParam || 4) ? (Math.abs(manualWeightsSum - 1) < 0.001 ? '#67C23A' : '#E6A23C') : '#F56C6C' }">
-              权重和：{{ (manualWeightsSum * 100).toFixed(2) }}%
-              <span v-if="manualWeightsSum > (maxLeverageParam || 4)">（超过最大杠杆 {{ ((maxLeverageParam || 4) * 100).toFixed(0) }}%，请调整）</span>
-              <span v-else-if="Math.abs(manualWeightsSum - 1) > 0.001">（建议为 100%，策略可开启自动归一化）</span>
-            </div>
+          <el-form-item label-width="0" class="manual-weights-form-item">
+            <SubjectiveWeightsFormPanel
+              :asset-codes="form.asset_codes || []"
+              :manual-weights="form.parameters.manual_weights"
+              :manual-weight-adjustments="presetRebalanceList"
+              :resolve-label="subjectiveWeightsEditorLabel"
+              @add-preset="addPresetRebalance"
+              @remove-preset="removePresetRebalance"
+            />
           </el-form-item>
-        </el-card>
-
-        <!-- 主观策略：预设调仓日期与权重（在策略中配置，回测时自动带出） -->
-        <el-card shadow="never" class="form-card manual-preset-card" v-if="isManualAllocationTemplate">
-          <div slot="header" class="card-header">
-            <span>预设调仓日期与权重</span>
-            <el-tooltip content="在此配置调仓日及对应权重，回测时将自动使用，无需每次在回测中重复设置" placement="top">
-              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-            </el-tooltip>
-          </div>
-          <div class="vol-reset-hint" style="margin-bottom: 16px; color: #909399; font-size: 13px;">
-            主观策略仅在预设的日期调仓。在此配置后，单策略回测与多策略对比将自动带出，回测中可查看或覆盖。
-          </div>
-          <div
-            v-for="(adj, idx) in presetRebalanceList"
-            :key="idx"
-            style="border: 1px solid #DCDFE6; border-radius: 4px; padding: 12px; margin-bottom: 12px; background: #fff;"
-          >
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-              <span style="font-weight: 500;">调仓日 {{ idx + 1 }}</span>
-              <el-button type="text" size="small" @click="removePresetRebalance(idx)" style="color: #F56C6C;">删除</el-button>
-            </div>
-            <el-row :gutter="16">
-              <el-col :span="8">
-                <el-form-item label="日期" label-width="80px">
-                  <el-date-picker
-                    v-model="adj.date"
-                    type="date"
-                    placeholder="选择调仓日期"
-                    value-format="yyyy-MM-dd"
-                    style="width: 100%;"
-                  ></el-date-picker>
-                </el-form-item>
-              </el-col>
-              <el-col :span="8">
-                <el-form-item label="是否归一化" label-width="90px">
-                  <el-switch v-model="adj.auto_normalize"></el-switch>
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-form-item label="资产权重" label-width="80px">
-              <div style="display: flex; flex-wrap: wrap; gap: 12px;">
-                <div
-                  v-for="code in (form.asset_codes || [])"
-                  :key="code"
-                  style="display: flex; align-items: center; gap: 4px; min-width: 140px;"
-                >
-                  <span style="font-size: 12px; min-width: 120px; overflow: hidden; text-overflow: ellipsis;" :title="getAssetLabel(code)">{{ getAssetLabel(code) }}</span>
-                  <el-tooltip v-if="!isManualAllocationTemplate && maxWeightDict[code] != null" :content="'指数编制规则上限 ' + ((maxWeightDict[code] || 0) * 100).toFixed(0) + '%'" placement="top">
-                    <el-input-number
-                      v-model="adj.weights[code]"
-                      :min="0"
-                      :max="(isManualAllocationTemplate || maxWeightDict[code] == null) ? 1 : maxWeightDict[code]"
-                      :step="0.05"
-                      :precision="4"
-                      size="small"
-                      controls-position="right"
-                      style="width: 90px;"
-                    ></el-input-number>
-                  </el-tooltip>
-                  <el-input-number
-                    v-else
-                    v-model="adj.weights[code]"
-                    :min="0"
-                    :max="1"
-                    :step="0.05"
-                    :precision="4"
-                    size="small"
-                    controls-position="right"
-                    style="width: 90px;"
-                  ></el-input-number>
-                </div>
-              </div>
-              <div v-if="getPresetAdjustmentWeightSum(idx) !== null" style="margin-top: 8px; font-size: 12px;" :style="{ color: Math.abs(getPresetAdjustmentWeightSum(idx) - 1) < 0.001 ? '#67C23A' : '#E6A23C' }">
-                权重和：{{ (getPresetAdjustmentWeightSum(idx) * 100).toFixed(2) }}%
-              </div>
-            </el-form-item>
-          </div>
-          <el-button type="primary" size="small" plain @click="addPresetRebalance">
-            <i class="el-icon-plus"></i> 添加调仓日
-          </el-button>
         </el-card>
 
         <!-- 资产选择策略区域（主观配置策略无动量选择，不展示） -->
@@ -284,8 +178,8 @@
               <span style="margin-left: 10px; color: #909399; font-size: 13px;">个（默认：8，范围：1-100）</span>
             </el-form-item>
 
-            <!-- 新增：最小历史数据要求 -->
-            <el-form-item label="最小历史数据要求">
+            <!-- 新增：最小历史数据要求（风险预算目标波动率模板固定 260 天，不展示） -->
+            <el-form-item v-if="!isRiskBudgetTargetVolTemplate" label="最小历史数据要求">
               <el-input-number
                   v-model="form.min_history_days"
                   :min="100"
@@ -376,8 +270,8 @@
               </el-tooltip>
             </el-form-item>
 
-            <!-- 新增：并列决胜窗口 -->
-            <el-form-item label="并列决胜窗口">
+            <!-- 新增：并列决胜窗口（风险预算目标波动率模板固定 22 天，不展示） -->
+            <el-form-item v-if="!isRiskBudgetTargetVolTemplate" label="并列决胜窗口">
               <el-input-number
                   v-model="form.tie_break_window"
                   :min="5"
@@ -395,8 +289,8 @@
           </template>
         </el-card>
 
-        <!-- 波动率阈值重置：所有策略可选，且在回测中均可实际执行 -->
-        <el-card shadow="never" class="form-card">
+        <!-- 波动率阈值重置：风险预算目标波动率模板固定阈值 0.06，不展示本卡 -->
+        <el-card shadow="never" class="form-card" v-if="!isRiskBudgetTargetVolTemplate">
           <div slot="header" class="card-header">
             <span>波动率阈值重置</span>
           </div>
@@ -433,7 +327,7 @@
             v-for="param in currentTemplate.parameters"
             :key="param.name"
             :label="param.label || param.name"
-            v-show="!(isManualAllocationTemplate && param.name === 'manual_weights') && param.name !== 'risk_budget_both' && param.name !== 'risk_budget_single'"
+            v-show="!(isManualAllocationTemplate && param.name === 'manual_weights') && param.name !== 'risk_budget_both' && param.name !== 'risk_budget_single' && !(isRiskBudgetTargetVolTemplate && isRiskBudgetTargetVolHiddenTemplateParameter(param.name)) && !(isManualAllocationTemplate && isSubjectiveMonitorHiddenSchemaParameter(param.name))"
           >
             <!-- 数字类型 -->
             <el-input-number
@@ -547,9 +441,20 @@
 <script>
 import { mapState } from 'vuex';
 import { getMaxWeightsByCodes } from '@/api/strategy';
+import {
+  isRiskBudgetTargetVolTemplateCode,
+  RISK_BUDGET_TARGET_VOL_FIXED,
+  isRiskBudgetTargetVolHiddenTemplateParameter,
+  isManualAllocationTemplateCode,
+  SUBJECTIVE_MONITOR_FIXED_PARAMETERS,
+  isSubjectiveMonitorHiddenSchemaParameter as checkSubjectiveHiddenSchemaParam
+} from '@/utils/strategyTemplateFlags';
+import { normalizeWeightsToTwoDecimalSumOne } from '@/utils/subjectiveWeights';
+import SubjectiveWeightsFormPanel from '@/components/SubjectiveWeightsFormPanel.vue';
 
 export default {
   name: 'StrategyModelForm',
+  components: { SubjectiveWeightsFormPanel },
   props: {
     isDialog: {
       type: Boolean,
@@ -627,10 +532,9 @@ export default {
       const code = (this.form.template_code || '').toString().toLowerCase();
       return code === 'manual_allocation' || code === 'manual_allocation_strategy';
     },
-    /** 用于默认资产权重输入框的绑定，保证始终有可写对象 */
-    manualWeightsByCode() {
-      const mw = this.form.parameters.manual_weights;
-      return mw && typeof mw === 'object' ? mw : {};
+    /** 风险预算目标波动率：最小历史、波动重置阈值、回看期、并列决胜窗口固定，不在界面编辑 */
+    isRiskBudgetTargetVolTemplate() {
+      return isRiskBudgetTargetVolTemplateCode(this.form.template_code);
     },
     /** 仅对当前选中的资产（form.asset_codes）汇总权重，与保存校验一致 */
     manualWeightsSum() {
@@ -640,7 +544,8 @@ export default {
       return this.form.asset_codes.reduce((s, c) => s + (Number(mw[c]) || 0), 0);
     },
     maxLeverageParam() {
-      if (!this.isManualAllocationTemplate || !this.form.parameters) return 4;
+      if (this.isManualAllocationTemplate) return 1;
+      if (!this.form.parameters) return 4;
       const v = this.form.parameters.max_leverage;
       return (v !== undefined && v !== null && !Number.isNaN(Number(v))) ? Number(v) : 4;
     },
@@ -719,6 +624,10 @@ export default {
     this.loadInitialData();
   },
   methods: {
+    isRiskBudgetTargetVolHiddenTemplateParameter,
+    isSubjectiveMonitorHiddenSchemaParameter(name) {
+      return checkSubjectiveHiddenSchemaParam(name);
+    },
 
     handleMomentumSelectionChange(value) {
       if (!value) {
@@ -876,6 +785,15 @@ export default {
           enable_vol_reset: (model.parameters && model.parameters.enable_vol_reset !== undefined) ? model.parameters.enable_vol_reset : true,
           vol_reset_threshold: (model.parameters && model.parameters.vol_reset_threshold !== undefined) ? model.parameters.vol_reset_threshold : 0.06
         };
+        if (isRiskBudgetTargetVolTemplateCode(model.template_code)) {
+          this.form.min_history_days = RISK_BUDGET_TARGET_VOL_FIXED.min_history_days;
+          this.form.tie_break_window = RISK_BUDGET_TARGET_VOL_FIXED.tie_break_window;
+          this.form.vol_reset_threshold = RISK_BUDGET_TARGET_VOL_FIXED.vol_reset_threshold;
+          this.form.enable_vol_reset = RISK_BUDGET_TARGET_VOL_FIXED.enable_vol_reset;
+          this.$set(this.form.parameters, 'lookback_days', RISK_BUDGET_TARGET_VOL_FIXED.lookback_days);
+        } else if (isManualAllocationTemplateCode(model.template_code)) {
+          this.applySubjectiveMonitorFixedToForm();
+        }
       } catch (error) {
         this.$message.error('加载策略数据失败');
         this.$router.back();
@@ -902,6 +820,13 @@ export default {
           }
         });
         this.form.parameters = parameters;
+        if (isRiskBudgetTargetVolTemplateCode(templateCode)) {
+          this.$set(this.form.parameters, 'lookback_days', RISK_BUDGET_TARGET_VOL_FIXED.lookback_days);
+          this.form.min_history_days = RISK_BUDGET_TARGET_VOL_FIXED.min_history_days;
+          this.form.tie_break_window = RISK_BUDGET_TARGET_VOL_FIXED.tie_break_window;
+          this.form.vol_reset_threshold = RISK_BUDGET_TARGET_VOL_FIXED.vol_reset_threshold;
+          this.form.enable_vol_reset = RISK_BUDGET_TARGET_VOL_FIXED.enable_vol_reset;
+        }
         // 主观配置：无周期性调仓，仅按预设日调仓；初始化默认资产权重并拉取指数编制上限
         const isManual = (templateCode || '').toString().toLowerCase() === 'manual_allocation' || (templateCode || '').toString().toLowerCase() === 'manual_allocation_strategy';
         if (isManual) {
@@ -914,8 +839,27 @@ export default {
           }
           // 主观策略不受指数编制规则限制
           this.maxWeightDict = {};
+          this.applySubjectiveMonitorFixedToForm();
         }
       }
+    },
+    /** 主观模板：与实盘监控无关的参数字段固定为产品默认（与后端 enforce 一致） */
+    applySubjectiveMonitorFixedToForm() {
+      Object.assign(this.form.parameters, SUBJECTIVE_MONITOR_FIXED_PARAMETERS);
+      this.form.enable_vol_reset = SUBJECTIVE_MONITOR_FIXED_PARAMETERS.enable_vol_reset;
+      this.form.vol_reset_threshold = SUBJECTIVE_MONITOR_FIXED_PARAMETERS.vol_reset_threshold;
+      this.form.enable_momentum_selection = false;
+      this.form.selector_type = '';
+      this.form.asset_selection_count = 1;
+      this.form.min_history_days = 260;
+      this.form.momentum_windows = '20,60,120,250';
+      this.form.mom_windows = '20,60,120,250';
+      this.form.posi_windows = '20,60,120,250';
+      this.form.smom_windows = '20,60,120,250';
+      this.form.macd_windows = '40,80,120,160';
+      this.form.macd_long_window = 250;
+      this.form.reversal_windows = '10,22';
+      this.form.tie_break_window = 22;
     },
     removeAsset(code) {
       const index = this.form.asset_codes.indexOf(code);
@@ -944,11 +888,6 @@ export default {
       this.ensurePresetRebalanceList();
       this.form.parameters.manual_weight_adjustments.splice(idx, 1);
     },
-    getPresetAdjustmentWeightSum(idx) {
-      const list = this.form.parameters.manual_weight_adjustments;
-      if (!list || !list[idx] || !list[idx].weights) return null;
-      return Object.values(list[idx].weights).reduce((s, v) => s + (Number(v) || 0), 0);
-    },
     /** 将后端返回的日期（YYYYMMDD 或 YYYY-MM-DD）转为 el-date-picker 需要的 YYYY-MM-DD */
     normalizeDateForPicker(val) {
       if (!val || typeof val !== 'string') return val;
@@ -961,6 +900,14 @@ export default {
     getAssetLabel(code) {
       const asset = this.assetOptions.find(a => a.code === code);
       return asset ? `${asset.code} ${asset.name}` : code;
+    },
+    /** 与日常监控主观编辑一致：名称（代码） */
+    subjectiveWeightsEditorLabel(code) {
+      const c = String(code || '').trim();
+      if (!c) return '';
+      const asset = this.assetOptions.find(a => a.code === c);
+      if (asset && asset.name && asset.name !== c) return `${asset.name}（${c}）`;
+      return c;
     },
     /** 指数编制规则下该资产单资产权重上限；主观策略不受限制，恒为 100% */
     effectiveMaxWeight(code) {
@@ -1030,6 +977,9 @@ export default {
           parameters.manual_weights = mw;
         }
         this.form.parameters = parameters;
+        if (this.isRiskBudgetTargetVolTemplate) {
+          this.$set(this.form.parameters, 'lookback_days', RISK_BUDGET_TARGET_VOL_FIXED.lookback_days);
+        }
         this.$message.success('参数已重置为默认值');
       }
     },
@@ -1106,6 +1056,39 @@ export default {
           // 所有策略均写入波动率阈值重置参数，供回测时使用
           submitParameters.enable_vol_reset = this.form.enable_vol_reset;
           submitParameters.vol_reset_threshold = this.form.vol_reset_threshold;
+          if (this.isRiskBudgetTargetVolTemplate) {
+            submitParameters.enable_vol_reset = RISK_BUDGET_TARGET_VOL_FIXED.enable_vol_reset;
+            submitParameters.vol_reset_threshold = RISK_BUDGET_TARGET_VOL_FIXED.vol_reset_threshold;
+            submitParameters.lookback_days = RISK_BUDGET_TARGET_VOL_FIXED.lookback_days;
+          }
+          if (this.isManualAllocationTemplate) {
+            Object.assign(submitParameters, SUBJECTIVE_MONITOR_FIXED_PARAMETERS);
+            const codes = this.form.asset_codes || [];
+            const adjList = submitParameters.manual_weight_adjustments;
+            if (Array.isArray(adjList)) {
+              for (let i = 0; i < adjList.length; i++) {
+                const row = adjList[i];
+                if (!row || !row.date) continue;
+                const w = row.weights && typeof row.weights === 'object' ? row.weights : {};
+                let t = codes.reduce((s, c) => s + (Number(w[c]) || 0), 0);
+                if (row.auto_normalize && t > 0) {
+                  const out = normalizeWeightsToTwoDecimalSumOne({ ...w }, codes);
+                  if (!row.weights || typeof row.weights !== 'object') {
+                    row.weights = {};
+                  }
+                  codes.forEach(c => {
+                    row.weights[c] = out[c];
+                  });
+                } else if (t > 1.00001) {
+                  this.$message.warning(
+                    `预设调仓第 ${i + 1} 条（${row.date}）权重合计超过 100%，请调低或开启「保存时归一化」`
+                  );
+                  this.submitting = false;
+                  return;
+                }
+              }
+            }
+          }
 
           const modelData = {
             name: this.form.name,
@@ -1119,7 +1102,9 @@ export default {
             selector_type: this.form.enable_momentum_selection ? this.form.selector_type : '',
             asset_selection_count: this.form.enable_momentum_selection ? this.form.asset_selection_count : 1,
             // 新增：动量资产选择相关参数提交
-            min_history_days: this.form.enable_momentum_selection ? this.form.min_history_days : 260,
+            min_history_days: this.form.enable_momentum_selection
+              ? (this.isRiskBudgetTargetVolTemplate ? RISK_BUDGET_TARGET_VOL_FIXED.min_history_days : this.form.min_history_days)
+              : 260,
             momentum_windows: this.form.enable_momentum_selection ? this.form.momentum_windows : '20,60,120,250',
             mom_windows: this.form.enable_momentum_selection ? (this.form.mom_windows || this.form.momentum_windows) : undefined,
             posi_windows: this.form.enable_momentum_selection ? (this.form.posi_windows || this.form.momentum_windows) : undefined,
@@ -1127,8 +1112,24 @@ export default {
             macd_windows: this.form.enable_momentum_selection && this.form.selector_type === 'hybrid' ? (this.form.macd_windows || '40,80,120,160') : undefined,
             macd_long_window: this.form.enable_momentum_selection && this.form.selector_type === 'hybrid' ? this.form.macd_long_window : undefined,
             reversal_windows: this.form.enable_momentum_selection && this.form.selector_type === 'hybrid' ? (this.form.reversal_windows || '10,22') : undefined,
-            tie_break_window: this.form.enable_momentum_selection ? this.form.tie_break_window : 22
+            tie_break_window: this.form.enable_momentum_selection
+              ? (this.isRiskBudgetTargetVolTemplate ? RISK_BUDGET_TARGET_VOL_FIXED.tie_break_window : this.form.tie_break_window)
+              : 22
           };
+          if (this.isManualAllocationTemplate) {
+            modelData.enable_momentum_selection = false;
+            modelData.selector_type = '';
+            modelData.asset_selection_count = 1;
+            modelData.min_history_days = 260;
+            modelData.momentum_windows = '20,60,120,250';
+            modelData.mom_windows = '20,60,120,250';
+            modelData.posi_windows = '20,60,120,250';
+            modelData.smom_windows = '20,60,120,250';
+            modelData.macd_windows = '40,80,120,160';
+            modelData.macd_long_window = 250;
+            modelData.reversal_windows = '10,22';
+            modelData.tie_break_window = 22;
+          }
 
           if (this.isEdit) {
             await this.$store.dispatch('strategy/updateStrategyModel', {
@@ -1203,48 +1204,12 @@ export default {
   padding: 20px 24px;
 }
 
-.manual-weights-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
+.manual-weights-form-item {
+  margin-bottom: 0;
 }
 
-.manual-weight-item {
-  min-width: 220px;
-}
-
-.manual-weight-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: default;
-}
-
-.manual-weight-label {
-  font-size: 13px;
-  width: 90px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.manual-weight-input {
-  width: 120px;
-}
-
-.manual-weights-empty {
-  padding: 24px 16px;
-  text-align: center;
-  color: #909399;
-  font-size: 14px;
-  background: #fafafa;
-  border: 1px dashed #dcdfe6;
-  border-radius: 4px;
-}
-
-.manual-weight-max-hint {
-  font-size: 12px;
-  color: #909399;
-  margin-left: 6px;
-  white-space: nowrap;
+.manual-weights-form-item >>> .el-form-item__content {
+  margin-left: 0 !important;
+  line-height: normal;
 }
 </style>

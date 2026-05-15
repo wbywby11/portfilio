@@ -35,12 +35,30 @@
           {{ performanceBasisMeta }}
         </p>
         <p v-if="perfBasisSummary" class="perf-basis-summary">{{ perfBasisSummary }}</p>
-        <div v-if="perfBasisParams" class="perf-basis-metrics">
+        <div
+          v-if="perfBasisParams && perfBasisParams.is_manual_allocation"
+          class="perf-basis-manual-wrap">
+          <p class="perf-basis-manual-hint muted">
+            以下为该绩效快照对应的<strong>初始化权重</strong>与<strong>预设调仓日权重</strong>（条形展示与
+            <a href="#monitor-subjective-live-params" class="perf-basis-manual-link">实盘生效参数 · 主观实盘参数</a>
+            一致，数据同源）。
+            若已在策略侧改参或实盘发布但未重新初始化，可能与页面顶部当前实盘参数不一致。
+          </p>
+          <SubjectiveManualWeightsSnapshot
+            compact
+            :manual-weights="perfBasisParams.manual_weights || {}"
+            :manual-adjustments="perfBasisParams.manual_weight_adjustments || []"
+            :resolve-label="perfBasisAssetLabelFn"
+          />
+        </div>
+        <div
+          v-if="perfBasisParams && !perfBasisParams.is_manual_allocation"
+          class="perf-basis-metrics">
           <div class="perf-basis-metric">
             <span class="lbl">目标波动</span>
             <span class="val">{{ perfBasisParams.target_vol_pct }}%</span>
           </div>
-          <div class="perf-basis-metric">
+          <div v-if="!isRiskBudgetTargetVolPerfLocked" class="perf-basis-metric">
             <span class="lbl">波动重置阈值</span>
             <span class="val">{{ perfBasisParams.vol_reset_threshold_pct }}%</span>
           </div>
@@ -93,19 +111,19 @@
               <span class="val val--subtle">{{ perfBasisParams.reversal_windows }}</span>
             </div>
             <div
-              v-if="perfBasisParams.min_history_days != null && perfBasisParams.min_history_days !== ''"
+              v-if="!isRiskBudgetTargetVolPerfLocked && perfBasisParams.min_history_days != null && perfBasisParams.min_history_days !== ''"
               class="perf-basis-metric">
               <span class="lbl">最小历史天数</span>
               <span class="val val--subtle">{{ perfBasisParams.min_history_days }} 日</span>
             </div>
             <div
-              v-if="perfBasisParams.min_history_momentum != null && perfBasisParams.min_history_momentum !== ''"
+              v-if="!isRiskBudgetTargetVolPerfLocked && perfBasisParams.min_history_momentum != null && perfBasisParams.min_history_momentum !== ''"
               class="perf-basis-metric">
               <span class="lbl">动量最小历史</span>
               <span class="val val--subtle">{{ perfBasisParams.min_history_momentum }} 日</span>
             </div>
             <div
-              v-if="perfBasisParams.min_history_reversal != null && perfBasisParams.min_history_reversal !== ''"
+              v-if="!isRiskBudgetTargetVolPerfLocked && perfBasisParams.min_history_reversal != null && perfBasisParams.min_history_reversal !== ''"
               class="perf-basis-metric">
               <span class="lbl">反转最小历史</span>
               <span class="val val--subtle">{{ perfBasisParams.min_history_reversal }} 日</span>
@@ -227,7 +245,8 @@
             <div class="metric-value" :style="{ color: monitoredVolatilityColor }">
               {{ formattedMonitoredVolatility }}
             </div>
-            <div class="metric-sub">阈值: {{ formattedVolThreshold }}</div>
+            <div v-if="!isManualAllocationDashboard" class="metric-sub">阈值: {{ formattedVolThreshold }}</div>
+            <div v-else class="metric-sub">不设波动率重置阈值</div>
           </el-card>
         </el-col>
       </el-row>
@@ -239,9 +258,12 @@
 <script>
 import dayjs from 'dayjs';
 import { mapState, mapActions } from 'vuex';
+import SubjectiveManualWeightsSnapshot from './SubjectiveManualWeightsSnapshot.vue';
+import { isRiskBudgetTargetVolTemplateCode } from '@/utils/strategyTemplateFlags';
 
 export default {
   name: 'MonitorIndex',
+  components: { SubjectiveManualWeightsSnapshot },
   props: {
     strategyContext: {
       type: Object,
@@ -280,10 +302,20 @@ export default {
       if (pv == null || cv == null) return false;
       return Number(pv) !== Number(cv);
     },
+    /** 子组件 resolveLabel：箭头函数固定父组件 this */
+    perfBasisAssetLabelFn() {
+      return code => this.perfBasisAssetLabel(code);
+    },
     /** 与日常监控顶部「实盘生效参数」窗口块一致，用于绩效说明区展示 */
     hasPerfBasisWindowParams() {
       const p = this.perfBasisParams;
-      if (!p) return false;
+      if (!p || p.is_manual_allocation) return false;
+      const hideHist = this.isRiskBudgetTargetVolPerfLocked;
+      const hist = !hideHist && (
+        (p.min_history_days != null && p.min_history_days !== '') ||
+        (p.min_history_momentum != null && p.min_history_momentum !== '') ||
+        (p.min_history_reversal != null && p.min_history_reversal !== '')
+      );
       return !!(
         p.mom_windows ||
         p.posi_windows ||
@@ -291,10 +323,18 @@ export default {
         p.reversal_windows ||
         p.macd_windows ||
         (p.macd_long_window != null && p.macd_long_window !== '') ||
-        (p.min_history_days != null && p.min_history_days !== '') ||
-        (p.min_history_momentum != null && p.min_history_momentum !== '') ||
-        (p.min_history_reversal != null && p.min_history_reversal !== '')
+        hist
       );
+    },
+    isRiskBudgetTargetVolPerfLocked() {
+      const ctx = this.strategyContext;
+      return !!(ctx && isRiskBudgetTargetVolTemplateCode(ctx.template_code));
+    },
+    /** 主观配置：仪表盘不展示「相对重置阈值」口径 */
+    isManualAllocationDashboard() {
+      const ctx = this.strategyContext;
+      const p = ctx && ctx.live_effective_params;
+      return !!(p && p.is_manual_allocation);
     },
     currentNav() {
       if (!this.monitorState || this.monitorState.nav === undefined || this.monitorState.nav === null) {
@@ -307,10 +347,10 @@ export default {
       const weights = (this.monitorState && this.monitorState.target_weights) ? this.monitorState.target_weights : {};
       return Object.values(weights).reduce((s, w) => s + Math.abs(Number(w) || 0), 0);
     },
-    // 当前波动率
+    // 当前波动率（统一为百分点数字，与 signal 接口一致）
     currentVolatility() {
       if (this.signals && this.signals.vol_reset && this.signals.vol_reset.current_volatility !== undefined) {
-        return this.signals.vol_reset.current_volatility;
+        return this.normalizeMonitorVolPercent(this.signals.vol_reset.current_volatility);
       }
       return null;
     },
@@ -348,12 +388,12 @@ export default {
       const weights = this.monitorState && this.monitorState.target_weights ? this.monitorState.target_weights : {};
       return Object.values(weights).filter(w => Math.abs(w) > 0.01).length;
     },
-    // 波动率阈值（百分比数字，如 6 表示 6%）
+    // 波动率重置阈值（百分点，如 6 表示 6%）
     volResetThreshold() {
       if (this.signals && this.signals.vol_reset && this.signals.vol_reset.threshold !== undefined) {
-        return this.signals.vol_reset.threshold;
+        return this.normalizeMonitorVolPercent(this.signals.vol_reset.threshold);
       }
-      return 6;  // 默认 6%
+      return 6;
     },
     // 格式化的监测波动率
     formattedMonitoredVolatility() {
@@ -367,10 +407,11 @@ export default {
     // 监测波动率颜色
     monitoredVolatilityColor() {
       if (this.currentVolatility === null) return '#909399';
+      if (this.isManualAllocationDashboard) return '#303133';
       if (this.currentVolatility >= this.volResetThreshold) {
-        return '#F56C6C';  // 红色 - 预警
+        return '#F56C6C';
       }
-      return '#67C23A';  // 绿色 - 正常
+      return '#67C23A';
     },
     // 计算距下次调仓天数
     daysToNextRebalance() {
@@ -411,6 +452,13 @@ export default {
       'fetchPerformance',
       'fetchSignals'
     ]),
+    normalizeMonitorVolPercent(val) {
+      if (val === undefined || val === null) return null;
+      const n = Number(val);
+      if (Number.isNaN(n)) return null;
+      if (Math.abs(n) > 1 || n === 0) return n;
+      return n * 100;
+    },
     async loadData() {
       this.loading = true;
       try {
@@ -457,6 +505,32 @@ export default {
     assetClassTagType(assetClass) {
       const map = { '权益': 'primary', '固定收益': 'success', '大宗商品': 'warning', '其他': 'info' };
       return map[assetClass] || 'info';
+    },
+    perfBasisAssetLabel(code) {
+      const c = String(code || '').trim();
+      if (!c) return '—';
+      const ctx = this.strategyContext;
+      const pb = this.monitorState && this.monitorState.performance_basis;
+      const map = (ctx && ctx.asset_names) || {};
+      if (map[c]) return `${map[c]}（${c}）`;
+      if (
+        pb &&
+        Array.isArray(pb.live_effective_assets) &&
+        Array.isArray(pb.live_effective_asset_labels)
+      ) {
+        const assets = pb.live_effective_assets;
+        const labels = pb.live_effective_asset_labels;
+        for (let i = 0; i < assets.length; i++) {
+          if (String(assets[i]).trim() === c) {
+            const nm = labels[i];
+            if (nm != null && String(nm).trim() && String(nm).trim() !== c) {
+              return `${nm}（${c}）`;
+            }
+            break;
+          }
+        }
+      }
+      return c;
     }
   }
 };
@@ -558,6 +632,28 @@ export default {
   font-size: 13px;
   color: #606266;
   line-height: 1.5;
+}
+
+.perf-basis-manual-wrap {
+  margin: 10px 0 12px 0;
+  padding-top: 10px;
+  border-top: 1px dashed #e4e7ed;
+}
+
+.perf-basis-manual-hint {
+  margin: 0 0 10px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #909399;
+}
+
+.perf-basis-manual-link {
+  color: #409eff;
+  text-decoration: none;
+}
+
+.perf-basis-manual-link:hover {
+  text-decoration: underline;
 }
 
 .perf-basis-metrics {

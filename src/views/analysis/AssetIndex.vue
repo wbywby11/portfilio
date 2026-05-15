@@ -116,7 +116,7 @@
             <div ref="navChart" class="chart-container"></div>
           </el-col>
           <el-col :span="12">
-            <div ref="drawdownChart" class="chart-container"></div>
+            <div ref="drawdownChart" class="chart-container chart-drawdown"></div>
           </el-col>
         </el-row>
       </el-card>
@@ -131,7 +131,7 @@
           <span style="margin-right: 16px;"><span style="display:inline-block;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:7px solid #E6A23C;vertical-align:middle;margin-right:4px;"></span> 人工干预调仓</span>
           <span><span style="display:inline-block;width:6px;height:6px;background:#409EFF;border-radius:50%;vertical-align:middle;margin-right:4px;"></span> 自动调仓（周期性/波动率重置）</span>
         </div>
-        <div ref="positionChart" class="chart-container"></div>
+        <div ref="positionChart" class="chart-container chart-position"></div>
       </el-card>
 
       <!-- 组合波动率监控（与回测界面一致） -->
@@ -666,18 +666,78 @@ export default {
 .page-header { margin-bottom: 20px; }
 .page-title { font-size: 20px; margin: 0 0 8px 0; }
 .page-desc { color: #909399; font-size: 14px; margin: 0; }
-.card-header { font-weight: 500; }
-.param-note { color: #909399; font-size: 12px; margin-top: 8px; }
-.result-card { margin-top: 20px; }
-.chart-container { height: 360px; }
-.metric-item {
-  text-align: center;
-  padding: 15px;
-  background: #f5f7fa;
-  border-radius: 4px;
+.card-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
 }
-.metric-label { font-size: 13px; color: #909399; margin-bottom: 8px; }
-.metric-value { font-size: 20px; font-weight: 600; color: #303133; }
+.param-note { color: #909399; font-size: 12px; margin-top: 8px; }
+.result-card {
+  margin-top: 20px;
+}
+.result-card >>> .el-card__header {
+  padding: 12px 16px;
+  background: #fafbfc;
+  border-bottom: 1px solid #ebeef5;
+}
+.result-card >>> .el-card__body {
+  padding: 20px;
+}
+
+/* 指标卡片 */
+.metric-item {
+  background: linear-gradient(135deg, #f8f9fb 0%, #ffffff 100%);
+  border: 1px solid #e8ecf1;
+  border-radius: 8px;
+  padding: 16px 12px;
+  text-align: center;
+  transition: box-shadow 0.2s;
+}
+.metric-item:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+.metric-label {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+.metric-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #303133;
+}
 .metric-value.positive { color: #67C23A; }
 .metric-value.negative { color: #F56C6C; }
+
+/* 图表容器 */
+.chart-container {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  height: 400px;
+}
+
+.chart-drawdown {
+  height: 350px;
+}
+.chart-position {
+  height: 450px;
+}
+
+@media (max-width: 768px) {
+  .chart-container {
+    height: 300px;
+  }
+  .chart-drawdown {
+    height: 280px;
+  }
+  .chart-position {
+    height: 350px;
+  }
+}
 </style>

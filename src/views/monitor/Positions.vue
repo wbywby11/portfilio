@@ -198,6 +198,12 @@ export default {
   computed: {
     ...mapState('monitor', ['positions', 'monitorState', 'assetMetrics', 'correlationMatrix', 'activeMonitorId']),
     assetCodes() {
+      // 优先使用实际持仓的资产
+      if (this.positions && this.positions.length > 0) {
+        const codes = this.positions.map(p => p.code).filter(Boolean);
+        if (codes.length > 0) return codes;
+      }
+      // 回退到默认12类资产（持仓为空时）
       return ['SH000300', 'SZ399006', 'ZZ000001', 'HSTECH', 'SPX', 'GDAXI', 'ZQGZ10', 'ZQGZ2', 'B00Y', 'GLD', 'IRON', 'YSJS'];
     },
     updateTime() {

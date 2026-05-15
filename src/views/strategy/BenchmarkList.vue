@@ -178,7 +178,7 @@
               <vxe-table
                 border
                 resizable
-                show-overflow
+                show-overflow="title"
                 keep-source
                 ref="xTable"
                 size="small"

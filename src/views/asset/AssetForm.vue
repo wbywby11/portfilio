@@ -153,6 +153,11 @@ export default {
     assetCode: {
       type: String,
       default: ''
+    },
+    /** 弹窗内「从多资产导入新建」时预填代码/名称（与 assetCode 互斥） */
+    presetCreate: {
+      type: Object,
+      default: null
     }
   },
   data() {
@@ -188,6 +193,11 @@ export default {
       if (this.assetCode) {
         this.isEdit = true;
         this.loadAsset(this.assetCode);
+      } else if (this.presetCreate && (this.presetCreate.code || this.presetCreate.name)) {
+        this.isEdit = false;
+        this.currentAssetId = null;
+        this.form.code = this.presetCreate.code || '';
+        this.form.name = this.presetCreate.name || '';
       }
     } else if (this.$route.params.id) {
       this.isEdit = true;

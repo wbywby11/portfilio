@@ -160,8 +160,8 @@
                   快照待同步
                 </el-tag>
               </el-descriptions-item>
-              <el-descriptions-item label="日常监控" v-if="model.template_code === 'risk_budget_target_vol' && model.selector_type === 'hybrid'">
-                <span style="color: #606266; font-size: 13px;">已实盘发布后可在「分析 → 日常监控」中按本策略实例跟踪；monitor_id 为本模型 ID。</span>
+              <el-descriptions-item label="日常监控" v-if="model.live_publish_enabled">
+                <span style="color: #606266; font-size: 13px;">已实盘发布，可在「分析 → 日常监控」中按本策略实例跟踪。</span>
               </el-descriptions-item>
               <el-descriptions-item label="算法模板">
                 {{ model.template_name || model.template_code }}
@@ -180,7 +180,7 @@
           </el-card>
 
           <!-- 资产选择配置 -->
-          <el-card shadow="never" class="info-card" v-if="model.enable_momentum_selection">
+          <el-card shadow="never" class="info-card" v-if="model.enable_momentum_selection && !isManualAllocationModel">
             <div slot="header">资产选择配置</div>
             <el-descriptions :column="2" border>
               <el-descriptions-item label="启用状态">
@@ -192,13 +192,13 @@
               <el-descriptions-item label="选择资产数量">
                 {{ model.asset_selection_count || '未设置' }}
               </el-descriptions-item>
-              <el-descriptions-item label="最小历史数据要求">
+              <el-descriptions-item v-if="!isRiskBudgetTargetVolModel" label="最小历史数据要求">
                 {{ model.min_history_days || 260 }} 天
               </el-descriptions-item>
               <el-descriptions-item label="动量窗口" v-if="model.momentum_windows">
                 {{ model.momentum_windows }}
               </el-descriptions-item>
-              <el-descriptions-item label="并列决胜窗口" v-if="model.tie_break_window">
+              <el-descriptions-item label="并列决胜窗口" v-if="!isRiskBudgetTargetVolModel && model.tie_break_window">
                 {{ model.tie_break_window }} 天
               </el-descriptions-item>
             </el-descriptions>
@@ -207,9 +207,9 @@
           <!-- 策略参数 -->
           <el-card shadow="never" class="info-card">
             <div slot="header">策略参数</div>
-            <el-descriptions :column="2" border v-if="model.parameters && Object.keys(model.parameters).length > 0">
+            <el-descriptions :column="2" border v-if="model.parameters && Object.keys(strategyDetailParametersVisible).length > 0">
               <el-descriptions-item
-                v-for="(value, key) in model.parameters"
+                v-for="(value, key) in strategyDetailParametersVisible"
                 :key="key"
                 :label="getParameterLabel(key)"
               >
@@ -544,6 +544,12 @@ import * as echarts from 'echarts';
 import BacktestDialog from '@/components/BacktestDialog.vue';
 import BacktestDetailDialog from '@/components/BacktestDetailDialog.vue';
 import { updateBacktestRemark } from '@/api/strategy';
+import {
+  isRiskBudgetTargetVolTemplateCode,
+  RISK_BUDGET_TARGET_VOL_HIDDEN_PARAMETER_NAMES,
+  isManualAllocationTemplateCode,
+  SUBJECTIVE_MONITOR_HIDDEN_DETAIL_PARAMETER_KEYS
+} from '@/utils/strategyTemplateFlags';
 
 export default {
   name: 'StrategyModelDetail',
@@ -652,6 +658,29 @@ export default {
     /** 从日常监控跳转：提示实盘发布与记录 */
     fromMonitorHint() {
       return this.$route && this.$route.query && String(this.$route.query.fromMonitor) === '1';
+    },
+    isRiskBudgetTargetVolModel() {
+      return isRiskBudgetTargetVolTemplateCode(this.model.template_code);
+    },
+    isManualAllocationModel() {
+      return isManualAllocationTemplateCode(this.model.template_code);
+    },
+    /** 详情页策略参数：风险预算/主观模板下隐藏与日常监控无关项（与表单一致） */
+    strategyDetailParametersVisible() {
+      const raw = { ...(this.model.parameters || {}) };
+      if (this.isRiskBudgetTargetVolModel) {
+        RISK_BUDGET_TARGET_VOL_HIDDEN_PARAMETER_NAMES.forEach(k => {
+          delete raw[k];
+        });
+        return raw;
+      }
+      if (this.isManualAllocationModel) {
+        SUBJECTIVE_MONITOR_HIDDEN_DETAIL_PARAMETER_KEYS.forEach(k => {
+          delete raw[k];
+        });
+        return raw;
+      }
+      return raw;
     }
   },
   created() {
@@ -765,7 +794,7 @@ export default {
     async handleLivePublish() {
       if (!this.canOperateLivePublish) return;
       this.$confirm(
-        '确认将该策略实盘发布？新版本将于次交易日生效；可与「日常监控」关联（risk_budget_target_vol + 混合动量策略将出现在监控准入列表）。',
+        '确认将该策略实盘发布？新版本将于次交易日生效；符合条件的策略可与「日常监控」关联。',
         '实盘发布',
         { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
       ).then(async () => {

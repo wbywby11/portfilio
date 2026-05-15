@@ -1045,7 +1045,7 @@ export default {
         commission_rate: 0.0003,
         slippage: 0.0005,
         // 波动率阈值重置（所有策略可选）
-        enable_vol_reset: true,
+        enable_vol_reset: false,  // 所有策略默认关闭波动率重置
         vol_reset_threshold: 0.06,
         // 动量选择器参数（单策略模式使用）
         selector_type: 'momentum',
@@ -3445,7 +3445,7 @@ export default {
         ],
         commission_rate: 0.0003,
         slippage: 0.0005,
-        enable_vol_reset: true,
+        enable_vol_reset: false,  // 所有策略默认关闭波动率重置
         vol_reset_threshold: 0.06,
         // 动量选择器参数（单策略模式使用）
         selector_type: 'momentum',

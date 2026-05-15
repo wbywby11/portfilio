@@ -71,10 +71,10 @@
           max-height="400"
           :data="previewAssets"
           :scroll-y="{enabled: true}"
-          show-overflow
+          show-overflow="title"
         >
           <vxe-column field="code" title="资产代码" width="140" />
-          <vxe-column field="name" title="资产名称" min-width="160" show-overflow />
+          <vxe-column field="name" title="资产名称" min-width="160" show-overflow="title" />
           <vxe-column field="price_count" title="行情条数" width="100" />
           <vxe-column field="conflict_text" title="冲突" width="140">
             <template #default="{ row }">
@@ -125,6 +125,12 @@
         <div style="margin-top: 12px; color: #606266;">
           当前：{{ currentImportAsset || '-' }} （{{ importDoneCount }}/{{ previewAssets.length }}）
         </div>
+        <div
+          v-if="rowImportDetailLine"
+          style="margin-top: 8px; padding: 8px 10px; background: #f4f4f5; border-radius: 4px; font-size: 13px; font-family: Consolas, 'Courier New', monospace; color: #303133;"
+        >
+          {{ rowImportDetailLine }}
+        </div>
         <div v-if="importErrors.length > 0" style="margin-top: 8px;">
           <el-alert
             :title="`${importErrors.length} 个错误`"
@@ -145,8 +151,14 @@
 import {
   previewMultiAssetImport,
   parseMultiAssetExcel,
-  importSingleAssetFromMulti
+  importSingleAssetFromMulti,
+  getPriceImportProgress
 } from '@/api/asset';
+import {
+  unwrapPriceImportProgressPayload,
+  formatPriceImportProgressLine,
+  PRICE_IMPORT_PROGRESS_POLL_MS
+} from '@/utils/priceImportProgress';
 
 export default {
   name: 'MultiAssetImport',
@@ -161,7 +173,9 @@ export default {
       importing: false,
       importDoneCount: 0,
       currentImportAsset: '',
-      importErrors: []
+      importErrors: [],
+      rowImportDetailLine: '',
+      _rowImportProgressTimer: null
     };
   },
   computed: {
@@ -170,7 +184,52 @@ export default {
       return Math.round((this.importDoneCount / this.previewAssets.length) * 100);
     }
   },
+  beforeDestroy() {
+    this.stopRowImportProgressPoll();
+  },
   methods: {
+    newPriceImportProgressId() {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      return `p-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    },
+    stopRowImportProgressPoll() {
+      if (this._rowImportProgressTimer) {
+        clearInterval(this._rowImportProgressTimer);
+        this._rowImportProgressTimer = null;
+      }
+    },
+    startRowImportProgressPoll(progressId) {
+      this.stopRowImportProgressPoll();
+      if (!progressId) return;
+      let hadSnap = false;
+      let inFlight = false;
+      const tick = () => {
+        if (inFlight) return;
+        inFlight = true;
+        getPriceImportProgress(progressId)
+          .then((res) => {
+            const snap = unwrapPriceImportProgressPayload(res);
+            if (snap) {
+              hadSnap = true;
+              this.rowImportDetailLine = formatPriceImportProgressLine(snap);
+            } else if (!hadSnap) {
+              this.rowImportDetailLine = '正在连接导入任务，等待服务端进度…';
+            }
+          })
+          .catch(() => {
+            if (!hadSnap) {
+              this.rowImportDetailLine = '无法拉取进度（请检查网络或登录态）';
+            }
+          })
+          .finally(() => {
+            inFlight = false;
+          });
+      };
+      tick();
+      this._rowImportProgressTimer = setInterval(tick, PRICE_IMPORT_PROGRESS_POLL_MS);
+    },
     async handleFileChange(file, list) {
       if (!file || !file.raw) return;
       this.selectedFile = file.raw;
@@ -212,6 +271,7 @@ export default {
       this.importing = true;
       this.importDoneCount = 0;
       this.importErrors = [];
+      this.rowImportDetailLine = '';
       try {
         const parseRes = await parseMultiAssetExcel(this.selectedFile);
         const parsed = parseRes.data || parseRes;
@@ -230,16 +290,22 @@ export default {
             this.importDoneCount++;
             continue;
           }
+          const progressId = this.newPriceImportProgressId();
+          this.startRowImportProgressPoll(progressId);
           try {
             await importSingleAssetFromMulti({
               code: p.code,
               name: p.name,
               prices: full.prices,
               overwrite_name: p.overwrite_name,
-              replace_existing: p.replace_existing
+              replace_existing: p.replace_existing,
+              progress_id: progressId,
+              import_metric: 'close'
             });
           } catch (err) {
             this.importErrors.push(`${p.code}: ${err.response?.data?.detail || err.message || '导入失败'}`);
+          } finally {
+            this.stopRowImportProgressPoll();
           }
           this.importDoneCount++;
         }
@@ -250,6 +316,8 @@ export default {
       } finally {
         this.importing = false;
         this.currentImportAsset = '';
+        this.stopRowImportProgressPoll();
+        this.rowImportDetailLine = '';
       }
     }
   }

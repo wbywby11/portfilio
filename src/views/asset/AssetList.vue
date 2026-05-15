@@ -60,7 +60,7 @@
         stripe
         height="600"
         :scroll-y="{enabled: true, gt: 0}"
-        show-overflow
+        show-overflow="title"
       >
         <vxe-column field="code" title="资产代码" width="120"></vxe-column>
         <vxe-column field="name" title="资产名称" width="150"></vxe-column>
@@ -75,7 +75,7 @@
             {{ row.substitute_code || '-' }}
           </template>
         </vxe-column>
-        <vxe-column field="description" title="描述" min-width="150" show-overflow></vxe-column>
+        <vxe-column field="description" title="描述" min-width="150" show-overflow="title"></vxe-column>
         <vxe-column field="is_active" title="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="row.is_active ? 'success' : 'info'" size="small">

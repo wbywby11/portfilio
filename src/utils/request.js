@@ -42,6 +42,13 @@ service.interceptors.response.use(
           Message.error('未授权，请重新登录');
           store.dispatch('user/logout');
           break;
+        case 422: {
+          const detail = data && data.detail;
+          if (detail != null) {
+            console.warn('[API 422 校验]', detail);
+          }
+          break;
+        }
         case 403: {
           const detail = data && (data.detail || data.message);
           Message.error(detail ? String(detail) : '拒绝访问');

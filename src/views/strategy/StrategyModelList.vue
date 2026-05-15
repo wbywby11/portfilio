@@ -46,9 +46,9 @@
         stripe
         height="600"
         :scroll-y="{enabled: true, gt: 0}"
-        show-overflow
+        show-overflow="title"
       >
-        <vxe-column field="name" title="策略名称" min-width="200" show-overflow></vxe-column>
+        <vxe-column field="name" title="策略名称" min-width="200" show-overflow="title"></vxe-column>
         <vxe-column field="template_code" title="所用模板" width="150">
           <template #default="{ row }">
             <el-tag size="small">
@@ -89,7 +89,7 @@
             </el-popover>
           </template>
         </vxe-column>
-        <vxe-column field="description" title="描述" min-width="150" show-overflow></vxe-column>
+        <vxe-column field="description" title="描述" min-width="150" show-overflow="title"></vxe-column>
         <vxe-column field="created_at" title="创建时间" width="160">
           <template #default="{ row }">
             {{ formatDate(row.created_at) }}

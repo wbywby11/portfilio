@@ -113,7 +113,7 @@
           height="400"
           :data="displayData"
           :scroll-x="{enabled: true}"
-          show-overflow
+          show-overflow="title"
         >
           <vxe-column
             v-for="col in displayColumns"

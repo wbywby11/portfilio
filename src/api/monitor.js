@@ -76,39 +76,51 @@ export function getMonitorSignals(monitorId = 'default') {
 
 // 运行监控（单日）
 export function runMonitor(data) {
+  const params = {
+    monitor_id: data.monitor_id || 'default',
+    target_date: data.target_date
+  };
+  if (data.manual_preset_step) {
+    params.manual_preset_step = true;
+  }
   return request({
     url: '/api/v1/monitor/run',
     method: 'post',
-    params: {
-      monitor_id: data.monitor_id || 'default',
-      target_date: data.target_date
-    }
+    params
   });
 }
 
 // 初始化监控
 export function initMonitor(data) {
+  const params = {
+    monitor_id: data.monitor_id || 'default',
+    start_date: data.start_date || undefined
+  };
+  if (data.manual_preset_step) {
+    params.manual_preset_step = true;
+  }
   return request({
     url: '/api/v1/monitor/init',
     method: 'post',
-    params: {
-      monitor_id: data.monitor_id || 'default',
-      start_date: data.start_date || undefined
-    },
+    params,
     timeout: 600000  // 初始化操作耗时较长，超时设为 10 分钟
   });
 }
 
 // 运行监控（日期范围）
 export function runMonitorRange(data) {
+  const params = {
+    monitor_id: data.monitor_id || 'default',
+    from_date: data.from_date,
+    to_date: data.to_date
+  };
+  if (data.manual_preset_step) {
+    params.manual_preset_step = true;
+  }
   return request({
     url: '/api/v1/monitor/run-range',
     method: 'post',
-    params: {
-      monitor_id: data.monitor_id || 'default',
-      from_date: data.from_date,
-      to_date: data.to_date
-    },
+    params,
     timeout: 300000  // 范围运行可能较慢，超时设为 5 分钟
   });
 }

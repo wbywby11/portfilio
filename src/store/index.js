@@ -6,6 +6,7 @@ import strategy from './modules/strategy';
 import portfolio from './modules/portfolio';
 import benchmark from './modules/benchmark';
 import monitor from './modules/monitor';
+import agent from './modules/agent';
 
 Vue.use(Vuex);
 
@@ -16,7 +17,8 @@ export default new Vuex.Store({
     strategy,
     portfolio,
     benchmark,
-    monitor
+    monitor,
+    agent
   },
   state: {
     loading: false,

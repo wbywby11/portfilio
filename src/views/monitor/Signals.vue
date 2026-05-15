@@ -30,10 +30,10 @@
         
         <!-- 波动率超阈值预警 -->
         <el-alert
-          v-if="volStatus === 'danger'"
+          v-if="!subjectiveVolOnly && volStatus === 'danger'"
           title="波动率预警"
           type="error"
-          :description="'当前波动率 ' + formatPercent(currentVolatility) + ' 已超过阈值 ' + formatPercent(volThreshold)"
+          :description="'当前波动率 ' + formatPercent(currentVolatilityPct) + ' 已超过阈值 ' + formatPercent(volThresholdPct)"
           show-icon
           :closable="false"
           class="alert-item">
@@ -41,10 +41,10 @@
         
         <!-- 波动率临界预警 -->
         <el-alert
-          v-if="volStatus === 'warning'"
+          v-if="!subjectiveVolOnly && volStatus === 'warning'"
           title="波动率接近阈值"
           type="warning"
-          :description="'当前波动率 ' + formatPercent(currentVolatility) + '，距触发阈值还差 ' + formatPercent(distanceToTrigger)"
+          :description="'当前波动率 ' + formatPercent(currentVolatilityPct) + '，距触发阈值还差 ' + formatPercent(distanceToTrigger)"
           show-icon
           :closable="false"
           class="alert-item">
@@ -60,6 +60,16 @@
           class="alert-item">
         </el-alert>
 
+        <!-- 主观策略：仅观测波动率 -->
+        <el-alert
+          v-if="!pendingRebalance && volStatus === 'observe'"
+          title="无待处理事项"
+          type="success"
+          description="当前展示组合实际波动率；主观策略不使用波动率重置阈值，无阈值触发类调仓。"
+          show-icon
+          :closable="false"
+          class="alert-item">
+        </el-alert>
         <!-- 无风险提示 -->
         <el-alert
           v-if="!pendingRebalance && volStatus === 'normal'"
@@ -87,13 +97,13 @@
               <!-- 波动率大数字 -->
               <div class="vol-display">
                 <div class="vol-value" :class="volValueClass">
-                  {{ formatPercent(currentVolatility) }}
+                  {{ formatPercent(currentVolatilityPct) }}
                 </div>
                 <div class="vol-label">当前组合波动率</div>
               </div>
               
-              <!-- 进度条 -->
-              <div class="vol-progress-wrapper">
+              <!-- 进度条（量化策略：相对重置阈值） -->
+              <div v-if="!subjectiveVolOnly" class="vol-progress-wrapper">
                 <el-progress
                   :percentage="volProgressPercent"
                   :color="volProgressColors"
@@ -102,15 +112,15 @@
                 </el-progress>
                 <div class="vol-progress-labels">
                   <span>0%</span>
-                  <span>阈值: {{ formatPercent(volThreshold) }}</span>
+                  <span>阈值: {{ formatPercent(volThresholdPct) }}</span>
                 </div>
               </div>
               
               <!-- 距触发阈值 -->
-              <div class="vol-distance" v-if="volStatus !== 'danger'">
+              <div v-if="!subjectiveVolOnly && volStatus !== 'danger'" class="vol-distance">
                 距触发阈值: <strong :style="{ color: distanceColor }">{{ formatPercent(distanceToTrigger) }}</strong>
               </div>
-              <div class="vol-distance" v-else>
+              <div v-else-if="!subjectiveVolOnly && volStatus === 'danger'" class="vol-distance">
                 <el-tag type="danger" size="medium">已超过阈值</el-tag>
               </div>
               
@@ -208,38 +218,62 @@
             @expand-change="handleExpandChange">
             <el-table-column type="expand">
               <template slot-scope="scope">
-                <div class="expand-content" v-if="scope.row.old_weights || scope.row.new_weights">
-                  <div class="expand-title">权重变化详情</div>
-                  <el-table :data="getWeightsComparison(scope.row)" size="mini" stripe>
-                    <el-table-column prop="asset" label="资产" width="150"></el-table-column>
-                    <el-table-column label="调仓前" align="right" width="100">
-                      <template slot-scope="inner">
-                        {{ formatPercent(inner.row.before) }}
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="调仓后" align="right" width="100">
-                      <template slot-scope="inner">
-                        {{ formatPercent(inner.row.after) }}
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="变动" align="right" width="100">
-                      <template slot-scope="inner">
-                        <span :class="getChangeClass(inner.row.change)">
-                          {{ formatPercent(inner.row.change, true) }}
-                        </span>
-                      </template>
-                    </el-table-column>
-                    <el-table-column prop="direction" label="方向" align="center" width="80">
-                      <template slot-scope="inner">
-                        <el-tag :type="getDirectionTag(inner.row.direction)" size="mini">
-                          {{ inner.row.direction }}
-                        </el-tag>
-                      </template>
-                    </el-table-column>
-                  </el-table>
+                <div class="expand-content" v-if="hasRebalanceExpandContent(scope.row)">
+                  <div
+                    v-if="scope.row.rebalance_observation && hasPortfolioObservation(scope.row.rebalance_observation)"
+                    class="observation-block">
+                    <div class="expand-title">调仓日观察指标（主观策略，与回测调仓后口径一致）</div>
+                    <p class="observation-lead">
+                      调仓后组合年化波动率（22/65/130 交易日窗口取最大）：
+                      <strong>{{ formatPercent(scope.row.rebalance_observation.portfolio_volatility) }}</strong>
+                    </p>
+                    <el-table
+                      v-if="rebalanceObservationAssetVolRows(scope.row).length"
+                      :data="rebalanceObservationAssetVolRows(scope.row)"
+                      size="mini"
+                      stripe
+                      class="observation-asset-table">
+                      <el-table-column prop="asset" label="资产" width="160"></el-table-column>
+                      <el-table-column label="年化波动率" align="right">
+                        <template slot-scope="inner">
+                          {{ formatPercent(inner.row.vol) }}
+                        </template>
+                      </el-table-column>
+                    </el-table>
+                  </div>
+                  <div v-if="scope.row.old_weights || scope.row.new_weights">
+                    <div class="expand-title">权重变化详情</div>
+                    <el-table :data="getWeightsComparison(scope.row)" size="mini" stripe>
+                      <el-table-column prop="asset" label="资产" width="150"></el-table-column>
+                      <el-table-column label="调仓前" align="right" width="100">
+                        <template slot-scope="inner">
+                          {{ formatPercent(inner.row.before) }}
+                        </template>
+                      </el-table-column>
+                      <el-table-column label="调仓后" align="right" width="100">
+                        <template slot-scope="inner">
+                          {{ formatPercent(inner.row.after) }}
+                        </template>
+                      </el-table-column>
+                      <el-table-column label="变动" align="right" width="100">
+                        <template slot-scope="inner">
+                          <span :class="getChangeClass(inner.row.change)">
+                            {{ formatPercent(inner.row.change, true) }}
+                          </span>
+                        </template>
+                      </el-table-column>
+                      <el-table-column prop="direction" label="方向" align="center" width="80">
+                        <template slot-scope="inner">
+                          <el-tag :type="getDirectionTag(inner.row.direction)" size="mini">
+                            {{ inner.row.direction }}
+                          </el-tag>
+                        </template>
+                      </el-table-column>
+                    </el-table>
+                  </div>
                 </div>
                 <div class="expand-content" v-else>
-                  <el-empty description="无权重变化数据" :image-size="60"></el-empty>
+                  <el-empty description="无权重与观察指标数据" :image-size="60"></el-empty>
                 </div>
               </template>
             </el-table-column>
@@ -309,6 +343,13 @@ import { mapState } from 'vuex';
 
 export default {
   name: 'Signals',
+  props: {
+    /** 主观配置策略：只展示实际波动率，不参与波动率重置阈值对比 */
+    subjectiveVolOnly: {
+      type: Boolean,
+      default: false
+    }
+  },
   data: function() {
     return {
       loading: false,
@@ -329,28 +370,30 @@ export default {
     volReset: function() {
       return (this.signals && this.signals.vol_reset) ? this.signals.vol_reset : null;
     },
-    currentVolatility: function() {
+    /** 与后端 signal 一致：统一为「百分点」数字（如 9.64 表示 9.64%） */
+    currentVolatilityPct: function() {
       if (!this.volReset) return null;
-      var v = this.volReset.current_volatility;
-      if (v === undefined || v === null) return null;
-      return v;
+      return this.normalizeMonitorVolPercent(this.volReset.current_volatility);
     },
-    volThreshold: function() {
+    volThresholdPct: function() {
       if (!this.volReset) return null;
-      var threshold = this.volReset.threshold;
-      if (threshold !== undefined && threshold !== null) {
-        return threshold > 1 ? threshold / 100 : threshold;
-      }
-      return null;
+      return this.normalizeMonitorVolPercent(this.volReset.threshold);
     },
     volStatus: function() {
       if (!this.signals || !this.volReset) return 'nodata';
-      if (this.currentVolatility === null || this.volThreshold === null || this.volThreshold <= 0) {
+      if (this.subjectiveVolOnly) {
+        return this.currentVolatilityPct === null ? 'nodata' : 'observe';
+      }
+      if (this.currentVolatilityPct === null || this.volThresholdPct === null || this.volThresholdPct <= 0) {
         return 'nodata';
       }
       var status = this.volReset.status;
-      if (status) return status;
-      var ratio = this.currentVolatility / this.volThreshold;
+      if (status) {
+        if (status === 'triggered') return 'danger';
+        if (status === 'critical' || status === 'warning') return 'warning';
+        if (status === 'normal') return 'normal';
+      }
+      var ratio = this.currentVolatilityPct / this.volThresholdPct;
       if (ratio >= 1) return 'danger';
       if (ratio >= 0.85) return 'warning';
       return 'normal';
@@ -358,6 +401,7 @@ export default {
     volStatusType: function() {
       var status = this.volStatus;
       if (status === 'nodata') return 'info';
+      if (status === 'observe') return 'info';
       if (status === 'danger') return 'danger';
       if (status === 'warning') return 'warning';
       return 'success';
@@ -365,35 +409,36 @@ export default {
     volStatusText: function() {
       var status = this.volStatus;
       if (status === 'nodata') return '未加载';
+      if (status === 'observe') return '观测';
       if (status === 'danger') return '已触发';
       if (status === 'warning') return '预警';
       return '正常';
     },
     volValueClass: function() {
       var status = this.volStatus;
-      if (status === 'nodata') return 'vol-normal';
+      if (status === 'nodata' || status === 'observe') return 'vol-normal';
       if (status === 'danger') return 'vol-danger';
       if (status === 'warning') return 'vol-warning';
       return 'vol-normal';
     },
     volProgressPercent: function() {
-      if (this.currentVolatility === null || !this.volThreshold || this.volThreshold <= 0) return 0;
-      return Math.min(Math.round(this.currentVolatility / this.volThreshold * 100), 100);
+      if (this.subjectiveVolOnly) return 0;
+      if (this.currentVolatilityPct === null || !this.volThresholdPct || this.volThresholdPct <= 0) return 0;
+      return Math.min(Math.round(this.currentVolatilityPct / this.volThresholdPct * 100), 100);
     },
     distanceToTrigger: function() {
       if (!this.volReset) return null;
       if (this.volReset.distance_to_trigger !== undefined && this.volReset.distance_to_trigger !== null) {
-        var dist = this.volReset.distance_to_trigger;
-        return dist > 1 ? dist / 100 : dist;
+        return this.volReset.distance_to_trigger;
       }
-      if (this.currentVolatility === null || this.volThreshold === null) return null;
-      return Math.max(0, this.volThreshold - this.currentVolatility);
+      if (this.currentVolatilityPct === null || this.volThresholdPct === null) return null;
+      return Math.round((this.volThresholdPct - this.currentVolatilityPct) * 100) / 100;
     },
     distanceColor: function() {
-      if (this.volStatus === 'nodata' || !this.volThreshold || this.volThreshold <= 0) return '#909399';
-      var cv = this.currentVolatility;
+      if (this.volStatus === 'nodata' || !this.volThresholdPct || this.volThresholdPct <= 0) return '#909399';
+      var cv = this.currentVolatilityPct;
       if (cv === null) return '#909399';
-      var ratio = cv / this.volThreshold;
+      var ratio = cv / this.volThresholdPct;
       if (ratio >= 0.9) return '#F56C6C';
       if (ratio >= 0.7) return '#E6A23C';
       return '#67C23A';
@@ -459,7 +504,8 @@ export default {
             trading_cost: e.trading_cost,
             scale_factor: e.scale_factor,
             old_weights: e.old_weights,
-            new_weights: e.new_weights
+            new_weights: e.new_weights,
+            rebalance_observation: e.rebalance_observation
           };
         }).slice(0, 20);
       }
@@ -481,6 +527,13 @@ export default {
     }
   },
   methods: {
+    normalizeMonitorVolPercent: function(val) {
+      if (val === undefined || val === null) return null;
+      var n = Number(val);
+      if (Number.isNaN(n)) return null;
+      if (Math.abs(n) > 1 || n === 0) return n;
+      return n * 100;
+    },
     loadData: async function() {
       this.loading = true;
       try {
@@ -518,10 +571,11 @@ export default {
         return val > 1 ? val : (val * 100);
       });
       
-      var thresholdPct = (this.volThreshold != null && !Number.isNaN(this.volThreshold))
-        ? this.volThreshold * 100
-        : 6;
-      
+      var thresholdPct = null;
+      if (!this.subjectiveVolOnly && this.volThresholdPct != null && !Number.isNaN(this.volThresholdPct)) {
+        thresholdPct = this.volThresholdPct;
+      }
+
       var option = {
         tooltip: {
           trigger: 'axis',
@@ -561,11 +615,11 @@ export default {
           markLine: {
             silent: true,
             symbol: 'none',
-            data: [{
+            data: thresholdPct != null ? [{
               yAxis: thresholdPct,
               lineStyle: { color: '#F56C6C', type: 'dashed', width: 2 },
               label: { formatter: '阈值 ' + thresholdPct.toFixed(1) + '%', position: 'end' }
-            }]
+            }] : []
           }
         }]
       };
@@ -574,14 +628,38 @@ export default {
     },
     formatPercent: function(val, showSign) {
       if (val === null || val === undefined) return '-';
-      // 检测是否已是百分比数字（>1）
-      var pct = val > 1 ? val : (val * 100);
+      var n = Number(val);
+      if (Number.isNaN(n)) return '-';
+      // 小数如 0.06→6%；已为百分点如 9.64、-3.64 直接使用（负数不能用 val>1 判断）
+      var pct = (Math.abs(n) > 1 || n === 0) ? n : (n * 100);
       var formatted = pct.toFixed(2);
       if (showSign && pct > 0) return '+' + formatted + '%';
       return formatted + '%';
     },
     handleExpandChange: function(row, expandedRows) {
       this.expandedRows = expandedRows.map(function(r) { return r.id; });
+    },
+    hasPortfolioObservation: function(obs) {
+      if (!obs) return false;
+      var v = obs.portfolio_volatility;
+      return v !== undefined && v !== null && !Number.isNaN(Number(v));
+    },
+    hasRebalanceExpandContent: function(row) {
+      if (this.hasPortfolioObservation(row.rebalance_observation)) return true;
+      if (row.old_weights || row.new_weights) return true;
+      return false;
+    },
+    rebalanceObservationAssetVolRows: function(row) {
+      var obs = row.rebalance_observation;
+      if (!obs || !obs.monitoring_metrics || !obs.monitoring_metrics.asset_volatility) return [];
+      var av = obs.monitoring_metrics.asset_volatility;
+      return Object.keys(av)
+        .map(function(code) {
+          return { asset: code, vol: av[code] };
+        })
+        .sort(function(a, b) {
+          return Math.abs(b.vol || 0) - Math.abs(a.vol || 0);
+        });
     },
     getWeightsComparison: function(row) {
       var oldWeights = row.old_weights || {};
@@ -896,6 +974,23 @@ export default {
   font-weight: 500;
   color: #606266;
   margin-bottom: 10px;
+}
+
+.observation-block {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed #ebeef5;
+}
+
+.observation-lead {
+  margin: 0 0 10px 0;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.5;
+}
+
+.observation-asset-table {
+  max-width: 480px;
 }
 
 .section-title-small {

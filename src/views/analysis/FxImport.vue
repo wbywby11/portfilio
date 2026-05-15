@@ -14,9 +14,17 @@
         <ul style="margin: 0; padding-left: 20px;">
           <li><strong>第一列</strong>：日期（作为行索引）</li>
           <li><strong>后续列</strong>：EUR、USD、HKD、CNH，单元格为该货币对人民币的汇率</li>
-          <li><strong>导入策略</strong>：替换全部已有数据（幂等）</li>
+          <li><strong>导入模式</strong>：见下方选项——<strong>覆盖</strong>会清空库内全部汇率后写入文件；<strong>增量</strong>只补没有记录的日期，以及已有日期里仍为空的币种列（不覆盖已有数值）</li>
         </ul>
       </el-alert>
+
+      <div class="fx-import-mode">
+        <span class="fx-import-mode-label">Excel 导入模式</span>
+        <el-radio-group v-model="importMode" size="small">
+          <el-radio-button label="replace">覆盖（清空后全量导入）</el-radio-button>
+          <el-radio-button label="incremental">增量（仅填补缺失）</el-radio-button>
+        </el-radio-group>
+      </div>
 
       <el-row :gutter="20">
         <el-col :span="12">
@@ -49,6 +57,41 @@
       </el-row>
     </el-card>
 
+    <el-card class="manual-card" shadow="never" style="margin-top: 20px;">
+      <div slot="header" class="clearfix">
+        <span><i class="el-icon-edit-outline"></i> 手动录入汇率</span>
+      </div>
+      <p class="manual-fx-hint">
+        对人民币报价，<strong>至少填写一个</strong>大于 0 的币种；仅更新您填写的列，该日其他币种保持库中原值。无该日记录时会新建。
+      </p>
+      <el-form :inline="true" size="small" @submit.native.prevent="submitManualFx">
+        <el-form-item label="日期" required>
+          <el-date-picker
+            v-model="manualForm.date"
+            type="date"
+            value-format="yyyy-MM-dd"
+            placeholder="YYYY-MM-DD"
+            style="width: 150px;"
+          />
+        </el-form-item>
+        <el-form-item label="EUR">
+          <el-input-number v-model="manualForm.EUR" :precision="6" :step="0.0001" :min="0" controls-position="right" class="manual-fx-input" placeholder="可选" />
+        </el-form-item>
+        <el-form-item label="USD">
+          <el-input-number v-model="manualForm.USD" :precision="6" :step="0.0001" :min="0" controls-position="right" class="manual-fx-input" placeholder="可选" />
+        </el-form-item>
+        <el-form-item label="HKD">
+          <el-input-number v-model="manualForm.HKD" :precision="6" :step="0.0001" :min="0" controls-position="right" class="manual-fx-input" placeholder="可选" />
+        </el-form-item>
+        <el-form-item label="CNH">
+          <el-input-number v-model="manualForm.CNH" :precision="6" :step="0.0001" :min="0" controls-position="right" class="manual-fx-input" placeholder="可选，常填 1" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="manualSaving" @click="submitManualFx">保存该日汇率</el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
+
     <el-card class="stats-card" style="margin-top: 20px;">
       <div slot="header" class="clearfix">
         <span><i class="el-icon-data-line"></i> 当前汇率数据统计</span>
@@ -75,6 +118,9 @@
         <span><i class="el-icon-data-line"></i> 汇率走势</span>
       </div>
       <div v-loading="chartLoading" class="chart-content">
+        <p v-if="fxRates.length > 0" class="fx-chart-hint">
+          时间轴缩放：在图内<strong>滚轮</strong>或按住<strong>拖拽</strong>可缩放平移；拖动<strong>底部滑块</strong>选择区间；右上角<strong>还原</strong>恢复全量。
+        </p>
         <div v-if="fxRates.length === 0 && !chartLoading" class="chart-empty">暂无汇率数据</div>
         <div v-else ref="fxChart" class="fx-chart"></div>
       </div>
@@ -84,7 +130,7 @@
 
 <script>
 import * as echarts from 'echarts';
-import { importFxRates, getFxStats, getFxRates } from '@/api/fx';
+import { importFxRates, getFxStats, getFxRates, saveFxManualRates } from '@/api/fx';
 
 const FX_COLUMNS = ['EUR', 'USD', 'HKD', 'CNH'];
 
@@ -95,6 +141,15 @@ export default {
       fileList: [],
       selectedFile: null,
       uploading: false,
+      importMode: 'replace',
+      manualSaving: false,
+      manualForm: {
+        date: '',
+        EUR: null,
+        USD: null,
+        HKD: null,
+        CNH: null
+      },
       statsLoading: false,
       chartLoading: false,
       chartInstance: null,
@@ -140,17 +195,21 @@ export default {
         this.$message.warning('请上传 .xlsx 或 .xls 格式文件');
         return;
       }
-      this.$confirm('导入将替换全部已有汇率数据，是否继续？', '提示', {
+      const isReplace = this.importMode === 'replace';
+      const confirmText = isReplace
+        ? '覆盖模式将删除库内全部已有汇率，再写入文件中的数据。是否继续？'
+        : '增量模式不会删除已有数据，仅补充缺失日期及已有日期中的空汇率列，不会覆盖已有数值。是否继续？';
+      this.$confirm(confirmText, isReplace ? '确认全量覆盖' : '确认增量导入', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
       }).then(async () => {
         this.uploading = true;
         try {
-          const res = await importFxRates(this.selectedFile);
+          const res = await importFxRates(this.selectedFile, { mode: this.importMode });
           const data = res.data || res;
           this.$message.success(
-            data.message || `成功导入 ${(data.imported || 0)} 条汇率记录`
+            data.message || `成功处理 ${(data.imported || 0)} 条`
           );
           this.handleFileRemove();
           await this.refreshAll();
@@ -163,6 +222,46 @@ export default {
           this.uploading = false;
         }
       }).catch(() => {});
+    },
+    countManualFxFilled() {
+      const keys = ['EUR', 'USD', 'HKD', 'CNH'];
+      let n = 0;
+      keys.forEach(k => {
+        const v = this.manualForm[k];
+        if (v !== null && v !== undefined && v !== '' && Number(v) > 0) n += 1;
+      });
+      return n;
+    },
+    async submitManualFx() {
+      if (!this.manualForm.date) {
+        this.$message.warning('请选择日期');
+        return;
+      }
+      if (this.countManualFxFilled() < 1) {
+        this.$message.warning('请至少填写一个大于 0 的汇率');
+        return;
+      }
+      const payload = { date: this.manualForm.date };
+      ['EUR', 'USD', 'HKD', 'CNH'].forEach(k => {
+        const v = this.manualForm[k];
+        if (v !== null && v !== undefined && v !== '' && Number(v) > 0) {
+          payload[k] = Number(v);
+        }
+      });
+      this.manualSaving = true;
+      try {
+        const res = await saveFxManualRates(payload);
+        const data = res.data || res;
+        this.$message.success(data.message || '已保存该日汇率');
+        await this.refreshAll();
+      } catch (err) {
+        let msg = err.response?.data?.detail || err.message || '保存失败';
+        if (Array.isArray(msg)) msg = msg.join('; ');
+        if (typeof msg !== 'string') msg = JSON.stringify(msg);
+        this.$message.error(msg);
+      } finally {
+        this.manualSaving = false;
+      }
     },
     async fetchStats() {
       this.statsLoading = true;
@@ -225,10 +324,35 @@ export default {
       })).filter(s => s.data.some(v => v != null));
       myChart.setOption({
         tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
-        legend: { data: series.map(s => s.name), bottom: 0 },
-        grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+        legend: { data: series.map(s => s.name), bottom: 34 },
+        toolbox: {
+          right: 12,
+          top: 8,
+          feature: {
+            restore: { title: '还原缩放' }
+          }
+        },
+        grid: { left: '3%', right: '5%', top: 52, bottom: 88, containLabel: true },
+        dataZoom: [
+          {
+            type: 'inside',
+            xAxisIndex: 0,
+            filterMode: 'none',
+            zoomOnMouseWheel: true,
+            moveOnMouseMove: true,
+            moveOnMouseWheel: false
+          },
+          {
+            type: 'slider',
+            xAxisIndex: 0,
+            filterMode: 'none',
+            height: 22,
+            bottom: 6,
+            showDetail: true
+          }
+        ],
         xAxis: { type: 'category', boundaryGap: false, data: dates },
-        yAxis: { type: 'value', name: '汇率（对人民币）' },
+        yAxis: { type: 'value', name: '汇率（对人民币）', scale: true },
         series
       }, true);
       myChart.resize();
@@ -246,6 +370,30 @@ export default {
 .fx-import {
   padding: 20px;
 }
+.fx-import-mode {
+  margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.fx-import-mode-label {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+}
+.manual-card {
+  border: 1px solid #ebeef5;
+}
+.manual-fx-hint {
+  margin: 0 0 14px 0;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+}
+.manual-fx-input {
+  width: 140px;
+}
 .upload-card .el-upload__tip {
   margin-top: 8px;
   color: #909399;
@@ -255,18 +403,24 @@ export default {
   min-height: 80px;
 }
 .chart-content {
-  min-height: 400px;
+  min-height: 440px;
+}
+.fx-chart-hint {
+  margin: 0 0 10px 0;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
 }
 .chart-empty {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 400px;
+  height: 440px;
   color: #909399;
   font-size: 14px;
 }
 .fx-chart {
   width: 100%;
-  height: 400px;
+  height: 440px;
 }
 </style>

@@ -983,22 +983,38 @@ export default {
 }
 
 .metric-box {
-  padding: 15px;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
+  background: linear-gradient(135deg, #f8f9fb 0%, #ffffff 100%);
+  border: 1px solid #e8ecf1;
+  border-radius: 8px;
+  padding: 16px 12px;
   text-align: center;
-  background: #fafafa;
+  transition: box-shadow 0.2s;
+}
+.metric-box:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
 }
 
 .metric-label {
   font-size: 12px;
-  color: #606266;
-  margin-bottom: 5px;
+  color: #909399;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
 }
 
 .metric-value {
-  font-size: 16px;
-  font-weight: bold;
-  color: #303133;
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.backtest-detail .el-card {
+  margin-bottom: 16px;
+  border-radius: 8px;
+}
+.backtest-detail .el-card >>> .el-card__header {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 16px;
+  background: #fafbfc;
 }
 </style>

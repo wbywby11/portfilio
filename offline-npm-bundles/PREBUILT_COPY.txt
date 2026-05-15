@@ -1,0 +1,43 @@
+预构建 node_modules 包（marked + dompurify）— 手工拷贝说明
+============================================================
+
+本目录下文件夹（与 portfilio 当前 node_modules 中一致）：
+
+  prebuilt-node_modules/marked/     — marked@4.3.0 完整安装目录
+  prebuilt-node_modules/dompurify/  — dompurify@3.0.6 完整安装目录
+
+一、拷入内网
+------------
+将整个「offline-npm-bundles」目录（含 prebuilt_node_modules）复制到 U 盘或内网机。
+
+二、在内网项目 ZYLCTZZH-QD 中操作
+--------------------------------
+1. 确保项目根目录存在 node_modules 文件夹（没有则新建空目录 node_modules）。
+
+2. 将下列两个目录**整体覆盖复制**到内网项目：
+
+   源（U盘或拷贝路径）:
+     ...\offline-npm-bundles\prebuilt-node_modules\marked
+     ...\offline-npm-bundles\prebuilt-node_modules\dompurify
+
+   目标（内网项目根）:
+     ZYLCTZZH-QD\node_modules\marked
+     ZYLCTZZH-QD\node_modules\dompurify
+
+   要求：复制后路径为
+     ZYLCTZZH-QD\node_modules\marked\package.json
+     ZYLCTZZH-QD\node_modules\dompurify\package.json
+     等均存在。
+
+3. 编辑内网项目根目录 package.json，在 dependencies 中增加（若已有则核对版本号）：
+
+   "marked": "4.3.0",
+   "dompurify": "3.0.6",
+
+4. 保存后执行 npm run dev（或你们现有启动命令）验证编译。
+
+三、重要提示
+------------
+- 若内网随后执行「全量 npm install」仍可能因 registry 缺包、npm6 递归等问题失败；本方式为绕过 npm 安装、直接落盘。
+- Node 版本差异极大时，纯 JS 包一般仍可运行；若有异常再在同一 Node 大版本机器上重新拷贝。
+- 与 tgz 方式二选一即可；已有一份 prebuilt 时无需再 npm install 那两个 tgz。

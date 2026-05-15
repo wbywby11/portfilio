@@ -185,6 +185,14 @@ const routes = [
         meta: { title: '资产分析', icon: 'el-icon-data-analysis' }
       },
       {
+        path: 'analysis/agent',
+        redirect: '/agent/chat'
+      },
+      {
+        path: 'analysis/memories',
+        redirect: '/agent/memories'
+      },
+      {
         path: 'analysis/asset-index',
         name: 'AssetIndex',
         component: () => import('@/views/analysis/AssetIndex.vue'),
@@ -207,6 +215,22 @@ const routes = [
         name: 'MultiAssetImport',
         component: () => import('@/views/analysis/MultiAssetImport.vue'),
         meta: { title: '多资产行情导入', icon: 'el-icon-upload2' }
+      },
+      {
+        path: 'analysis/data-hub',
+        name: 'DataHubCenter',
+        component: () => import('@/views/analysis/DataHub/Index.vue'),
+        meta: { title: '数据接入中心', icon: 'el-icon-connection' }
+      },
+      {
+        path: 'analysis/data-assets',
+        name: 'DataAssets',
+        component: () => import('@/views/analysis/DataAsset/Index.vue'),
+        meta: { title: '数据资产管理', icon: 'el-icon-folder-opened' }
+      },
+      {
+        path: 'analysis/subject-risk',
+        redirect: { name: 'DataHubCenter', query: { connector: 'subject_opinion_risk' } }
       },
       {
         path: 'analysis/monitor',
@@ -240,6 +264,64 @@ const routes = [
             meta: { title: '操作日志', roles: ['admin'] }
           }
         ]
+      }
+    ]
+  },
+  // 数智平台AI助手 — 顶级路由组
+  {
+    path: '/agent',
+    component: () => import('@/layout/MainLayout.vue'),
+    meta: { title: '数智平台AI助手', icon: 'el-icon-s-opportunity', requiresAuth: true },
+    redirect: '/agent/chat',
+    children: [
+      {
+        path: 'chat',
+        name: 'AgentWorkspace',
+        component: () => import('@/views/agent/AgentWorkspace.vue'),
+        meta: { title: '智能对话', icon: 'el-icon-chat-dot-round' }
+      },
+      {
+        path: 'chat/:scene',
+        name: 'AgentSceneChat',
+        component: () => import('@/views/agent/AgentWorkspace.vue'),
+        meta: { title: '场景对话', hidden: true },
+        props: true
+      },
+      {
+        path: 'history',
+        name: 'AgentHistory',
+        component: () => import('@/views/agent/ConversationHistory.vue'),
+        meta: { title: '对话历史', icon: 'el-icon-time' }
+      },
+      {
+        path: 'memories',
+        name: 'MemoryManager',
+        component: () => import('@/views/agent/MemoryManager.vue'),
+        meta: { title: '知识记忆', icon: 'el-icon-notebook-2' }
+      },
+      {
+        path: 'reports',
+        name: 'ReportCenter',
+        component: () => import('@/views/agent/ReportCenter.vue'),
+        meta: { title: '报告中心', icon: 'el-icon-document' }
+      },
+      {
+        path: 'templates',
+        name: 'AnalysisTemplates',
+        component: () => import('@/views/agent/AnalysisTemplates.vue'),
+        meta: { title: '分析模板' }
+      },
+      {
+        path: 'data-templates',
+        name: 'DataTemplates',
+        component: () => import('@/views/agent/DataTemplates.vue'),
+        meta: { title: '数据模板', icon: 'el-icon-data-analysis' }
+      },
+      {
+        path: 'scenes',
+        name: 'AgentScenes',
+        component: () => import('@/views/agent/SceneManager.vue'),
+        meta: { title: '场景管理', icon: 'el-icon-setting', roles: ['admin'] }
       }
     ]
   },

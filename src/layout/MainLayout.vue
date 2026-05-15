@@ -65,6 +65,22 @@
             <el-menu-item index="/analysis/weight-import">权重与持仓估值导入</el-menu-item>
             <el-menu-item index="/analysis/fx-import">汇率数据导入</el-menu-item>
             <el-menu-item index="/analysis/multi-asset-import">多资产行情导入</el-menu-item>
+            <el-menu-item index="/analysis/data-hub">数据接入中心</el-menu-item>
+            <el-menu-item index="/analysis/data-assets">数据资产管理</el-menu-item>
+          </el-submenu>
+
+          <el-submenu index="agent">
+            <template slot="title">
+              <i class="el-icon-s-opportunity"></i>
+              <span>数智平台AI助手</span>
+            </template>
+            <el-menu-item index="/agent/chat"><i class="el-icon-chat-dot-round"></i><span>智能对话</span></el-menu-item>
+            <el-menu-item index="/agent/history"><i class="el-icon-time"></i><span>对话历史</span></el-menu-item>
+            <el-menu-item index="/agent/memories"><i class="el-icon-notebook-2"></i><span>知识记忆</span></el-menu-item>
+            <el-menu-item index="/agent/reports"><i class="el-icon-document"></i><span>报告中心</span></el-menu-item>
+            <el-menu-item index="/agent/templates"><i class="el-icon-copy-document"></i><span>分析模板</span></el-menu-item>
+            <el-menu-item index="/agent/data-templates"><i class="el-icon-data-analysis"></i><span>数据模板</span></el-menu-item>
+            <el-menu-item index="/agent/scenes" v-if="isAdmin"><i class="el-icon-setting"></i><span>场景管理</span></el-menu-item>
           </el-submenu>
 
           <el-submenu index="system" v-if="isAdmin">
@@ -142,6 +158,7 @@ export default {
       if (p.startsWith('/strategy')) return ['strategy'];
       if (p.startsWith('/portfolio')) return ['portfolio'];
       if (p.startsWith('/analysis')) return ['analysis'];
+      if (p.startsWith('/agent')) return ['agent'];
       if (p.startsWith('/system')) return ['system'];
       return [];
     },
@@ -156,7 +173,12 @@ export default {
   watch: {
     $route: {
       handler(route) {
-        this.activeMenu = route.path;
+        const p = route.path;
+        if (p.startsWith('/agent/chat')) {
+          this.activeMenu = '/agent/chat';
+        } else {
+          this.activeMenu = p;
+        }
       },
       immediate: true
     }

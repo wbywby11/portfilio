@@ -16,7 +16,7 @@
           </el-button>
         </div>
         
-        <el-form ref="form" :model="form" :rules="rules" label-width="120px" size="small">
+        <el-form ref="form" :model="form" :rules="formRules" label-width="120px" size="small">
           <el-row :gutter="20">
             <el-col :span="12">
               <el-form-item label="执行日期" prop="execute_date">
@@ -42,7 +42,7 @@
                     <span class="stat-value">{{ equivalentLeverage.toFixed(2) }}x</span>
                   </div>
                 </div>
-                <div class="weight-tip" v-if="weightSumPercent > 100 && weightSumPercent <= maxLeverage * 100">
+                <div class="weight-tip" v-if="weightSumPercent > 100 && weightSumPercent <= effectiveMaxLeverage * 100">
                   <i class="el-icon-warning"></i> 当前为杠杆配置
                 </div>
               </el-form-item>
@@ -51,7 +51,7 @@
           
           <el-form-item label="目标权重" prop="weights">
             <div class="weights-grid">
-              <div v-for="asset in assetList" :key="asset.key" class="weight-item">
+              <div v-for="asset in effectiveAssetRows" :key="asset.key" class="weight-item">
                 <div class="weight-label">
                   <span>{{ asset.name }}</span>
                   <span class="weight-cap-hint">
@@ -232,20 +232,59 @@
 <script>
 import { mapState } from 'vuex';
 
+/** 无策略上下文时的默认 12 资产（与 app/monitor/config.py 中文名一致，仅 monitor_id=default 等场景） */
+const LEGACY_ASSET_ROWS = [
+  { key: '沪深300', name: '沪深300' },
+  { key: '创业板指', name: '创业板指' },
+  { key: '红利低波', name: '红利低波' },
+  { key: '恒生科技', name: '恒生科技' },
+  { key: '标普500', name: '标普500' },
+  { key: '德国DAX', name: '德国DAX' },
+  { key: '中国10年国债', name: '中国10年国债' },
+  { key: '中国2年国债', name: '中国2年国债' },
+  { key: '布伦特原油', name: '布伦特原油' },
+  { key: '黄金', name: '黄金' },
+  { key: '铁矿石', name: '铁矿石' },
+  { key: '中国有色金属', name: '中国有色金属' }
+];
+
+const LEGACY_WEIGHT_CAPS_PERCENT = {
+  沪深300: 10,
+  创业板指: 10,
+  红利低波: 10,
+  恒生科技: 10,
+  标普500: 15,
+  德国DAX: 10,
+  中国10年国债: 60,
+  中国2年国债: 90,
+  布伦特原油: 10,
+  黄金: 10,
+  铁矿石: 10,
+  中国有色金属: 10
+};
+
+function formatHttpDetail(error) {
+  const d = error && error.response && error.response.data && error.response.data.detail;
+  if (Array.isArray(d)) {
+    return d
+      .map((x) => (x && (x.msg || x.message)) || JSON.stringify(x))
+      .filter(Boolean)
+      .join('；');
+  }
+  if (d != null && d !== '') return String(d);
+  return (error && error.message) || '请求失败';
+}
+
 export default {
   name: 'SubjectiveOverride',
+  props: {
+    /** 当前监控选中的策略（与 MonitorCenter.currentStrategy 一致），用于底层资产代码与展示名 */
+    strategyContext: {
+      type: Object,
+      default: null
+    }
+  },
   data() {
-    const validateWeights = (rule, value, callback) => {
-      // 百分比形式，sum 是百分数（如 100 表示 100%）
-      const sum = Object.values(value).reduce((a, b) => a + (b || 0), 0);
-      const maxLeveragePercent = 4.0 * 100;  // MAX_LEVERAGE * 100 = 400%
-      if (sum > maxLeveragePercent) {
-        callback(new Error('总权重不能超过 ' + maxLeveragePercent + '%（最大杠杆 4.0x）'));
-      } else {
-        callback();
-      }
-    };
-    
     return {
       loading: false,
       submitting: false,
@@ -258,51 +297,75 @@ export default {
         weights: {},
         description: ''
       },
-      rules: {
-        execute_date: [
-          { required: true, message: '请选择执行日期', trigger: 'change' }
-        ],
-        weights: [
-          { validator: validateWeights, trigger: 'change' }
-        ]
-      },
       datePickerOptions: {
         // 允许选择任何日期，与原始 Streamlit 行为一致
       },
-      // 权重上限配置（来自 config.py WEIGHT_CAPS，转为百分比形式）
-      weightCaps: {
-        '沪深300': 10,
-        '创业板指': 10,
-        '红利低波': 10,
-        '恒生科技': 10,
-        '标普500': 15,
-        '德国DAX': 10,
-        '中国10年国债': 60,
-        '中国2年国债': 90,
-        '布伦特原油': 10,
-        '黄金': 10,
-        '铁矿石': 10,
-        '中国有色金属': 10
-      },
-      maxLeverage: 4.0,  // MAX_LEVERAGE
-      assetList: [
-        { key: '沪深300', name: '沪深300' },
-        { key: '创业板指', name: '创业板指' },
-        { key: '红利低波', name: '红利低波' },
-        { key: '恒生科技', name: '恒生科技' },
-        { key: '标普500', name: '标普500' },
-        { key: '德国DAX', name: '德国DAX' },
-        { key: '中国10年国债', name: '中国10年国债' },
-        { key: '中国2年国债', name: '中国2年国债' },
-        { key: '布伦特原油', name: '布伦特原油' },
-        { key: '黄金', name: '黄金' },
-        { key: '铁矿石', name: '铁矿石' },
-        { key: '中国有色金属', name: '中国有色金属' }
-      ]
+      legacyWeightCaps: { ...LEGACY_WEIGHT_CAPS_PERCENT },
+      defaultMaxLeverage: 4.0
     };
   },
   computed: {
     ...mapState('monitor', ['subjectiveOverrides', 'monitorState']),
+
+    /** 与后端 monitor_runtime.asset_list 对齐的表单项（代码为 key，名称为展示） */
+    effectiveAssetRows() {
+      const s = this.strategyContext;
+      if (s && Array.isArray(s.live_effective_assets) && s.live_effective_assets.length) {
+        const codes = s.live_effective_assets.map(x => String(x).trim()).filter(Boolean);
+        const labels = s.live_effective_asset_labels;
+        const map = s.asset_names || {};
+        return codes.map((code, i) => ({
+          key: code,
+          name: Array.isArray(labels) && labels[i] != null && String(labels[i]).trim()
+            ? String(labels[i]).trim()
+            : (map[code] || code)
+        }));
+      }
+      const tw = this.currentWeights || {};
+      const pc = (this.monitorState && this.monitorState.positions_cny) || {};
+      const keys = new Set([...Object.keys(tw), ...Object.keys(pc)]);
+      if (keys.size) {
+        return [...keys].sort().map(k => ({ key: k, name: k }));
+      }
+      return LEGACY_ASSET_ROWS;
+    },
+
+    effectiveMaxLeverage() {
+      const p = this.strategyContext && this.strategyContext.live_effective_params;
+      if (p) {
+        const raw = p.max_total_leverage != null && p.max_total_leverage !== ''
+          ? p.max_total_leverage
+          : p.max_leverage;
+        if (raw != null && raw !== '') {
+          const n = Number(raw);
+          if (!Number.isNaN(n) && n > 0) return n;
+        }
+      }
+      return this.defaultMaxLeverage;
+    },
+
+    formRules() {
+      const vm = this;
+      return {
+        execute_date: [
+          { required: true, message: '请选择执行日期', trigger: 'change' }
+        ],
+        weights: [
+          {
+            validator(rule, value, callback) {
+              const sum = Object.values(value || {}).reduce((a, b) => a + (b || 0), 0);
+              const capPct = vm.effectiveMaxLeverage * 100;
+              if (sum > capPct) {
+                callback(new Error(`总权重不能超过 ${capPct}%（最大杠杆 ${vm.effectiveMaxLeverage}x）`));
+              } else {
+                callback();
+              }
+            },
+            trigger: 'change'
+          }
+        ]
+      };
+    },
     
     currentWeights() {
       // 使用 Vue 2 兼容写法，避免可选链操作符
@@ -321,17 +384,19 @@ export default {
     
     weightSumClass() {
       const sum = this.weightSumPercent;
+      const maxPct = this.effectiveMaxLeverage * 100;
       if (sum >= 99 && sum <= 101) return 'weight-sum-valid';
-      if (sum > 101 && sum <= this.maxLeverage * 100) return 'weight-sum-warning';
-      if (sum > this.maxLeverage * 100) return 'weight-sum-invalid';
+      if (sum > 101 && sum <= maxPct) return 'weight-sum-warning';
+      if (sum > maxPct) return 'weight-sum-invalid';
       return 'weight-sum-warning';
     },
     
     leverageClass() {
       const leverage = this.equivalentLeverage;
+      const maxL = this.effectiveMaxLeverage;
       if (leverage >= 0.99 && leverage <= 1.01) return 'weight-sum-valid';
-      if (leverage > 1.01 && leverage <= this.maxLeverage) return 'weight-sum-warning';
-      if (leverage > this.maxLeverage) return 'weight-sum-invalid';
+      if (leverage > 1.01 && leverage <= maxL) return 'weight-sum-warning';
+      if (leverage > maxL) return 'weight-sum-invalid';
       return 'weight-sum-warning';
     },
     
@@ -365,6 +430,17 @@ export default {
       });
     }
   },
+  watch: {
+    /** 策略上下文异步就绪后，与后端 asset_list 对齐表单键（避免仍用默认中文键提交导致 400） */
+    effectiveAssetRows: {
+      handler() {
+        if (!this.formVisible) {
+          this.initFormWeights();
+        }
+      },
+      deep: true
+    }
+  },
   created() {
     this.loadData();
     this.initFormWeights();
@@ -387,7 +463,7 @@ export default {
     initFormWeights() {
       // 初始化为百分比形式（当前权重 * 100）
       const weights = {};
-      this.assetList.forEach(asset => {
+      this.effectiveAssetRows.forEach(asset => {
         const currentWeight = this.currentWeights[asset.key] || 0;
         weights[asset.key] = Math.round(currentWeight * 100 * 100) / 100;  // 保留2位小数
       });
@@ -395,7 +471,15 @@ export default {
     },
     
     getWeightCap(assetKey) {
-      return this.weightCaps[assetKey] || 15;  // 默认 15%
+      const p = this.strategyContext && this.strategyContext.live_effective_params;
+      const caps = (p && (p.weight_caps || p.max_weight_dict)) || null;
+      if (caps && typeof caps === 'object' && caps[assetKey] != null && caps[assetKey] !== '') {
+        const n = Number(caps[assetKey]);
+        if (!Number.isNaN(n)) {
+          return Math.min(100, Math.round(n * 10000) / 100);
+        }
+      }
+      return this.legacyWeightCaps[assetKey] || 100;
     },
     
     getCurrentWeight(assetKey) {
@@ -456,9 +540,7 @@ export default {
         this.formVisible = false;
         this.resetForm();
       } catch (error) {
-        // 使用 Vue 2 兼容写法
-        const detail = (error.response && error.response.data && error.response.data.detail) || error.message;
-        this.$message.error('添加失败：' + detail);
+        this.$message.error('添加失败：' + formatHttpDetail(error));
       } finally {
         this.submitting = false;
       }
@@ -477,9 +559,7 @@ export default {
           });
           this.$message.success('指令已取消');
         } catch (error) {
-          // 使用 Vue 2 兼容写法
-          const detail = (error.response && error.response.data && error.response.data.detail) || error.message;
-          this.$message.error('取消失败：' + detail);
+          this.$message.error('取消失败：' + formatHttpDetail(error));
         }
       }).catch(() => {});
     },
