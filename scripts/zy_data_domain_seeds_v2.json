@@ -1,0 +1,4247 @@
+{
+  "dwd_ast_info": [
+    {
+      "AST_CD": "019601.IB",
+      "AST_NM": "25国债03",
+      "AST_TYPE": "BOND",
+      "AST_SUB_TYPE": "CGB",
+      "ISR_ID": "ISR000001",
+      "CCY": "CNY",
+      "LIST_DT": 20250115,
+      "MATURITY_DT": 20350115,
+      "COUPON_RATE": 0.0195,
+      "ISSUE_AMT": 50000000000,
+      "MARKET": "银行间",
+      "BOND_TERM": 10
+    },
+    {
+      "AST_CD": "019735.IB",
+      "AST_NM": "25特别国债03",
+      "AST_TYPE": "BOND",
+      "AST_SUB_TYPE": "CGB",
+      "ISR_ID": "ISR000001",
+      "CCY": "CNY",
+      "LIST_DT": 20250220,
+      "MATURITY_DT": 20550220,
+      "COUPON_RATE": 0.0245,
+      "ISSUE_AMT": 80000000000,
+      "MARKET": "银行间",
+      "BOND_TERM": 30
+    },
+    {
+      "AST_CD": "230210.IB",
+      "AST_NM": "23国开10",
+      "AST_TYPE": "BOND",
+      "AST_SUB_TYPE": "POLICY",
+      "ISR_ID": "ISR000002",
+      "CCY": "CNY",
+      "LIST_DT": 20230615,
+      "MATURITY_DT": 20330615,
+      "COUPON_RATE": 0.0278,
+      "ISSUE_AMT": 120000000000,
+      "MARKET": "银行间",
+      "BOND_TERM": 10
+    },
+    {
+      "AST_CD": "220215.IB",
+      "AST_NM": "22国开15",
+      "AST_TYPE": "BOND",
+      "AST_SUB_TYPE": "POLICY",
+      "ISR_ID": "ISR000002",
+      "CCY": "CNY",
+      "LIST_DT": 20221020,
+      "MATURITY_DT": 20321020,
+      "COUPON_RATE": 0.0295,
+      "ISSUE_AMT": 90000000000,
+      "MARKET": "银行间",
+      "BOND_TERM": 10
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "AST_NM": "24工商银行MTN001",
+      "AST_TYPE": "BOND",
+      "AST_SUB_TYPE": "MTN",
+      "ISR_ID": "ISR000003",
+      "CCY": "CNY",
+      "LIST_DT": 20240315,
+      "MATURITY_DT": 20270315,
+      "COUPON_RATE": 0.031,
+      "ISSUE_AMT": 10000000000,
+      "MARKET": "银行间",
+      "BOND_TERM": 3
+    },
+    {
+      "AST_CD": "112311.SZ",
+      "AST_NM": "24万科MTN003",
+      "AST_TYPE": "BOND",
+      "AST_SUB_TYPE": "MTN",
+      "ISR_ID": "ISR000005",
+      "CCY": "CNY",
+      "LIST_DT": 20240520,
+      "MATURITY_DT": 20260520,
+      "COUPON_RATE": 0.045,
+      "ISSUE_AMT": 3000000000,
+      "MARKET": "深交所",
+      "BOND_TERM": 2
+    },
+    {
+      "AST_CD": "600036.SH",
+      "AST_NM": "招商银行",
+      "AST_TYPE": "STOCK",
+      "AST_SUB_TYPE": "A_SHARE",
+      "ISR_ID": "ISR000007",
+      "CCY": "CNY",
+      "LIST_DT": 20020409,
+      "MARKET": "上交所"
+    },
+    {
+      "AST_CD": "601318.SH",
+      "AST_NM": "中国平安",
+      "AST_TYPE": "STOCK",
+      "AST_SUB_TYPE": "A_SHARE",
+      "ISR_ID": "ISR000008",
+      "CCY": "CNY",
+      "LIST_DT": 20070301,
+      "MARKET": "上交所"
+    },
+    {
+      "AST_CD": "510300.SH",
+      "AST_NM": "沪深300ETF",
+      "AST_TYPE": "FUND",
+      "AST_SUB_TYPE": "ETF",
+      "ISR_ID": "ISR000008",
+      "CCY": "CNY",
+      "LIST_DT": 20120526,
+      "MARKET": "上交所"
+    },
+    {
+      "AST_CD": "511260.SH",
+      "AST_NM": "十年国债ETF",
+      "AST_TYPE": "FUND",
+      "AST_SUB_TYPE": "ETF",
+      "ISR_ID": "ISR000008",
+      "CCY": "CNY",
+      "LIST_DT": 20200320,
+      "MARKET": "上交所"
+    },
+    {
+      "AST_CD": "127080.SZ",
+      "AST_NM": "2024华能新能ABS001优先A",
+      "AST_TYPE": "ABS",
+      "AST_SUB_TYPE": "ABS_SENIOR",
+      "ISR_ID": "ISR000006",
+      "CCY": "CNY",
+      "LIST_DT": 20240801,
+      "MATURITY_DT": 20270801,
+      "COUPON_RATE": 0.033,
+      "ISSUE_AMT": 2000000000,
+      "MARKET": "深交所",
+      "BOND_TERM": 3
+    },
+    {
+      "AST_CD": "180401.IB",
+      "AST_NM": "24农发绿色债01",
+      "AST_TYPE": "BOND",
+      "AST_SUB_TYPE": "POLICY",
+      "ISR_ID": "ISR000004",
+      "CCY": "CNY",
+      "LIST_DT": 20240410,
+      "MATURITY_DT": 20290410,
+      "COUPON_RATE": 0.0255,
+      "ISSUE_AMT": 30000000000,
+      "MARKET": "银行间",
+      "BOND_TERM": 5
+    }
+  ],
+  "dwd_isr_institution": [
+    {
+      "ISR_ID": "ISR000001",
+      "ISR_NM": "中华人民共和国财政部",
+      "ISR_SHORT_NM": "财政部",
+      "ISR_TYPE": "SOVEREIGN",
+      "CREDIT_CD": "11100000000100176T",
+      "INDUSTRY_CD": "S9510",
+      "REG_PROV": "北京",
+      "LIST_FLAG": "N",
+      "REG_CAP_AMT": 0,
+      "EST_DT": 19490701,
+      "BIZ_DT": 20250324
+    },
+    {
+      "ISR_ID": "ISR000002",
+      "ISR_NM": "国家开发银行",
+      "ISR_SHORT_NM": "国开行",
+      "ISR_TYPE": "POLICY_BANK",
+      "CREDIT_CD": "91110000100001269U",
+      "INDUSTRY_CD": "J6621",
+      "REG_PROV": "北京",
+      "LIST_FLAG": "N",
+      "REG_CAP_AMT": 421248000000,
+      "EST_DT": 19940317,
+      "BIZ_DT": 20250324
+    },
+    {
+      "ISR_ID": "ISR000003",
+      "ISR_NM": "中国工商银行股份有限公司",
+      "ISR_SHORT_NM": "工商银行",
+      "ISR_TYPE": "COMMERCIAL_BANK",
+      "CREDIT_CD": "9111000010000016XA",
+      "INDUSTRY_CD": "J6611",
+      "REG_PROV": "北京",
+      "LIST_FLAG": "Y",
+      "REG_CAP_AMT": 356406000000,
+      "EST_DT": 19840101,
+      "BIZ_DT": 20250324
+    },
+    {
+      "ISR_ID": "ISR000004",
+      "ISR_NM": "中国农业发展银行",
+      "ISR_SHORT_NM": "农发行",
+      "ISR_TYPE": "POLICY_BANK",
+      "CREDIT_CD": "91110000100003790Y",
+      "INDUSTRY_CD": "J6621",
+      "REG_PROV": "北京",
+      "LIST_FLAG": "N",
+      "REG_CAP_AMT": 57074000000,
+      "EST_DT": 19941118,
+      "BIZ_DT": 20250324
+    },
+    {
+      "ISR_ID": "ISR000005",
+      "ISR_NM": "万科企业股份有限公司",
+      "ISR_SHORT_NM": "万科",
+      "ISR_TYPE": "CORPORATE",
+      "CREDIT_CD": 914403001922038300,
+      "INDUSTRY_CD": "K7010",
+      "REG_PROV": "广东",
+      "LIST_FLAG": "Y",
+      "REG_CAP_AMT": 11039152192,
+      "EST_DT": 19840501,
+      "BIZ_DT": 20250324
+    },
+    {
+      "ISR_ID": "ISR000006",
+      "ISR_NM": "华能新能源股份有限公司",
+      "ISR_SHORT_NM": "华能新能源",
+      "ISR_TYPE": "CORPORATE",
+      "CREDIT_CD": "91110000717825307B",
+      "INDUSTRY_CD": "D4412",
+      "REG_PROV": "北京",
+      "LIST_FLAG": "Y",
+      "REG_CAP_AMT": 8020000000,
+      "EST_DT": 20080801,
+      "BIZ_DT": 20250324
+    },
+    {
+      "ISR_ID": "ISR000007",
+      "ISR_NM": "招商银行股份有限公司",
+      "ISR_SHORT_NM": "招商银行",
+      "ISR_TYPE": "COMMERCIAL_BANK",
+      "CREDIT_CD": "91440300100018588H",
+      "INDUSTRY_CD": "J6611",
+      "REG_PROV": "广东",
+      "LIST_FLAG": "Y",
+      "REG_CAP_AMT": 25220900000,
+      "EST_DT": 19870408,
+      "BIZ_DT": 20250324
+    },
+    {
+      "ISR_ID": "ISR000008",
+      "ISR_NM": "中国平安保险(集团)股份有限公司",
+      "ISR_SHORT_NM": "中国平安",
+      "ISR_TYPE": "CORPORATE",
+      "CREDIT_CD": "91440300100019502G",
+      "INDUSTRY_CD": "J6812",
+      "REG_PROV": "广东",
+      "LIST_FLAG": "Y",
+      "REG_CAP_AMT": 18280200000,
+      "EST_DT": 19880301,
+      "BIZ_DT": 20250324
+    }
+  ],
+  "dwd_ptl_info": [
+    {
+      "PORT_ID": "PORT001",
+      "PORT_NM": "稳健配置一号",
+      "PORT_SHORT_NM": "稳健1号",
+      "PORT_TYPE": "MIXED",
+      "RISK_LVL": "R3",
+      "ESTAB_DT": 20210601,
+      "CCY": "CNY",
+      "BENCHMARK": "中债综合指数*70%+沪深300*30%",
+      "SHR_NAV": 1.0512,
+      "ACC_NAV": 1.1835,
+      "AUM": 1250000000,
+      "MGR_INST": "ISR000008",
+      "CUSTODY_BANK": "ISR000003",
+      "STATUS": "ACTIVE"
+    },
+    {
+      "PORT_ID": "PORT002",
+      "PORT_NM": "纯债精选二号",
+      "PORT_SHORT_NM": "纯债2号",
+      "PORT_TYPE": "BOND",
+      "RISK_LVL": "R2",
+      "ESTAB_DT": 20200315,
+      "CCY": "CNY",
+      "BENCHMARK": "中债综合财富指数",
+      "SHR_NAV": 1.0285,
+      "ACC_NAV": 1.152,
+      "AUM": 2800000000,
+      "MGR_INST": "ISR000008",
+      "CUSTODY_BANK": "ISR000007",
+      "STATUS": "ACTIVE"
+    },
+    {
+      "PORT_ID": "PORT003",
+      "PORT_NM": "混合增强三号",
+      "PORT_SHORT_NM": "混合3号",
+      "PORT_TYPE": "MIXED",
+      "RISK_LVL": "R3",
+      "ESTAB_DT": 20220801,
+      "CCY": "CNY",
+      "BENCHMARK": "中债综合指数*50%+沪深300*50%",
+      "SHR_NAV": 0.9875,
+      "ACC_NAV": 0.9875,
+      "AUM": 870000000,
+      "MGR_INST": "ISR000005",
+      "CUSTODY_BANK": "ISR000003",
+      "STATUS": "ACTIVE"
+    },
+    {
+      "PORT_ID": "PORT004",
+      "PORT_NM": "短融货币四号",
+      "PORT_SHORT_NM": "货币4号",
+      "PORT_TYPE": "MMF",
+      "RISK_LVL": "R1",
+      "ESTAB_DT": 20190101,
+      "CCY": "CNY",
+      "BENCHMARK": "七日年化收益率基准",
+      "SHR_NAV": 1,
+      "ACC_NAV": 1,
+      "AUM": 5000000000,
+      "MGR_INST": "ISR000008",
+      "CUSTODY_BANK": "ISR000003",
+      "STATUS": "ACTIVE"
+    },
+    {
+      "PORT_ID": "PORT005",
+      "PORT_NM": "指数增强五号",
+      "PORT_SHORT_NM": "指增5号",
+      "PORT_TYPE": "INDEX",
+      "RISK_LVL": "R4",
+      "ESTAB_DT": 20230601,
+      "CCY": "CNY",
+      "BENCHMARK": "沪深300指数",
+      "SHR_NAV": 1.125,
+      "ACC_NAV": 1.125,
+      "AUM": 650000000,
+      "MGR_INST": "ISR000007",
+      "CUSTODY_BANK": "ISR000003",
+      "STATUS": "ACTIVE"
+    }
+  ],
+  "dwd_isr_trd_cntp": [
+    {
+      "CNTP_ID": "CNTP00001",
+      "CNTP_NM": "中信证券股份有限公司",
+      "LINKED_ISR_ID": "",
+      "CNTP_TYPE": "BROKER",
+      "MARKET": "IB",
+      "RATING": "AAA",
+      "WHITELIST": "Y",
+      "SETT_BANK": "中国工商银行总行营业部",
+      "SETT_ACCT": 110060001999001,
+      "BIZ_DT": 20250324
+    },
+    {
+      "CNTP_ID": "CNTP00002",
+      "CNTP_NM": "中金公司固定收益部",
+      "LINKED_ISR_ID": "",
+      "CNTP_TYPE": "BROKER",
+      "MARKET": "IB",
+      "RATING": "AAA",
+      "WHITELIST": "Y",
+      "SETT_BANK": "招商银行北京分行",
+      "SETT_ACCT": 755906812200002,
+      "BIZ_DT": 20250324
+    },
+    {
+      "CNTP_ID": "CNTP00003",
+      "CNTP_NM": "国泰君安证券做市部",
+      "LINKED_ISR_ID": "",
+      "CNTP_TYPE": "BROKER",
+      "MARKET": "IB",
+      "RATING": "AAA",
+      "WHITELIST": "Y",
+      "SETT_BANK": "中国工商银行上海分行",
+      "SETT_ACCT": 110260001888003,
+      "BIZ_DT": 20250324
+    },
+    {
+      "CNTP_ID": "CNTP00004",
+      "CNTP_NM": "兴业银行金融市场部",
+      "LINKED_ISR_ID": "",
+      "CNTP_TYPE": "BANK",
+      "MARKET": "IB",
+      "RATING": "AAA",
+      "WHITELIST": "Y",
+      "SETT_BANK": "兴业银行总行",
+      "SETT_ACCT": 350060001666004,
+      "BIZ_DT": 20250324
+    },
+    {
+      "CNTP_ID": "CNTP00005",
+      "CNTP_NM": "中国银行间市场交易商协会",
+      "LINKED_ISR_ID": "",
+      "CNTP_TYPE": "OTHER",
+      "MARKET": "IB",
+      "RATING": "",
+      "WHITELIST": "N",
+      "SETT_BANK": "",
+      "SETT_ACCT": "",
+      "BIZ_DT": 20250324
+    }
+  ],
+  "dwd_cust_info": [
+    {
+      "CUSTOMER_ID": "CUS0000001",
+      "CUST_NM": "张明远",
+      "CUST_TYPE": "IND",
+      "GENDER": "M",
+      "BIRTH_DT": 19780815,
+      "ID_TYPE": "IDCARD",
+      "ID_NO": 310115197808157630,
+      "PHONE": 13812345001,
+      "EMAIL": "zhangmingyuan@163.com",
+      "ADDR": "上海市浦东新区世纪大道1090号",
+      "RISK_LVL": "C3",
+      "OPEN_DT": 20210601,
+      "CHANNEL": "DIRECT",
+      "SELLER_ID": "SEL00001",
+      "BIZ_DT": 20250324
+    },
+    {
+      "CUSTOMER_ID": "CUS0000002",
+      "CUST_NM": "李秀芬",
+      "CUST_TYPE": "IND",
+      "GENDER": "F",
+      "BIRTH_DT": 19820320,
+      "ID_TYPE": "IDCARD",
+      "ID_NO": 110108198203208430,
+      "PHONE": 13912345002,
+      "EMAIL": "lixiufen@126.com",
+      "ADDR": "北京市朝阳区建国门外大街甲6号",
+      "RISK_LVL": "C2",
+      "OPEN_DT": 20200315,
+      "CHANNEL": "BANK",
+      "SELLER_ID": "SEL00002",
+      "BIZ_DT": 20250324
+    },
+    {
+      "CUSTOMER_ID": "CUS0000003",
+      "CUST_NM": "王建国",
+      "CUST_TYPE": "IND",
+      "GENDER": "M",
+      "BIRTH_DT": 19751108,
+      "ID_TYPE": "IDCARD",
+      "ID_NO": 440301197511085500,
+      "PHONE": 13602345003,
+      "EMAIL": "wangjianguo@qq.com",
+      "ADDR": "深圳市福田区红荔路1023号",
+      "RISK_LVL": "C4",
+      "OPEN_DT": 20220801,
+      "CHANNEL": "DIRECT",
+      "SELLER_ID": "SEL00001",
+      "BIZ_DT": 20250324
+    },
+    {
+      "CUSTOMER_ID": "CUS0000004",
+      "CUST_NM": "陈雅琴",
+      "CUST_TYPE": "IND",
+      "GENDER": "F",
+      "BIRTH_DT": 19900525,
+      "ID_TYPE": "IDCARD",
+      "ID_NO": 330106199005258100,
+      "PHONE": 13702345004,
+      "EMAIL": "chenyaqin@gmail.com",
+      "ADDR": "杭州市西湖区文三路269号",
+      "RISK_LVL": "C1",
+      "OPEN_DT": 20190101,
+      "CHANNEL": "BROKER",
+      "SELLER_ID": "SEL00004",
+      "BIZ_DT": 20250324
+    },
+    {
+      "CUSTOMER_ID": "CUS0000005",
+      "CUST_NM": "深圳市前海资产管理有限公司",
+      "CUST_TYPE": "INST",
+      "GENDER": "M",
+      "BIRTH_DT": 20120601,
+      "ID_TYPE": "CREDIT",
+      "ID_NO": "91440300MA5DGD2X9Q",
+      "PHONE": "0755-22357890",
+      "EMAIL": "service@qhamc.com.cn",
+      "ADDR": "深圳市前海深港合作区前湾一路1号A座",
+      "RISK_LVL": "C4",
+      "OPEN_DT": 20230601,
+      "CHANNEL": "DIRECT",
+      "SELLER_ID": "SEL00003",
+      "BIZ_DT": 20250324
+    },
+    {
+      "CUSTOMER_ID": "CUS0000006",
+      "CUST_NM": "上海浦东新区社会保险基金管理中心",
+      "CUST_TYPE": "INST",
+      "GENDER": "M",
+      "BIRTH_DT": 19980915,
+      "ID_TYPE": "CREDIT",
+      "ID_NO": "12310115425612345B",
+      "PHONE": "021-58821234",
+      "EMAIL": "pdfund@pudong.gov.cn",
+      "ADDR": "上海市浦东新区世纪大道2001号",
+      "RISK_LVL": "C2",
+      "OPEN_DT": 20180920,
+      "CHANNEL": "BANK",
+      "SELLER_ID": "SEL00005",
+      "BIZ_DT": 20250324
+    },
+    {
+      "CUSTOMER_ID": "CUS0000007",
+      "CUST_NM": "广东省教育基金会",
+      "CUST_TYPE": "INST",
+      "GENDER": "M",
+      "BIRTH_DT": 19951210,
+      "ID_TYPE": "CREDIT",
+      "ID_NO": "53440000123456789X",
+      "PHONE": "020-37628990",
+      "EMAIL": "info@gdef.org.cn",
+      "ADDR": "广州市越秀区中山三路2号",
+      "RISK_LVL": "C2",
+      "OPEN_DT": 20200118,
+      "CHANNEL": "DIRECT",
+      "SELLER_ID": "SEL00006",
+      "BIZ_DT": 20250324
+    }
+  ],
+  "dwd_seller_info": [
+    {
+      "SELLER_ID": "SEL00001",
+      "SELLER_NM": "刘洋",
+      "SELLER_TYPE": "INTERNAL",
+      "CHANNEL_TYPE": "DIRECT",
+      "ORG": "机构销售一部",
+      "CERT_NO": "A20180356210",
+      "CERT_TYPE": "基金从业资格",
+      "PHONE": 13911118801,
+      "EMAIL": "liuyang@fund.com",
+      "ENTRY_DT": 20180601,
+      "STATUS": "ACTIVE",
+      "BIZ_DT": 20250324,
+      "DEPT": "机构销售一部",
+      "TITLE": "高级客户经理",
+      "CUSTOMER_CNT": 12,
+      "AUM_TOTAL": 3500000000,
+      "YTD_SALES": 800000000,
+      "RANK": "SENIOR",
+      "REGION": "华东"
+    },
+    {
+      "SELLER_ID": "SEL00002",
+      "SELLER_NM": "赵丽华",
+      "SELLER_TYPE": "INTERNAL",
+      "CHANNEL_TYPE": "BANK",
+      "ORG": "零售财富部",
+      "CERT_NO": "A20170284512",
+      "CERT_TYPE": "基金从业资格",
+      "PHONE": 13901112202,
+      "EMAIL": "zhaolihua@fund.com",
+      "ENTRY_DT": 20170820,
+      "STATUS": "ACTIVE",
+      "BIZ_DT": 20250324,
+      "DEPT": "零售财富部",
+      "TITLE": "资深理财师",
+      "CUSTOMER_CNT": 45,
+      "AUM_TOTAL": 1200000000,
+      "YTD_SALES": 350000000,
+      "RANK": "SENIOR",
+      "REGION": "华北"
+    },
+    {
+      "SELLER_ID": "SEL00003",
+      "SELLER_NM": "孙志强",
+      "SELLER_TYPE": "INTERNAL",
+      "CHANNEL_TYPE": "DIRECT",
+      "ORG": "机构销售二部",
+      "CERT_NO": "A20150128637",
+      "CERT_TYPE": "基金从业资格",
+      "PHONE": 13602220033,
+      "EMAIL": "sunzhiqiang@fund.com",
+      "ENTRY_DT": 20150115,
+      "STATUS": "ACTIVE",
+      "BIZ_DT": 20250324,
+      "DEPT": "机构销售二部",
+      "TITLE": "销售总监",
+      "CUSTOMER_CNT": 8,
+      "AUM_TOTAL": 5800000000,
+      "YTD_SALES": 1500000000,
+      "RANK": "DIRECTOR",
+      "REGION": "华南"
+    },
+    {
+      "SELLER_ID": "SEL00004",
+      "SELLER_NM": "周敏",
+      "SELLER_TYPE": "INTERNAL",
+      "CHANNEL_TYPE": "BROKER",
+      "ORG": "零售财富部",
+      "CERT_NO": "A20220512098",
+      "CERT_TYPE": "证券从业资格",
+      "PHONE": 13700556644,
+      "EMAIL": "zhoumin@fund.com",
+      "ENTRY_DT": 20220301,
+      "STATUS": "ACTIVE",
+      "BIZ_DT": 20250324,
+      "DEPT": "零售财富部",
+      "TITLE": "客户经理",
+      "CUSTOMER_CNT": 30,
+      "AUM_TOTAL": 800000000,
+      "YTD_SALES": 200000000,
+      "RANK": "JUNIOR",
+      "REGION": "华东"
+    },
+    {
+      "SELLER_ID": "SEL00005",
+      "SELLER_NM": "吴晓峰",
+      "SELLER_TYPE": "INTERNAL",
+      "CHANNEL_TYPE": "DIRECT",
+      "ORG": "机构销售一部",
+      "CERT_NO": "A20160329815",
+      "CERT_TYPE": "基金从业资格",
+      "PHONE": 13988774455,
+      "EMAIL": "wuxiaofeng@fund.com",
+      "ENTRY_DT": 20160418,
+      "STATUS": "ACTIVE",
+      "BIZ_DT": 20250324,
+      "DEPT": "机构销售一部",
+      "TITLE": "高级客户经理",
+      "CUSTOMER_CNT": 6,
+      "AUM_TOTAL": 4200000000,
+      "YTD_SALES": 1100000000,
+      "RANK": "SENIOR",
+      "REGION": "华东"
+    },
+    {
+      "SELLER_ID": "SEL00006",
+      "SELLER_NM": "郑雯",
+      "SELLER_TYPE": "EXTERNAL",
+      "CHANNEL_TYPE": "ONLINE",
+      "ORG": "电商渠道部",
+      "CERT_NO": "A20230648721",
+      "CERT_TYPE": "基金从业资格",
+      "PHONE": 13066778899,
+      "EMAIL": "zhengwen@fund.com",
+      "ENTRY_DT": 20230501,
+      "STATUS": "PROBATION",
+      "BIZ_DT": 20250324,
+      "DEPT": "零售财富部",
+      "TITLE": "理财经理",
+      "CUSTOMER_CNT": 25,
+      "AUM_TOTAL": 600000000,
+      "YTD_SALES": 150000000,
+      "RANK": "JUNIOR",
+      "REGION": "华南"
+    }
+  ],
+  "dwd_rsk_limit_check": [
+    {
+      "PORT_ID": "PORT001",
+      "RULE_NM": "单一债券集中度限制",
+      "RULE_DESC": "单一债券持仓市值不超过基金净资产的10%",
+      "THRESHOLD": 0.1,
+      "CURRENT_VALUE": 0.0593,
+      "STATUS": "NORMAL"
+    },
+    {
+      "PORT_ID": "PORT001",
+      "RULE_NM": "前十大重仓集中度",
+      "RULE_DESC": "前十大重仓债券合计不超过基金净资产的50%",
+      "THRESHOLD": 0.5,
+      "CURRENT_VALUE": 0.42,
+      "STATUS": "NORMAL"
+    },
+    {
+      "PORT_ID": "PORT003",
+      "RULE_NM": "低评级债券限制",
+      "RULE_DESC": "信用债评级低于AA的持仓不超过基金净资产的20%",
+      "THRESHOLD": 0.2,
+      "CURRENT_VALUE": 0.18,
+      "STATUS": "WARNING"
+    },
+    {
+      "PORT_ID": "PORT001",
+      "RULE_NM": "组合杠杆率限制",
+      "RULE_DESC": "组合杠杆率不超过140%",
+      "THRESHOLD": 1.4,
+      "CURRENT_VALUE": 1.12,
+      "STATUS": "NORMAL"
+    },
+    {
+      "PORT_ID": "PORT004",
+      "RULE_NM": "现金类资产下限",
+      "RULE_DESC": "现金类资产不低于基金净资产的5%",
+      "THRESHOLD": 0.05,
+      "CURRENT_VALUE": 0.08,
+      "STATUS": "NORMAL"
+    }
+  ],
+  "dwd_crdt_rating_change": [
+    {
+      "ISR_ID": "ISR000005",
+      "ISR_NM": "万科企业股份有限公司",
+      "AGENCY": "联合资信",
+      "PREV_RATING": "AA",
+      "NEW_RATING": "AA-",
+      "CHANGE_TYPE": "DOWNGRADE",
+      "CHANGE_DT": 20250320,
+      "REASON": "该主体近12个月内经营性现金流持续为负，有息债务规模未见明显压降，土地储备去化周期延长，偿债能力持续弱化"
+    }
+  ],
+  "dwd_ast_info_ch": [
+    {
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "VAL_NET_PRC": 99.56,
+      "VAL_FULL_PRC": 99.8012,
+      "VAL_YIELD": 0.0215,
+      "DURATION": 9.52,
+      "CONVEXITY": 98.5,
+      "RATING_AGENCY": "中诚信国际",
+      "VAL_SRC": "CCDC"
+    },
+    {
+      "AST_CD": "019735.IB",
+      "BIZ_DT": 20250324,
+      "VAL_NET_PRC": 102.35,
+      "VAL_FULL_PRC": 102.682,
+      "VAL_YIELD": 0.0238,
+      "DURATION": 18.76,
+      "CONVEXITY": 425.8,
+      "RATING_AGENCY": "中诚信国际",
+      "VAL_SRC": "CCDC"
+    },
+    {
+      "AST_CD": "230210.IB",
+      "BIZ_DT": 20250324,
+      "VAL_NET_PRC": 100.82,
+      "VAL_FULL_PRC": 101.568,
+      "VAL_YIELD": 0.0265,
+      "DURATION": 7.21,
+      "CONVEXITY": 62.4,
+      "RATING_AGENCY": "联合资信",
+      "VAL_SRC": "CCDC"
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "BIZ_DT": 20250324,
+      "VAL_NET_PRC": 100.15,
+      "VAL_FULL_PRC": 100.3215,
+      "VAL_YIELD": 0.0305,
+      "DURATION": 1.95,
+      "CONVEXITY": 5.2,
+      "RATING_AGENCY": "中诚信国际",
+      "VAL_SRC": "CCDC"
+    },
+    {
+      "AST_CD": "180401.IB",
+      "BIZ_DT": 20250324,
+      "VAL_NET_PRC": 98.76,
+      "VAL_FULL_PRC": 99.085,
+      "VAL_YIELD": 0.0272,
+      "DURATION": 4.32,
+      "CONVEXITY": 22.6,
+      "RATING_AGENCY": "联合资信",
+      "VAL_SRC": "CCDC"
+    }
+  ],
+  "dwd_ast_info_zg": [
+    {
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "VAL_NET_PRC": 99.532,
+      "VAL_FULL_PRC": 99.7732,
+      "VAL_YIELD": 0.0216,
+      "DURATION": 9.518,
+      "CONVEXITY": 98.4,
+      "RATING_AGENCY": "中诚信国际",
+      "VAL_SRC": "CSI"
+    },
+    {
+      "AST_CD": "019735.IB",
+      "BIZ_DT": 20250324,
+      "VAL_NET_PRC": 102.312,
+      "VAL_FULL_PRC": 102.644,
+      "VAL_YIELD": 0.0239,
+      "DURATION": 18.748,
+      "CONVEXITY": 425.6,
+      "RATING_AGENCY": "中诚信国际",
+      "VAL_SRC": "CSI"
+    },
+    {
+      "AST_CD": "112311.SZ",
+      "BIZ_DT": 20250324,
+      "VAL_NET_PRC": 95.88,
+      "VAL_FULL_PRC": 96.542,
+      "VAL_YIELD": 0.0512,
+      "DURATION": 1.15,
+      "CONVEXITY": 1.8,
+      "RATING_AGENCY": "联合资信",
+      "VAL_SRC": "CSI"
+    },
+    {
+      "AST_CD": "127080.SZ",
+      "BIZ_DT": 20250324,
+      "VAL_NET_PRC": 100.45,
+      "VAL_FULL_PRC": 100.732,
+      "VAL_YIELD": 0.0325,
+      "DURATION": 2.58,
+      "CONVEXITY": 8.9,
+      "RATING_AGENCY": "大公国际",
+      "VAL_SRC": "CSI"
+    }
+  ],
+  "dwd_ast_yield_info": [
+    {
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "YIELD_TM": 0.0215,
+      "YIELD_EX": 0.0215,
+      "DAILY_RTN": 0.0001,
+      "WEEK_RTN": 0.0005,
+      "MONTH_RTN": 0.0018,
+      "YTD_RTN": 0.0052,
+      "SETTLE_PRC": 99.56
+    },
+    {
+      "AST_CD": "019735.IB",
+      "BIZ_DT": 20250324,
+      "YIELD_TM": 0.0238,
+      "YIELD_EX": 0.0238,
+      "DAILY_RTN": 0.0002,
+      "WEEK_RTN": 0.0008,
+      "MONTH_RTN": 0.0025,
+      "YTD_RTN": 0.0078,
+      "SETTLE_PRC": 102.35
+    },
+    {
+      "AST_CD": "230210.IB",
+      "BIZ_DT": 20250324,
+      "YIELD_TM": 0.0265,
+      "YIELD_EX": 0.026,
+      "DAILY_RTN": -0.0001,
+      "WEEK_RTN": 0.0003,
+      "MONTH_RTN": 0.0015,
+      "YTD_RTN": 0.0045,
+      "SETTLE_PRC": 100.82
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "BIZ_DT": 20250324,
+      "YIELD_TM": 0.0305,
+      "YIELD_EX": 0.03,
+      "DAILY_RTN": 0,
+      "WEEK_RTN": 0.0002,
+      "MONTH_RTN": 0.0012,
+      "YTD_RTN": 0.0035,
+      "SETTLE_PRC": 100.15
+    },
+    {
+      "AST_CD": "112311.SZ",
+      "BIZ_DT": 20250324,
+      "YIELD_TM": 0.0512,
+      "YIELD_EX": 0.0508,
+      "DAILY_RTN": -0.0003,
+      "WEEK_RTN": -0.001,
+      "MONTH_RTN": -0.0035,
+      "YTD_RTN": -0.012,
+      "SETTLE_PRC": 95.88
+    }
+  ],
+  "dwd_ast_cf_plan": [
+    {
+      "AST_CD": "019601.IB",
+      "CF_DT": 20250715,
+      "CF_TYPE": "INTEREST",
+      "CF_AMT": 487500000,
+      "CCY": "CNY",
+      "CF_STATUS": "PENDING"
+    },
+    {
+      "AST_CD": "019601.IB",
+      "CF_DT": 20350115,
+      "CF_TYPE": "PRINCIPAL",
+      "CF_AMT": 50000000000,
+      "CCY": "CNY",
+      "CF_STATUS": "PENDING"
+    },
+    {
+      "AST_CD": "019735.IB",
+      "CF_DT": 20250820,
+      "CF_TYPE": "INTEREST",
+      "CF_AMT": 980000000,
+      "CCY": "CNY",
+      "CF_STATUS": "PENDING"
+    },
+    {
+      "AST_CD": "230210.IB",
+      "CF_DT": 20250615,
+      "CF_TYPE": "INTEREST",
+      "CF_AMT": 1668000000,
+      "CCY": "CNY",
+      "CF_STATUS": "PAID"
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "CF_DT": 20250915,
+      "CF_TYPE": "BOTH",
+      "CF_AMT": 155000000,
+      "CCY": "CNY",
+      "CF_STATUS": "PENDING"
+    }
+  ],
+  "dwd_ast_pledge": [
+    {
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "PLEDGE_FLAG": "Y",
+      "PLEDGE_RATIO": 0.95,
+      "PLEDGE_STD_BOND": 0.98,
+      "PLEDGE_BOND_CD": "019601.IB",
+      "PLEDGE_NOTE": "用于央行公开市场操作质押",
+      "PLEDGE_INST": "中国人民银行",
+      "PLEDGE_AMT": 200000000
+    },
+    {
+      "AST_CD": "230210.IB",
+      "BIZ_DT": 20250324,
+      "PLEDGE_FLAG": "Y",
+      "PLEDGE_RATIO": 0.9,
+      "PLEDGE_STD_BOND": 0.95,
+      "PLEDGE_BOND_CD": "230210.IB",
+      "PLEDGE_NOTE": "银行间质押式回购",
+      "PLEDGE_INST": "中央国债登记结算有限责任公司",
+      "PLEDGE_AMT": 150000000
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "BIZ_DT": 20250324,
+      "PLEDGE_FLAG": "Y",
+      "PLEDGE_RATIO": 0.85,
+      "PLEDGE_STD_BOND": 0.88,
+      "PLEDGE_BOND_CD": "2480006.IB",
+      "PLEDGE_NOTE": "上清所质押式回购",
+      "PLEDGE_INST": "上海清算所",
+      "PLEDGE_AMT": 80000000
+    },
+    {
+      "AST_CD": "112311.SZ",
+      "BIZ_DT": 20250324,
+      "PLEDGE_FLAG": "N",
+      "PLEDGE_RATIO": 0,
+      "PLEDGE_STD_BOND": 0,
+      "PLEDGE_BOND_CD": "",
+      "PLEDGE_NOTE": "不可质押，信用债评级低于AA",
+      "PLEDGE_INST": "",
+      "PLEDGE_AMT": 0
+    }
+  ],
+  "dwd_ast_party": [
+    {
+      "AST_CD": "2480006.IB",
+      "PARTY_ROLE": "UNDERWRITER",
+      "PARTY_ID": "ISR000003",
+      "PARTY_NM": "中国工商银行股份有限公司",
+      "BIZ_DT": 20250324
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "PARTY_ROLE": "UNDERWRITER",
+      "PARTY_ID": "ISR000007",
+      "PARTY_NM": "招商银行股份有限公司",
+      "BIZ_DT": 20250324
+    },
+    {
+      "AST_CD": "112311.SZ",
+      "PARTY_ROLE": "UNDERWRITER",
+      "PARTY_ID": "ISR000007",
+      "PARTY_NM": "招商银行股份有限公司",
+      "BIZ_DT": 20250324
+    },
+    {
+      "AST_CD": "127080.SZ",
+      "PARTY_ROLE": "TRUSTEE",
+      "PARTY_ID": "ISR000003",
+      "PARTY_NM": "中国工商银行股份有限公司",
+      "BIZ_DT": 20250324
+    },
+    {
+      "AST_CD": "112311.SZ",
+      "PARTY_ROLE": "CUSTODIAN",
+      "PARTY_ID": "AGY00002",
+      "PARTY_NM": "联合资信评估股份有限公司",
+      "BIZ_DT": 20250324
+    }
+  ],
+  "dwd_ast_exe_plan": [
+    {
+      "AST_CD": "112311.SZ",
+      "EXE_TYPE": "PUT",
+      "EXE_DT": 20250520,
+      "EXE_PRC": 100,
+      "NOTE": "投资者回售选择权，行权价100元，登记日为行权日前5个交易日"
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "EXE_TYPE": "CALL",
+      "EXE_DT": 20260315,
+      "EXE_PRC": 100,
+      "NOTE": "发行人赎回权，可于第2年末按面值赎回全部或部分债券"
+    },
+    {
+      "AST_CD": "127080.SZ",
+      "EXE_TYPE": "PUT",
+      "EXE_DT": 20260801,
+      "EXE_PRC": 100,
+      "NOTE": "投资者回售权，第2年末可按面值回售优先A档"
+    }
+  ],
+  "dwd_ast_fund_manager": [
+    {
+      "AST_CD": "510300.SH",
+      "MANAGER_ID": "MGR00001",
+      "MANAGER_NM": "许之彦",
+      "START_DT": 20200115,
+      "END_DT": "",
+      "SHR_FLAG": "Y",
+      "MGR_STYLE": "指数跟踪",
+      "FUND_COMPANY": "华泰柏瑞基金"
+    },
+    {
+      "AST_CD": "511260.SH",
+      "MANAGER_ID": "MGR00002",
+      "MANAGER_NM": "柳军",
+      "START_DT": 20200320,
+      "END_DT": "",
+      "SHR_FLAG": "Y",
+      "MGR_STYLE": "久期管理",
+      "FUND_COMPANY": "国泰基金"
+    },
+    {
+      "AST_CD": "510300.SH",
+      "MANAGER_ID": "MGR00003",
+      "MANAGER_NM": "李茜",
+      "START_DT": 20220601,
+      "END_DT": "",
+      "SHR_FLAG": "Y",
+      "MGR_STYLE": "增强复制",
+      "FUND_COMPANY": "华泰柏瑞基金"
+    },
+    {
+      "AST_CD": "511260.SH",
+      "MANAGER_ID": "MGR00004",
+      "MANAGER_NM": "王劲松",
+      "START_DT": 20210901,
+      "END_DT": "",
+      "SHR_FLAG": "N",
+      "MGR_STYLE": "骑乘策略",
+      "FUND_COMPANY": "国泰基金"
+    }
+  ],
+  "dwd_ast_bottom_raito": [
+    {
+      "AST_CD": "127080.SZ",
+      "BTM_AST_CD": "AR202401",
+      "RATIO": 0.9,
+      "BTM_NM": "华能集团风电场应收账款",
+      "BOTTOM_AST_TYPE": "应收账款",
+      "BOTTOM_AMT": 1800000000
+    },
+    {
+      "AST_CD": "127080.SZ",
+      "BTM_AST_CD": "FL202401",
+      "RATIO": 0.08,
+      "BTM_NM": "华能新能源设备融赁租赁",
+      "BOTTOM_AST_TYPE": "设备融资租赁",
+      "BOTTOM_AMT": 160000000
+    },
+    {
+      "AST_CD": "127080.SZ",
+      "BTM_AST_CD": "CASH0001",
+      "RATIO": 0.02,
+      "BTM_NM": "托管账户现金及等价物",
+      "BOTTOM_AST_TYPE": "现金及等价物",
+      "BOTTOM_AMT": 40000000
+    }
+  ],
+  "dwd_ast_fiveclass": [
+    {
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "CLASS_LVL": "NORMAL",
+      "CLASS_REASON": "发行人为中央政府，信用等级AAA，无违约风险",
+      "ADJ_FLAG": "N",
+      "LAST_LVL": "NORMAL"
+    },
+    {
+      "AST_CD": "230210.IB",
+      "BIZ_DT": 20250324,
+      "CLASS_LVL": "NORMAL",
+      "CLASS_REASON": "国家开发银行政策性金融债，主权信用支持，按期付息",
+      "ADJ_FLAG": "N",
+      "LAST_LVL": "NORMAL"
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "BIZ_DT": 20250324,
+      "CLASS_LVL": "NORMAL",
+      "CLASS_REASON": "工商银行AAA级商业银行金融债，资本充足率维持在18%以上",
+      "ADJ_FLAG": "N",
+      "LAST_LVL": "NORMAL"
+    },
+    {
+      "AST_CD": "112311.SZ",
+      "BIZ_DT": 20250320,
+      "CLASS_LVL": "WATCH",
+      "CLASS_REASON": "发行人万科企业近期信用评级被下调至AA-，经营性现金流连续为负，流动性压力加大",
+      "ADJ_FLAG": "Y",
+      "LAST_LVL": "NORMAL"
+    },
+    {
+      "AST_CD": "127080.SZ",
+      "BIZ_DT": 20250324,
+      "CLASS_LVL": "NORMAL",
+      "CLASS_REASON": "ABS底层资产为风电场应收电费，现金流稳定，原始权益人为AAA级央企",
+      "ADJ_FLAG": "N",
+      "LAST_LVL": "NORMAL"
+    }
+  ],
+  "dwd_ast_calc_rule": [
+    {
+      "AST_TYPE": "BOND",
+      "RULE_CD": "VAL_BOND_NET",
+      "RULE_NM": "债券估值方法",
+      "FORMULA": "PV = ∑ CFi / (1+r)^ti，采用中债估值净价作为公允价值",
+      "EFF_DT": 20250101
+    },
+    {
+      "AST_TYPE": "FUND",
+      "RULE_CD": "VAL_FUND_NAV",
+      "RULE_NM": "ETF估值方法",
+      "FORMULA": "NAV = ∑(Qi*Pi) / TotalShares，停牌超5日采用指数收益率调整法",
+      "EFF_DT": 20250101
+    },
+    {
+      "AST_TYPE": "BOND",
+      "RULE_CD": "ACCR_INT_LINEAR",
+      "RULE_NM": "应计利息计提",
+      "FORMULA": "AI = FaceValue * CouponRate * DaysAccrued / DaysInYear，付息日重置",
+      "EFF_DT": 20250115
+    },
+    {
+      "AST_TYPE": "ABS",
+      "RULE_CD": "AMORT_EIR",
+      "RULE_NM": "溢折价摊销",
+      "FORMULA": "EIR Method: CarryAmt = PV(future CFs at EIR)，每月末计提",
+      "EFF_DT": 20240801
+    }
+  ],
+  "dwd_isr_institution_finance": [
+    {
+      "ISR_ID": "ISR000003",
+      "RPT_DT": 20231231,
+      "RPT_TYPE": "ANNUAL",
+      "TOT_AST": 44000000000000,
+      "TOT_LIA": 40500000000000,
+      "EQUITY": 3500000000000,
+      "REVENUE": 850000000000,
+      "NET_PRFT": 360000000000,
+      "ROE": 0.1029,
+      "ROA": 0.0082,
+      "DEBT_RATIO": 0.9205
+    },
+    {
+      "ISR_ID": "ISR000007",
+      "RPT_DT": 20231231,
+      "RPT_TYPE": "ANNUAL",
+      "TOT_AST": 11030000000000,
+      "TOT_LIA": 9930000000000,
+      "EQUITY": 1100000000000,
+      "REVENUE": 339000000000,
+      "NET_PRFT": 146600000000,
+      "ROE": 0.1322,
+      "ROA": 0.0136,
+      "DEBT_RATIO": 0.9003
+    },
+    {
+      "ISR_ID": "ISR000005",
+      "RPT_DT": 20231231,
+      "RPT_TYPE": "ANNUAL",
+      "TOT_AST": 1500000000000,
+      "TOT_LIA": 1180000000000,
+      "EQUITY": 320000000000,
+      "REVENUE": 462900000000,
+      "NET_PRFT": 12150000000,
+      "ROE": 0.0382,
+      "ROA": 0.0081,
+      "DEBT_RATIO": 0.7867
+    },
+    {
+      "ISR_ID": "ISR000006",
+      "RPT_DT": 20231231,
+      "RPT_TYPE": "ANNUAL",
+      "TOT_AST": 185000000000,
+      "TOT_LIA": 132000000000,
+      "EQUITY": 53000000000,
+      "REVENUE": 26800000000,
+      "NET_PRFT": 4250000000,
+      "ROE": 0.082,
+      "ROA": 0.0234,
+      "DEBT_RATIO": 0.7135
+    },
+    {
+      "ISR_ID": "ISR000008",
+      "RPT_DT": 20231231,
+      "RPT_TYPE": "ANNUAL",
+      "TOT_AST": 11580000000000,
+      "TOT_LIA": 10570000000000,
+      "EQUITY": 1010000000000,
+      "REVENUE": 913800000000,
+      "NET_PRFT": 85700000000,
+      "ROE": 0.0883,
+      "ROA": 0.0076,
+      "DEBT_RATIO": 0.9128
+    }
+  ],
+  "tag_ptl_info": [
+    {
+      "PORT_ID": "PORT001",
+      "TAG_GROUP": "STYLE",
+      "TAG_VAL": "稳健收益型"
+    },
+    {
+      "PORT_ID": "PORT002",
+      "TAG_GROUP": "STYLE",
+      "TAG_VAL": "纯债策略"
+    },
+    {
+      "PORT_ID": "PORT003",
+      "TAG_GROUP": "STYLE",
+      "TAG_VAL": "股债平衡"
+    },
+    {
+      "PORT_ID": "PORT004",
+      "TAG_GROUP": "STYLE",
+      "TAG_VAL": "现金管理型"
+    },
+    {
+      "PORT_ID": "PORT005",
+      "TAG_GROUP": "STYLE",
+      "TAG_VAL": "指数增强型"
+    }
+  ],
+  "dwd_ptl_acc": [
+    {
+      "PORT_ID": "PORT001",
+      "ACCT_NO": 110060001888001,
+      "ACCT_TYPE": "CUSTODY",
+      "ACCT_NM": "稳健配置一号-工银托管专户",
+      "BANK_BR": "中国工商银行总行营业部",
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT002",
+      "ACCT_NO": 755906812100002,
+      "ACCT_TYPE": "CUSTODY",
+      "ACCT_NM": "纯债精选二号-招行托管专户",
+      "BANK_BR": "招商银行深圳分行营业部",
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT003",
+      "ACCT_NO": "CN20210801PORT003",
+      "ACCT_TYPE": "BOND_TRADE",
+      "ACCT_NM": "混合增强三号-银行间债券账户",
+      "BANK_BR": "中央国债登记结算有限责任公司",
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT004",
+      "ACCT_NO": 110060001888004,
+      "ACCT_TYPE": "CUSTODY",
+      "ACCT_NM": "短融货币四号-工银托管专户",
+      "BANK_BR": "中国工商银行总行营业部",
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT005",
+      "ACCT_NO": "A888888005",
+      "ACCT_TYPE": "STOCK_TRADE",
+      "ACCT_NM": "指数增强五号-沪市A股账户",
+      "BANK_BR": "中国证券登记结算有限责任公司上海分公司",
+      "CCY": "CNY"
+    }
+  ],
+  "dwd_ptl_cedetail": [
+    {
+      "PORT_ID": "PORT001",
+      "TRADE_DT": 20250324,
+      "CE_TYPE": "SUB",
+      "AMT": 10000000,
+      "CCY": "CNY",
+      "SUMMARY": "张明远申购稳健配置一号1000万元"
+    },
+    {
+      "PORT_ID": "PORT002",
+      "TRADE_DT": 20250324,
+      "CE_TYPE": "SUB",
+      "AMT": 5000000,
+      "CCY": "CNY",
+      "SUMMARY": "李秀芬申购纯债精选二号500万元"
+    },
+    {
+      "PORT_ID": "PORT003",
+      "TRADE_DT": 20250324,
+      "CE_TYPE": "RDM",
+      "AMT": 8000000,
+      "CCY": "CNY",
+      "SUMMARY": "王建国赎回混合增强三号800万元"
+    },
+    {
+      "PORT_ID": "PORT002",
+      "TRADE_DT": 20250324,
+      "CE_TYPE": "SUB",
+      "AMT": 100000000,
+      "CCY": "CNY",
+      "SUMMARY": "上海浦东新区社会保险基金管理中心申购纯债精选二号1亿元"
+    },
+    {
+      "PORT_ID": "PORT005",
+      "TRADE_DT": 20250324,
+      "CE_TYPE": "SUB",
+      "AMT": 50000000,
+      "CCY": "CNY",
+      "SUMMARY": "深圳市前海资产管理有限公司申购指数增强五号5000万元"
+    }
+  ],
+  "dwd_ptl_fee": [
+    {
+      "PORT_ID": "PORT001",
+      "FEE_TYPE": "MGT",
+      "FEE_RATE": 0.008,
+      "FEE_BASE": "NAV",
+      "EFF_DT": 20210601,
+      "EXP_DT": ""
+    },
+    {
+      "PORT_ID": "PORT001",
+      "FEE_TYPE": "CUSTODY",
+      "FEE_RATE": 0.002,
+      "FEE_BASE": "NAV",
+      "EFF_DT": 20210601,
+      "EXP_DT": ""
+    },
+    {
+      "PORT_ID": "PORT002",
+      "FEE_TYPE": "MGT",
+      "FEE_RATE": 0.005,
+      "FEE_BASE": "NAV",
+      "EFF_DT": 20200315,
+      "EXP_DT": ""
+    },
+    {
+      "PORT_ID": "PORT003",
+      "FEE_TYPE": "PERF",
+      "FEE_RATE": 0.2,
+      "FEE_BASE": "EXCESS_RETURN",
+      "EFF_DT": 20220801,
+      "EXP_DT": ""
+    },
+    {
+      "PORT_ID": "PORT004",
+      "FEE_TYPE": "MGT",
+      "FEE_RATE": 0.0015,
+      "FEE_BASE": "NAV",
+      "EFF_DT": 20190101,
+      "EXP_DT": ""
+    }
+  ],
+  "dwd_ptl_managers": [
+    {
+      "PORT_ID": "PORT001",
+      "MANAGER_ID": "MGR001",
+      "MANAGER_NM": "陈志华",
+      "ROLE": "LEAD",
+      "START_DT": 20210601,
+      "END_DT": ""
+    },
+    {
+      "PORT_ID": "PORT002",
+      "MANAGER_ID": "MGR002",
+      "MANAGER_NM": "林晓东",
+      "ROLE": "LEAD",
+      "START_DT": 20200315,
+      "END_DT": ""
+    },
+    {
+      "PORT_ID": "PORT003",
+      "MANAGER_ID": "MGR003",
+      "MANAGER_NM": "黄琳",
+      "ROLE": "LEAD",
+      "START_DT": 20220801,
+      "END_DT": ""
+    },
+    {
+      "PORT_ID": "PORT001",
+      "MANAGER_ID": "MGR004",
+      "MANAGER_NM": "徐文博",
+      "ROLE": "ASSIST",
+      "START_DT": 20230101,
+      "END_DT": ""
+    },
+    {
+      "PORT_ID": "PORT005",
+      "MANAGER_ID": "MGR005",
+      "MANAGER_NM": "钱铭",
+      "ROLE": "LEAD",
+      "START_DT": 20230601,
+      "END_DT": ""
+    }
+  ],
+  "dwd_ptl_open_plan": [
+    {
+      "PORT_ID": "PORT001",
+      "OPEN_DT": 20250401,
+      "OPEN_TYPE": "BOTH",
+      "CLOSE_DT": 20250405,
+      "QUOTA_AMT": 50000000
+    },
+    {
+      "PORT_ID": "PORT001",
+      "OPEN_DT": 20250501,
+      "OPEN_TYPE": "SUB",
+      "CLOSE_DT": 20250505,
+      "QUOTA_AMT": 50000000
+    },
+    {
+      "PORT_ID": "PORT002",
+      "OPEN_DT": 20250410,
+      "OPEN_TYPE": "SUB",
+      "CLOSE_DT": 20250415,
+      "QUOTA_AMT": 100000000
+    },
+    {
+      "PORT_ID": "PORT003",
+      "OPEN_DT": 20250420,
+      "OPEN_TYPE": "RDM",
+      "CLOSE_DT": 20250425,
+      "QUOTA_AMT": 20000000
+    },
+    {
+      "PORT_ID": "PORT004",
+      "OPEN_DT": 20250101,
+      "OPEN_TYPE": "BOTH",
+      "CLOSE_DT": 20251231,
+      "QUOTA_AMT": 100000000
+    }
+  ],
+  "dwd_ptl_asset_config_info": [
+    {
+      "PORT_ID": "PORT001",
+      "AST_CLASS": "BOND",
+      "TGT_RATIO": 0.4,
+      "MIN_RATIO": 0.2,
+      "MAX_RATIO": 0.6
+    },
+    {
+      "PORT_ID": "PORT001",
+      "AST_CLASS": "STOCK",
+      "TGT_RATIO": 0.2,
+      "MIN_RATIO": 0.1,
+      "MAX_RATIO": 0.3
+    },
+    {
+      "PORT_ID": "PORT001",
+      "AST_CLASS": "CASH",
+      "TGT_RATIO": 0.1,
+      "MIN_RATIO": 0.05,
+      "MAX_RATIO": 0.2
+    },
+    {
+      "PORT_ID": "PORT002",
+      "AST_CLASS": "BOND",
+      "TGT_RATIO": 0.6,
+      "MIN_RATIO": 0.4,
+      "MAX_RATIO": 0.8
+    },
+    {
+      "PORT_ID": "PORT005",
+      "AST_CLASS": "STOCK",
+      "TGT_RATIO": 0.95,
+      "MIN_RATIO": 0.85,
+      "MAX_RATIO": 1
+    }
+  ],
+  "dwd_ptl_acct_bal": [
+    {
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "BAL_TYPE": "TOTAL",
+      "AMT": 850000000,
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "BAL_TYPE": "AVAIL",
+      "AMT": 650000000,
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT002",
+      "BIZ_DT": 20250324,
+      "BAL_TYPE": "TOTAL",
+      "AMT": 2624000000,
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT004",
+      "BIZ_DT": 20250324,
+      "BAL_TYPE": "TOTAL",
+      "AMT": 5000000000,
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT005",
+      "BIZ_DT": 20250324,
+      "BAL_TYPE": "FROZEN",
+      "AMT": 24500000,
+      "CCY": "CNY"
+    }
+  ],
+  "dwd_ptl_ast_hld": [
+    {
+      "PORT_ID": "PORT001",
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "HLD_QTY": 200000000,
+      "COST_PRC": 99.25,
+      "MKT_PRC": 99.72,
+      "COST_AMT": 198500000,
+      "MKT_VAL": 199440000,
+      "ACI_AMT": 1520000,
+      "WEIGHT": 0.16,
+      "ACCT_NO": 110060001888001
+    },
+    {
+      "PORT_ID": "PORT002",
+      "AST_CD": "230210.IB",
+      "BIZ_DT": 20250324,
+      "HLD_QTY": 800000000,
+      "COST_PRC": 100.15,
+      "MKT_PRC": 100.82,
+      "COST_AMT": 801200000,
+      "MKT_VAL": 806560000,
+      "ACI_AMT": 2240000,
+      "WEIGHT": 0.286,
+      "ACCT_NO": 755906812100002
+    },
+    {
+      "PORT_ID": "PORT003",
+      "AST_CD": "600036.SH",
+      "BIZ_DT": 20250324,
+      "HLD_QTY": 3200000,
+      "COST_PRC": 35.2,
+      "MKT_PRC": 38.65,
+      "COST_AMT": 112640000,
+      "MKT_VAL": 123680000,
+      "ACI_AMT": 0,
+      "WEIGHT": 0.138,
+      "ACCT_NO": "A888888003"
+    },
+    {
+      "PORT_ID": "PORT004",
+      "AST_CD": "2480006.IB",
+      "BIZ_DT": 20250324,
+      "HLD_QTY": 500000000,
+      "COST_PRC": 100,
+      "MKT_PRC": 100.15,
+      "COST_AMT": 500000000,
+      "MKT_VAL": 500750000,
+      "ACI_AMT": 850000,
+      "WEIGHT": 0.1,
+      "ACCT_NO": 110060001888004
+    },
+    {
+      "PORT_ID": "PORT005",
+      "AST_CD": "510300.SH",
+      "BIZ_DT": 20250324,
+      "HLD_QTY": 138000000,
+      "COST_PRC": 4.025,
+      "MKT_PRC": 4.182,
+      "COST_AMT": 555450000,
+      "MKT_VAL": 577116000,
+      "ACI_AMT": 0,
+      "WEIGHT": 0.892,
+      "ACCT_NO": "A888888005"
+    }
+  ],
+  "dwd_ptl_holder_summary": [
+    {
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "HOLDER_TYPE": "INST",
+      "HOLDER_CNT": 3,
+      "TOT_SHR": 800000000,
+      "TOT_AMT": 841000000,
+      "RATIO": 0.6728
+    },
+    {
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "HOLDER_TYPE": "RETAIL",
+      "HOLDER_CNT": 1850,
+      "TOT_SHR": 389000000,
+      "TOT_AMT": 409000000,
+      "RATIO": 0.3272
+    },
+    {
+      "PORT_ID": "PORT002",
+      "BIZ_DT": 20250324,
+      "HOLDER_TYPE": "INST",
+      "HOLDER_CNT": 5,
+      "TOT_SHR": 2200000000,
+      "TOT_AMT": 2262700000,
+      "RATIO": 0.8085
+    },
+    {
+      "PORT_ID": "PORT004",
+      "BIZ_DT": 20250324,
+      "HOLDER_TYPE": "RETAIL",
+      "HOLDER_CNT": 18560,
+      "TOT_SHR": 3500000000,
+      "TOT_AMT": 3500000000,
+      "RATIO": 0.7
+    },
+    {
+      "PORT_ID": "PORT005",
+      "BIZ_DT": 20250324,
+      "HOLDER_TYPE": "INST",
+      "HOLDER_CNT": 2,
+      "TOT_SHR": 480000000,
+      "TOT_AMT": 540000000,
+      "RATIO": 0.7385
+    }
+  ],
+  "dwd_cash_acc": [
+    {
+      "PORT_ID": "PORT001",
+      "ACCT_NO": 1100600018888,
+      "BIZ_DT": 20250324,
+      "CCY": "CNY",
+      "BAL": 62500000,
+      "AVAIL_BAL": 60000000,
+      "FROZEN_BAL": 2500000,
+      "BANK": "工商银行总行",
+      "RATE": 0.0035
+    },
+    {
+      "PORT_ID": "PORT002",
+      "ACCT_NO": 7559068122222,
+      "BIZ_DT": 20250324,
+      "CCY": "CNY",
+      "BAL": 56000000,
+      "AVAIL_BAL": 54000000,
+      "FROZEN_BAL": 2000000,
+      "BANK": "招商银行深圳分行",
+      "RATE": 0.0035
+    },
+    {
+      "PORT_ID": "PORT003",
+      "ACCT_NO": 1100600018888003,
+      "BIZ_DT": 20250324,
+      "CCY": "CNY",
+      "BAL": 30000000,
+      "AVAIL_BAL": 30000000,
+      "FROZEN_BAL": 0,
+      "BANK": "工商银行总行",
+      "RATE": 0.0145
+    },
+    {
+      "PORT_ID": "PORT004",
+      "ACCT_NO": 1100600018888004,
+      "BIZ_DT": 20250324,
+      "CCY": "CNY",
+      "BAL": 1500000000,
+      "AVAIL_BAL": 1480000000,
+      "FROZEN_BAL": 20000000,
+      "BANK": "工商银行总行",
+      "RATE": 0.0185
+    },
+    {
+      "PORT_ID": "PORT005",
+      "ACCT_NO": 1100600018888005,
+      "BIZ_DT": 20250324,
+      "CCY": "CNY",
+      "BAL": 45500000,
+      "AVAIL_BAL": 45500000,
+      "FROZEN_BAL": 0,
+      "BANK": "工商银行总行",
+      "RATE": 0.0035
+    }
+  ],
+  "dwd_val_valtable": [
+    {
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "TOT_AST": 1252500000,
+      "TOT_LIA": 2500000,
+      "NET_AST": 1250000000,
+      "SHR_NAV": 1.0512,
+      "ACC_NAV": 1.1835,
+      "TOT_SHR": 1189250000,
+      "DAILY_RTN": 0.0003,
+      "VAL_STATUS": "CONFIRMED",
+      "VAL_VER": 1
+    },
+    {
+      "PORT_ID": "PORT002",
+      "BIZ_DT": 20250324,
+      "TOT_AST": 2805600000,
+      "TOT_LIA": 5600000,
+      "NET_AST": 2800000000,
+      "SHR_NAV": 1.0285,
+      "ACC_NAV": 1.152,
+      "TOT_SHR": 2722411280,
+      "DAILY_RTN": 0.0002,
+      "VAL_STATUS": "CONFIRMED",
+      "VAL_VER": 1
+    },
+    {
+      "PORT_ID": "PORT003",
+      "BIZ_DT": 20250324,
+      "TOT_AST": 871740000,
+      "TOT_LIA": 1740000,
+      "NET_AST": 870000000,
+      "SHR_NAV": 0.9875,
+      "ACC_NAV": 0.9875,
+      "TOT_SHR": 881012658,
+      "DAILY_RTN": -0.0005,
+      "VAL_STATUS": "CONFIRMED",
+      "VAL_VER": 1
+    },
+    {
+      "PORT_ID": "PORT004",
+      "BIZ_DT": 20250324,
+      "TOT_AST": 5003500000,
+      "TOT_LIA": 3500000,
+      "NET_AST": 5000000000,
+      "SHR_NAV": 1,
+      "ACC_NAV": 1,
+      "TOT_SHR": 5000000000,
+      "DAILY_RTN": 0.0001,
+      "VAL_STATUS": "CONFIRMED",
+      "VAL_VER": 1
+    },
+    {
+      "PORT_ID": "PORT005",
+      "BIZ_DT": 20250324,
+      "TOT_AST": 651300000,
+      "TOT_LIA": 1300000,
+      "NET_AST": 650000000,
+      "SHR_NAV": 1.125,
+      "ACC_NAV": 1.125,
+      "TOT_SHR": 577777778,
+      "DAILY_RTN": 0.0012,
+      "VAL_STATUS": "CONFIRMED",
+      "VAL_VER": 1
+    }
+  ],
+  "dwd_val_voucher": [
+    {
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "VOUCHER_NO": "V20250324001",
+      "VOUCHER_TYPE": "NORMAL",
+      "DESCRIPTION": "买入25国债03面额1亿元",
+      "DR_AMT": 99720000,
+      "CR_AMT": 0,
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "VOUCHER_NO": "V20250324002",
+      "VOUCHER_TYPE": "NORMAL",
+      "DESCRIPTION": "支付买入25国债03交割款",
+      "DR_AMT": 0,
+      "CR_AMT": 99720000,
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT002",
+      "BIZ_DT": 20250324,
+      "VOUCHER_NO": "V20250324003",
+      "VOUCHER_TYPE": "NORMAL",
+      "DESCRIPTION": "买入23国开10面额5000万元",
+      "DR_AMT": 50410000,
+      "CR_AMT": 0,
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT003",
+      "BIZ_DT": 20250324,
+      "VOUCHER_NO": "V20250324004",
+      "VOUCHER_TYPE": "NORMAL",
+      "DESCRIPTION": "买入招商银行40万股",
+      "DR_AMT": 15350000,
+      "CR_AMT": 0,
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT005",
+      "BIZ_DT": 20250324,
+      "VOUCHER_NO": "V20250324005",
+      "VOUCHER_TYPE": "NORMAL",
+      "DESCRIPTION": "买入沪深300ETF 200万份",
+      "DR_AMT": 8500000,
+      "CR_AMT": 0,
+      "CCY": "CNY"
+    }
+  ],
+  "dwd_val_summary": [
+    {
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "AST_CLASS": "BOND",
+      "MKT_VAL": 862500000,
+      "WEIGHT": 0.69,
+      "ACI_AMT": 3760000
+    },
+    {
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "AST_CLASS": "STOCK",
+      "MKT_VAL": 275000000,
+      "WEIGHT": 0.22,
+      "ACI_AMT": 0
+    },
+    {
+      "PORT_ID": "PORT002",
+      "BIZ_DT": 20250324,
+      "AST_CLASS": "BOND",
+      "MKT_VAL": 1672000000,
+      "WEIGHT": 0.597,
+      "ACI_AMT": 5560000
+    },
+    {
+      "PORT_ID": "PORT002",
+      "BIZ_DT": 20250324,
+      "AST_CLASS": "BOND",
+      "MKT_VAL": 1064000000,
+      "WEIGHT": 0.38,
+      "ACI_AMT": 3200000
+    },
+    {
+      "PORT_ID": "PORT005",
+      "BIZ_DT": 20250324,
+      "AST_CLASS": "STOCK",
+      "MKT_VAL": 604500000,
+      "WEIGHT": 0.93,
+      "ACI_AMT": 0
+    }
+  ],
+  "dwd_val_detail": [
+    {
+      "PORT_ID": "PORT001",
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "HLD_QTY": 200000000,
+      "COST_PRC": 99.25,
+      "MKT_PRC": 99.56,
+      "COST_AMT": 198500000,
+      "MKT_VAL": 199120000,
+      "ACI_AMT": 1520000,
+      "UNREAL_PNL": 620000,
+      "REAL_PNL": 0,
+      "DAILY_PNL": 85000,
+      "AMORT_AMT": 12000
+    },
+    {
+      "PORT_ID": "PORT001",
+      "AST_CD": "230210.IB",
+      "BIZ_DT": 20250324,
+      "HLD_QTY": 300000000,
+      "COST_PRC": 100.15,
+      "MKT_PRC": 100.82,
+      "COST_AMT": 300450000,
+      "MKT_VAL": 302460000,
+      "ACI_AMT": 2240000,
+      "UNREAL_PNL": 2010000,
+      "REAL_PNL": 0,
+      "DAILY_PNL": 125000,
+      "AMORT_AMT": 8500
+    },
+    {
+      "PORT_ID": "PORT002",
+      "AST_CD": "019735.IB",
+      "BIZ_DT": 20250324,
+      "HLD_QTY": 500000000,
+      "COST_PRC": 102,
+      "MKT_PRC": 102.35,
+      "COST_AMT": 510000000,
+      "MKT_VAL": 521975000,
+      "ACI_AMT": 3320000,
+      "UNREAL_PNL": 11975000,
+      "REAL_PNL": 0,
+      "DAILY_PNL": 350000,
+      "AMORT_AMT": 15000
+    },
+    {
+      "PORT_ID": "PORT003",
+      "AST_CD": "600036.SH",
+      "BIZ_DT": 20250324,
+      "HLD_QTY": 1200000,
+      "COST_PRC": 35.2,
+      "MKT_PRC": 38.65,
+      "COST_AMT": 42240000,
+      "MKT_VAL": 46380000,
+      "ACI_AMT": 0,
+      "UNREAL_PNL": 4140000,
+      "REAL_PNL": 0,
+      "DAILY_PNL": 180000,
+      "AMORT_AMT": 0
+    },
+    {
+      "PORT_ID": "PORT005",
+      "AST_CD": "510300.SH",
+      "BIZ_DT": 20250324,
+      "HLD_QTY": 138000000,
+      "COST_PRC": 4.025,
+      "MKT_PRC": 4.182,
+      "COST_AMT": 555450000,
+      "MKT_VAL": 577116000,
+      "ACI_AMT": 0,
+      "UNREAL_PNL": 21666000,
+      "REAL_PNL": 0,
+      "DAILY_PNL": 650000,
+      "AMORT_AMT": 0
+    }
+  ],
+  "dwd_val_notice": [
+    {
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "NOTICE_TYPE": "NAV",
+      "TITLE": "稳健配置一号2025年3月24日净值公告",
+      "CONTENT": "本基金2025年3月24日份额净值为1.0512元，累计净值为1.1835元",
+      "PUB_DT": 20250324
+    },
+    {
+      "PORT_ID": "PORT002",
+      "BIZ_DT": 20250324,
+      "NOTICE_TYPE": "NAV",
+      "TITLE": "纯债精选2号2025年3月24日净值公告",
+      "CONTENT": "本基金2025年3月24日份额净值为1.0285元，累计净值为1.1520元",
+      "PUB_DT": 20250324
+    },
+    {
+      "PORT_ID": "PORT004",
+      "BIZ_DT": 20250321,
+      "NOTICE_TYPE": "DIVIDEND",
+      "TITLE": "短融货币四号七日年化收益率公告",
+      "CONTENT": "本基金2025年3月21日七日年化收益率为1.85%，万份收益为0.5068元",
+      "PUB_DT": 20250321
+    }
+  ],
+  "dwd_val_bal": [
+    {
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "ACC_CD": 1102,
+      "ACC_NM": "交易性金融资产",
+      "DR_BAL": 862500000,
+      "CR_BAL": 0,
+      "BAL": 862500000,
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "ACC_CD": 1002,
+      "ACC_NM": "银行存款",
+      "DR_BAL": 62500000,
+      "CR_BAL": 0,
+      "BAL": 62500000,
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT002",
+      "BIZ_DT": 20250324,
+      "ACC_CD": 1102,
+      "ACC_NM": "交易性金融资产",
+      "DR_BAL": 2736000000,
+      "CR_BAL": 0,
+      "BAL": 2736000000,
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT004",
+      "BIZ_DT": 20250324,
+      "ACC_CD": 1002,
+      "ACC_NM": "银行存款",
+      "DR_BAL": 5000000000,
+      "CR_BAL": 0,
+      "BAL": 5000000000,
+      "CCY": "CNY"
+    },
+    {
+      "PORT_ID": "PORT005",
+      "BIZ_DT": 20250324,
+      "ACC_CD": 1101,
+      "ACC_NM": "交易性金融资产-股票",
+      "DR_BAL": 604500000,
+      "CR_BAL": 0,
+      "BAL": 604500000,
+      "CCY": "CNY"
+    }
+  ],
+  "dwd_val_acc": [
+    {
+      "ACC_CD": 1102,
+      "ACC_NM": "交易性金融资产",
+      "PARENT_CD": 1100,
+      "ACC_LVL": 2,
+      "DIRECTION": "D"
+    },
+    {
+      "ACC_CD": 1101,
+      "ACC_NM": "交易性金融资产-股票",
+      "PARENT_CD": 1100,
+      "ACC_LVL": 2,
+      "DIRECTION": "D"
+    },
+    {
+      "ACC_CD": 1002,
+      "ACC_NM": "银行存款",
+      "PARENT_CD": 1000,
+      "ACC_LVL": 2,
+      "DIRECTION": "D"
+    },
+    {
+      "ACC_CD": 2202,
+      "ACC_NM": "应付管理人报酬",
+      "PARENT_CD": 2200,
+      "ACC_LVL": 2,
+      "DIRECTION": "C"
+    },
+    {
+      "ACC_CD": 4101,
+      "ACC_NM": "利息收入",
+      "PARENT_CD": 4100,
+      "ACC_LVL": 2,
+      "DIRECTION": "C"
+    }
+  ],
+  "dwd_val_rpt_bs": [
+    {
+      "PORT_ID": "PORT001",
+      "RPT_DT": 20250324,
+      "CASH": 62500000,
+      "BOND_HLD": 862500000,
+      "STOCK_HLD": 275000000,
+      "FUND_HLD": 0,
+      "INT_RCV": 15000000,
+      "TOT_AST": 1252500000,
+      "PAY_REDEEM": 0,
+      "MGT_FEE_PAY": 1500000,
+      "TOT_LIA": 2500000,
+      "EQUITY": 1250000000
+    },
+    {
+      "PORT_ID": "PORT002",
+      "RPT_DT": 20250324,
+      "CASH": 56000000,
+      "BOND_HLD": 2736000000,
+      "STOCK_HLD": 0,
+      "FUND_HLD": 0,
+      "INT_RCV": 8000000,
+      "TOT_AST": 2805600000,
+      "PAY_REDEEM": 0,
+      "MGT_FEE_PAY": 3800000,
+      "TOT_LIA": 5600000,
+      "EQUITY": 2800000000
+    },
+    {
+      "PORT_ID": "PORT003",
+      "RPT_DT": 20250324,
+      "CASH": 30000000,
+      "BOND_HLD": 500000000,
+      "STOCK_HLD": 340000000,
+      "FUND_HLD": 0,
+      "INT_RCV": 1740000,
+      "TOT_AST": 871740000,
+      "PAY_REDEEM": 0,
+      "MGT_FEE_PAY": 1740000,
+      "TOT_LIA": 1740000,
+      "EQUITY": 870000000
+    },
+    {
+      "PORT_ID": "PORT004",
+      "RPT_DT": 20250324,
+      "CASH": 5000000000,
+      "BOND_HLD": 0,
+      "STOCK_HLD": 0,
+      "FUND_HLD": 0,
+      "INT_RCV": 3500000,
+      "TOT_AST": 5003500000,
+      "PAY_REDEEM": 0,
+      "MGT_FEE_PAY": 2100000,
+      "TOT_LIA": 3500000,
+      "EQUITY": 5000000000
+    },
+    {
+      "PORT_ID": "PORT005",
+      "RPT_DT": 20250324,
+      "CASH": 45500000,
+      "BOND_HLD": 0,
+      "STOCK_HLD": 0,
+      "FUND_HLD": 604500000,
+      "INT_RCV": 1300000,
+      "TOT_AST": 651300000,
+      "PAY_REDEEM": 0,
+      "MGT_FEE_PAY": 1300000,
+      "TOT_LIA": 1300000,
+      "EQUITY": 650000000
+    }
+  ],
+  "dwd_val_rpt_is": [
+    {
+      "PORT_ID": "PORT001",
+      "RPT_DT": 20250324,
+      "INT_INC": 2850000,
+      "DIV_INC": 0,
+      "TRD_PNL": 1250000,
+      "FV_CHG_PNL": 375000,
+      "MGT_FEE": 273973,
+      "CUSTODY_FEE": 68493,
+      "SALES_FEE": 0,
+      "OTHER_FEE": 15000,
+      "NET_INC": 4117534
+    },
+    {
+      "PORT_ID": "PORT002",
+      "RPT_DT": 20250324,
+      "INT_INC": 3820000,
+      "DIV_INC": 0,
+      "TRD_PNL": 850000,
+      "FV_CHG_PNL": 220000,
+      "MGT_FEE": 383562,
+      "CUSTODY_FEE": 76712,
+      "SALES_FEE": 0,
+      "OTHER_FEE": 12000,
+      "NET_INC": 4417726
+    },
+    {
+      "PORT_ID": "PORT003",
+      "RPT_DT": 20250324,
+      "INT_INC": 1250000,
+      "DIV_INC": 120000,
+      "TRD_PNL": -350000,
+      "FV_CHG_PNL": -180000,
+      "MGT_FEE": 190411,
+      "CUSTODY_FEE": 47603,
+      "SALES_FEE": 0,
+      "OTHER_FEE": 8000,
+      "NET_INC": 593986
+    },
+    {
+      "PORT_ID": "PORT004",
+      "RPT_DT": 20250324,
+      "INT_INC": 253425,
+      "DIV_INC": 0,
+      "TRD_PNL": 0,
+      "FV_CHG_PNL": 0,
+      "MGT_FEE": 20548,
+      "CUSTODY_FEE": 6849,
+      "SALES_FEE": 0,
+      "OTHER_FEE": 5000,
+      "NET_INC": 221028
+    },
+    {
+      "PORT_ID": "PORT005",
+      "RPT_DT": 20250324,
+      "INT_INC": 45000,
+      "DIV_INC": 85000,
+      "TRD_PNL": 520000,
+      "FV_CHG_PNL": 650000,
+      "MGT_FEE": 178082,
+      "CUSTODY_FEE": 35616,
+      "SALES_FEE": 0,
+      "OTHER_FEE": 10000,
+      "NET_INC": 1076302
+    }
+  ],
+  "dwd_val_rpt_cf": [
+    {
+      "PORT_ID": "PORT001",
+      "RPT_DT": 20250324,
+      "CF_FROM_INV_INFLOW": 975000,
+      "CF_FROM_INV_OUTFLOW": 99745000,
+      "CF_FROM_INV_NET": -98770000,
+      "CF_FROM_FIN_SUB": 10000000,
+      "CF_FROM_FIN_RDM": 0,
+      "CF_FROM_FIN_NET": 10000000,
+      "CASH_NET_CHG": -88770000
+    },
+    {
+      "PORT_ID": "PORT002",
+      "RPT_DT": 20250324,
+      "CF_FROM_INV_INFLOW": 1250000,
+      "CF_FROM_INV_OUTFLOW": 50410000,
+      "CF_FROM_INV_NET": -49160000,
+      "CF_FROM_FIN_SUB": 100000000,
+      "CF_FROM_FIN_RDM": 0,
+      "CF_FROM_FIN_NET": 100000000,
+      "CASH_NET_CHG": 50840000
+    },
+    {
+      "PORT_ID": "PORT003",
+      "RPT_DT": 20250324,
+      "CF_FROM_INV_INFLOW": 0,
+      "CF_FROM_INV_OUTFLOW": 15460000,
+      "CF_FROM_INV_NET": -15460000,
+      "CF_FROM_FIN_SUB": 0,
+      "CF_FROM_FIN_RDM": 8000000,
+      "CF_FROM_FIN_NET": -8000000,
+      "CASH_NET_CHG": -23460000
+    },
+    {
+      "PORT_ID": "PORT004",
+      "RPT_DT": 20250324,
+      "CF_FROM_INV_INFLOW": 0,
+      "CF_FROM_INV_OUTFLOW": 0,
+      "CF_FROM_INV_NET": 0,
+      "CF_FROM_FIN_SUB": 5000000,
+      "CF_FROM_FIN_RDM": 0,
+      "CF_FROM_FIN_NET": 5000000,
+      "CASH_NET_CHG": 5000000
+    },
+    {
+      "PORT_ID": "PORT005",
+      "RPT_DT": 20250324,
+      "CF_FROM_INV_INFLOW": 0,
+      "CF_FROM_INV_OUTFLOW": 8500000,
+      "CF_FROM_INV_NET": -8500000,
+      "CF_FROM_FIN_SUB": 50000000,
+      "CF_FROM_FIN_RDM": 0,
+      "CF_FROM_FIN_NET": 50000000,
+      "CASH_NET_CHG": 41500000
+    }
+  ],
+  "dwd_trn_trade_ast": [
+    {
+      "TRADE_ID": "TRD20250324001",
+      "AST_CD": "019601.IB",
+      "TRADE_DT": 20250324,
+      "SETT_DT": 20250325,
+      "BS_DIR": "BUY",
+      "QTY": 100000000,
+      "PRC": 99.72,
+      "AMT": 99720000,
+      "CCY": "CNY",
+      "CNTP_ID": "CNTP00001",
+      "MARKET": "IB",
+      "TRADER": "孙志强",
+      "STATUS": "SETTLED"
+    },
+    {
+      "TRADE_ID": "TRD20250324002",
+      "AST_CD": "230210.IB",
+      "TRADE_DT": 20250324,
+      "SETT_DT": 20250325,
+      "BS_DIR": "BUY",
+      "QTY": 50000000,
+      "PRC": 100.82,
+      "AMT": 50410000,
+      "CCY": "CNY",
+      "CNTP_ID": "CNTP00002",
+      "MARKET": "IB",
+      "TRADER": "林晓东",
+      "STATUS": "SETTLED"
+    },
+    {
+      "TRADE_ID": "TRD20250324003",
+      "AST_CD": "600036.SH",
+      "TRADE_DT": 20250324,
+      "SETT_DT": 20250325,
+      "BS_DIR": "BUY",
+      "QTY": 400000,
+      "PRC": 38.65,
+      "AMT": 15460000,
+      "CCY": "CNY",
+      "CNTP_ID": "CNTP00003",
+      "MARKET": "EXCH",
+      "TRADER": "黄琳",
+      "STATUS": "SETTLED"
+    },
+    {
+      "TRADE_ID": "TRD20250324004",
+      "AST_CD": "2480006.IB",
+      "TRADE_DT": 20250324,
+      "SETT_DT": 20250326,
+      "BS_DIR": "SELL",
+      "QTY": 50000000,
+      "PRC": 100.18,
+      "AMT": 50090000,
+      "CCY": "CNY",
+      "CNTP_ID": "CNTP00004",
+      "MARKET": "IB",
+      "TRADER": "孙志强",
+      "STATUS": "PENDING"
+    },
+    {
+      "TRADE_ID": "TRD20250324005",
+      "AST_CD": "510300.SH",
+      "TRADE_DT": 20250324,
+      "SETT_DT": 20250325,
+      "BS_DIR": "BUY",
+      "QTY": 2000000,
+      "PRC": 4.25,
+      "AMT": 8500000,
+      "CCY": "CNY",
+      "CNTP_ID": "CNTP00003",
+      "MARKET": "EXCH",
+      "TRADER": "钱铭",
+      "STATUS": "SETTLED"
+    }
+  ],
+  "dwd_trn_trade_ptl": [
+    {
+      "TRADE_ID": "TRD20250324001",
+      "PORT_ID": "PORT001",
+      "AST_CD": "019601.IB",
+      "TRADE_DT": 20250324,
+      "SETT_DT": 20250325,
+      "BS_DIR": "BUY",
+      "QTY": 100000000,
+      "PRC": 99.72,
+      "AMT": 99720000,
+      "FEE": 15000,
+      "CCY": "CNY"
+    },
+    {
+      "TRADE_ID": "TRD20250324002",
+      "PORT_ID": "PORT002",
+      "AST_CD": "230210.IB",
+      "TRADE_DT": 20250324,
+      "SETT_DT": 20250325,
+      "BS_DIR": "BUY",
+      "QTY": 50000000,
+      "PRC": 100.82,
+      "AMT": 50410000,
+      "FEE": 5041,
+      "CCY": "CNY"
+    },
+    {
+      "TRADE_ID": "TRD20250324003",
+      "PORT_ID": "PORT003",
+      "AST_CD": "600036.SH",
+      "TRADE_DT": 20250324,
+      "SETT_DT": 20250325,
+      "BS_DIR": "BUY",
+      "QTY": 400000,
+      "PRC": 38.65,
+      "AMT": 15460000,
+      "FEE": 4638,
+      "CCY": "CNY"
+    },
+    {
+      "TRADE_ID": "TRD20250324004",
+      "PORT_ID": "PORT001",
+      "AST_CD": "2480006.IB",
+      "TRADE_DT": 20250324,
+      "SETT_DT": 20250326,
+      "BS_DIR": "SELL",
+      "QTY": 50000000,
+      "PRC": 100.18,
+      "AMT": 50090000,
+      "FEE": 5009,
+      "CCY": "CNY"
+    },
+    {
+      "TRADE_ID": "TRD20250324005",
+      "PORT_ID": "PORT005",
+      "AST_CD": "510300.SH",
+      "TRADE_DT": 20250324,
+      "SETT_DT": 20250325,
+      "BS_DIR": "BUY",
+      "QTY": 2000000,
+      "PRC": 4.25,
+      "AMT": 8500000,
+      "FEE": 850,
+      "CCY": "CNY"
+    }
+  ],
+  "dwd_trn_trade_val": [
+    {
+      "TRADE_ID": "TRD20250324001",
+      "PORT_ID": "PORT001",
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "BS_DIR": "BUY",
+      "NET_PRC": 99.72,
+      "FULL_PRC": 99.96,
+      "ACI_AMT": 240000,
+      "REAL_PNL": 0,
+      "FEE_AMT": 15000,
+      "AMORT_AMT": 0,
+      "VAL_STATUS": "VALUED"
+    },
+    {
+      "TRADE_ID": "TRD20250324002",
+      "PORT_ID": "PORT002",
+      "AST_CD": "230210.IB",
+      "BIZ_DT": 20250324,
+      "BS_DIR": "BUY",
+      "NET_PRC": 100.82,
+      "FULL_PRC": 101.57,
+      "ACI_AMT": 375000,
+      "REAL_PNL": 0,
+      "FEE_AMT": 5041,
+      "AMORT_AMT": 0,
+      "VAL_STATUS": "VALUED"
+    },
+    {
+      "TRADE_ID": "TRD20250324003",
+      "PORT_ID": "PORT003",
+      "AST_CD": "600036.SH",
+      "BIZ_DT": 20250324,
+      "BS_DIR": "BUY",
+      "NET_PRC": 38.65,
+      "FULL_PRC": 38.65,
+      "ACI_AMT": 0,
+      "REAL_PNL": 0,
+      "FEE_AMT": 4638,
+      "AMORT_AMT": 0,
+      "VAL_STATUS": "VALUED"
+    }
+  ],
+  "dwd_trn_trade_zg": [
+    {
+      "TRADE_ID": "TRD20250324001",
+      "SETT_DT": 20250325,
+      "SETT_AMT": 99720000,
+      "SETT_QTY": 100000000,
+      "SETT_TYPE": "DVP",
+      "BOND_ACCT_NO": "CN20210801PORT001",
+      "CASH_ACCT_NO": 110060001888001,
+      "SETT_STATUS": "COMPLETED"
+    },
+    {
+      "TRADE_ID": "TRD20250324003",
+      "SETT_DT": 20250325,
+      "SETT_AMT": 15460000,
+      "SETT_QTY": 400000,
+      "SETT_TYPE": "DVP",
+      "BOND_ACCT_NO": "",
+      "CASH_ACCT_NO": "CN20210801PORT003",
+      "SETT_STATUS": "COMPLETED"
+    },
+    {
+      "TRADE_ID": "TRD20250324005",
+      "SETT_DT": 20250325,
+      "SETT_AMT": 8500000,
+      "SETT_QTY": 2000000,
+      "SETT_TYPE": "DVP",
+      "BOND_ACCT_NO": "",
+      "CASH_ACCT_NO": "A888888005",
+      "SETT_STATUS": "COMPLETED"
+    }
+  ],
+  "dwd_trn_trade_jy": [
+    {
+      "TRADE_ID": "TRD20250324005",
+      "SETT_DT": 20250325,
+      "EXCH": "SSE",
+      "SETT_AMT": 8500000,
+      "SETT_QTY": 2000000,
+      "COMMISSION": 850,
+      "STAMP_TAX": 0,
+      "SETT_STATUS": "COMPLETED"
+    },
+    {
+      "TRADE_ID": "TRD20250324003",
+      "SETT_DT": 20250325,
+      "EXCH": "SSE",
+      "SETT_AMT": 15460000,
+      "SETT_QTY": 400000,
+      "COMMISSION": 1280,
+      "STAMP_TAX": 0,
+      "SETT_STATUS": "COMPLETED"
+    },
+    {
+      "TRADE_ID": "TRD20250324006",
+      "SETT_DT": 20250325,
+      "EXCH": "SSE",
+      "SETT_AMT": 5200000,
+      "SETT_QTY": 100000,
+      "COMMISSION": 520,
+      "STAMP_TAX": 0,
+      "SETT_STATUS": "PENDING"
+    }
+  ],
+  "dwd_trn_order": [
+    {
+      "ORDER_ID": "ORD20250324001",
+      "PORT_ID": "PORT001",
+      "AST_CD": "019601.IB",
+      "SUBMIT_DT": 20250324,
+      "SUBMIT_TM": "09:30: 0",
+      "BS_DIR": "BUY",
+      "ORD_QTY": 100000000,
+      "ORD_PRC": 99.7,
+      "ORD_TYPE": "LIMIT",
+      "TRADER": "孙志强",
+      "PM_APPROVER": "陈志华",
+      "STATUS": "FILLED",
+      "FILL_QTY": 100000000,
+      "AVG_PRC": 99.72,
+      "LINK_TRADE_ID": "TRD20250324001"
+    },
+    {
+      "ORDER_ID": "ORD20250324002",
+      "PORT_ID": "PORT002",
+      "AST_CD": "230210.IB",
+      "SUBMIT_DT": 20250324,
+      "SUBMIT_TM": "10:15: 0",
+      "BS_DIR": "BUY",
+      "ORD_QTY": 50000000,
+      "ORD_PRC": 100.8,
+      "ORD_TYPE": "LIMIT",
+      "TRADER": "林晓东",
+      "PM_APPROVER": "林晓东",
+      "STATUS": "FILLED",
+      "FILL_QTY": 50000000,
+      "AVG_PRC": 100.82,
+      "LINK_TRADE_ID": "TRD20250324002"
+    },
+    {
+      "ORDER_ID": "ORD20250324003",
+      "PORT_ID": "PORT003",
+      "AST_CD": "600036.SH",
+      "SUBMIT_DT": 20250324,
+      "SUBMIT_TM": "10:30: 0",
+      "BS_DIR": "BUY",
+      "ORD_QTY": 400000,
+      "ORD_PRC": 38.5,
+      "ORD_TYPE": "MARKET",
+      "TRADER": "黄琳",
+      "PM_APPROVER": "黄琳",
+      "STATUS": "FILLED",
+      "FILL_QTY": 400000,
+      "AVG_PRC": 38.65,
+      "LINK_TRADE_ID": "TRD20250324003"
+    },
+    {
+      "ORDER_ID": "ORD20250324004",
+      "PORT_ID": "PORT001",
+      "AST_CD": "2480006.IB",
+      "SUBMIT_DT": 20250324,
+      "SUBMIT_TM": "14: 0: 0",
+      "BS_DIR": "SELL",
+      "ORD_QTY": 50000000,
+      "ORD_PRC": 100.15,
+      "ORD_TYPE": "LIMIT",
+      "TRADER": "孙志强",
+      "PM_APPROVER": "陈志华",
+      "STATUS": "PENDING",
+      "FILL_QTY": 0,
+      "AVG_PRC": 0,
+      "LINK_TRADE_ID": ""
+    },
+    {
+      "ORDER_ID": "ORD20250324005",
+      "PORT_ID": "PORT005",
+      "AST_CD": "510300.SH",
+      "SUBMIT_DT": 20250324,
+      "SUBMIT_TM": "09:45: 0",
+      "BS_DIR": "BUY",
+      "ORD_QTY": 2000000,
+      "ORD_PRC": 4.2,
+      "ORD_TYPE": "MARKET",
+      "TRADER": "钱铭",
+      "PM_APPROVER": "钱铭",
+      "STATUS": "FILLED",
+      "FILL_QTY": 2000000,
+      "AVG_PRC": 4.25,
+      "LINK_TRADE_ID": "TRD20250324005"
+    }
+  ],
+  "dwd_cust_make_pstn_info": [
+    {
+      "CUSTOMER_ID": "CUS0000001",
+      "PORT_ID": "PORT001",
+      "BIZ_DT": 20250324,
+      "HLD_SHR": 50000000,
+      "HLD_AMT": 52560000,
+      "COST_AMT": 50000000,
+      "UNREAL_PNL": 2560000,
+      "AVAIL_SHR": 50000000,
+      "FROZEN_SHR": 0,
+      "FIRST_BUY_DT": 20210601,
+      "CUSTOMER_NM": "张明远",
+      "PORT_NM": "稳健配置一号"
+    },
+    {
+      "CUSTOMER_ID": "CUS0000002",
+      "PORT_ID": "PORT002",
+      "BIZ_DT": 20250324,
+      "HLD_SHR": 100000000,
+      "HLD_AMT": 102850000,
+      "COST_AMT": 100000000,
+      "UNREAL_PNL": 2850000,
+      "AVAIL_SHR": 100000000,
+      "FROZEN_SHR": 0,
+      "FIRST_BUY_DT": 20200315,
+      "CUSTOMER_NM": "李秀芬",
+      "PORT_NM": "纯债精选二号"
+    },
+    {
+      "CUSTOMER_ID": "CUS0000003",
+      "PORT_ID": "PORT003",
+      "BIZ_DT": 20250324,
+      "HLD_SHR": 30000000,
+      "HLD_AMT": 29625000,
+      "COST_AMT": 30000000,
+      "UNREAL_PNL": -375000,
+      "AVAIL_SHR": 22000000,
+      "FROZEN_SHR": 8000000,
+      "FIRST_BUY_DT": 20220801,
+      "CUSTOMER_NM": "王建国",
+      "PORT_NM": "混合增强三号"
+    },
+    {
+      "CUSTOMER_ID": "CUS0000004",
+      "PORT_ID": "PORT004",
+      "BIZ_DT": 20250324,
+      "HLD_SHR": 200000000,
+      "HLD_AMT": 200000000,
+      "COST_AMT": 200000000,
+      "UNREAL_PNL": 0,
+      "AVAIL_SHR": 200000000,
+      "FROZEN_SHR": 0,
+      "FIRST_BUY_DT": 20190101,
+      "CUSTOMER_NM": "陈雅琴",
+      "PORT_NM": "短融货币四号"
+    },
+    {
+      "CUSTOMER_ID": "CUS0000005",
+      "PORT_ID": "PORT005",
+      "BIZ_DT": 20250324,
+      "HLD_SHR": 300000000,
+      "HLD_AMT": 337500000,
+      "COST_AMT": 300000000,
+      "UNREAL_PNL": 37500000,
+      "AVAIL_SHR": 300000000,
+      "FROZEN_SHR": 0,
+      "FIRST_BUY_DT": 20230601,
+      "CUSTOMER_NM": "深圳市前海资产管理有限公司",
+      "PORT_NM": "指数增强五号"
+    }
+  ],
+  "dwd_cust_trans_acct_info": [
+    {
+      "CUSTOMER_ID": "CUS0000001",
+      "ACCT_NO": 6222021234567890,
+      "ACCT_TYPE": "BANK",
+      "BANK": "中国工商银行",
+      "BR_NM": "工商银行上海分行营业部",
+      "CCY": "CNY",
+      "OPEN_DT": 20210601,
+      "STATUS": "ACTIVE",
+      "BIZ_DT": 20250324
+    },
+    {
+      "CUSTOMER_ID": "CUS0000002",
+      "ACCT_NO": 6217001234567891,
+      "ACCT_TYPE": "BANK",
+      "BANK": "中国建设银行",
+      "BR_NM": "建设银行北京市朝阳区支行",
+      "CCY": "CNY",
+      "OPEN_DT": 20200315,
+      "STATUS": "ACTIVE",
+      "BIZ_DT": 20250324
+    },
+    {
+      "CUSTOMER_ID": "CUS0000003",
+      "ACCT_NO": 6225881234567892,
+      "ACCT_TYPE": "BANK",
+      "BANK": "招商银行",
+      "BR_NM": "招商银行深圳分行福田区支行",
+      "CCY": "CNY",
+      "OPEN_DT": 20220801,
+      "STATUS": "ACTIVE",
+      "BIZ_DT": 20250324
+    },
+    {
+      "CUSTOMER_ID": "CUS0000004",
+      "ACCT_NO": 6225881234567893,
+      "ACCT_TYPE": "BANK",
+      "BANK": "招商银行",
+      "BR_NM": "招商银行上海分行陆家嘴支行",
+      "CCY": "CNY",
+      "OPEN_DT": 20190101,
+      "STATUS": "ACTIVE",
+      "BIZ_DT": 20250324
+    },
+    {
+      "CUSTOMER_ID": "CUS0000005",
+      "ACCT_NO": 4000011234567890,
+      "ACCT_TYPE": "BANK",
+      "BANK": "中国工商银行",
+      "BR_NM": "工商银行深圳分行前海支行",
+      "CCY": "CNY",
+      "OPEN_DT": 20230601,
+      "STATUS": "ACTIVE",
+      "BIZ_DT": 20250324
+    }
+  ],
+  "dwd_cust_trans_apply_info_ta": [
+    {
+      "APPLY_NO": "TA20250324001",
+      "CUSTOMER_ID": "CUS0000002",
+      "PORT_ID": "PORT002",
+      "TRADE_DT": 20250324,
+      "TRD_TYPE": "REDEEM",
+      "AMT": 5142500,
+      "SHR": 5000000,
+      "CHANNEL": "TA",
+      "STATUS": "PENDING",
+      "CFM_DT": 20250325
+    },
+    {
+      "APPLY_NO": "TA20250324002",
+      "CUSTOMER_ID": "CUS0000006",
+      "PORT_ID": "PORT002",
+      "TRADE_DT": 20250324,
+      "TRD_TYPE": "SUBSCRIBE",
+      "AMT": 51425000,
+      "SHR": 50000000,
+      "CHANNEL": "TA",
+      "STATUS": "CONFIRMED",
+      "CFM_DT": 20250324
+    },
+    {
+      "APPLY_NO": "TA20250322003",
+      "CUSTOMER_ID": "CUS0000007",
+      "PORT_ID": "PORT001",
+      "TRADE_DT": 20250322,
+      "TRD_TYPE": "SUBSCRIBE",
+      "AMT": 21024000,
+      "SHR": 20000000,
+      "CHANNEL": "TA",
+      "STATUS": "CONFIRMED",
+      "CFM_DT": 20250322
+    }
+  ],
+  "dwd_cust_trans_apply_info_yh": [
+    {
+      "APPLY_NO": "YH20250324001",
+      "CUSTOMER_ID": "CUS0000004",
+      "PORT_ID": "PORT004",
+      "TRADE_DT": 20250324,
+      "TRD_TYPE": "SUBSCRIBE",
+      "AMT": 5000000,
+      "SHR": 5000000,
+      "CHANNEL": "YH",
+      "STATUS": "CONFIRMED",
+      "CFM_DT": 20250324
+    },
+    {
+      "APPLY_NO": "YH20250322002",
+      "CUSTOMER_ID": "CUS0000002",
+      "PORT_ID": "PORT002",
+      "TRADE_DT": 20250322,
+      "TRD_TYPE": "SUBSCRIBE",
+      "AMT": 3000000,
+      "SHR": 2916500,
+      "CHANNEL": "YH",
+      "STATUS": "CONFIRMED",
+      "CFM_DT": 20250322
+    },
+    {
+      "APPLY_NO": "YH20250320003",
+      "CUSTOMER_ID": "CUS0000001",
+      "PORT_ID": "PORT001",
+      "TRADE_DT": 20250320,
+      "TRD_TYPE": "REDEEM",
+      "AMT": 2000000,
+      "SHR": 1902650,
+      "CHANNEL": "YH",
+      "STATUS": "CONFIRMED",
+      "CFM_DT": 20250320
+    }
+  ],
+  "dwd_cust_trans_cfm_info": [
+    {
+      "CFM_NO": "CFM20250324001",
+      "APPLY_NO": "AP20250324001",
+      "CUSTOMER_ID": "CUS0000001",
+      "PORT_ID": "PORT001",
+      "CFM_DT": 20250324,
+      "TRD_TYPE": "SUBSCRIBE",
+      "CFM_AMT": 10000000,
+      "CFM_SHR": 9512680,
+      "CFM_NAV": 1.0512,
+      "FEE": 15000,
+      "NET_AMT": 9985000,
+      "STATUS": "SUCCESS"
+    },
+    {
+      "CFM_NO": "CFM20250324002",
+      "APPLY_NO": "AP20250324002",
+      "CUSTOMER_ID": "CUS0000005",
+      "PORT_ID": "PORT005",
+      "CFM_DT": 20250324,
+      "TRD_TYPE": "SUBSCRIBE",
+      "CFM_AMT": 50000000,
+      "CFM_SHR": 44444444,
+      "CFM_NAV": 1.125,
+      "FEE": 75000,
+      "NET_AMT": 49925000,
+      "STATUS": "SUCCESS"
+    },
+    {
+      "CFM_NO": "CFM20250324003",
+      "APPLY_NO": "YH20250324001",
+      "CUSTOMER_ID": "CUS0000004",
+      "PORT_ID": "PORT004",
+      "CFM_DT": 20250324,
+      "TRD_TYPE": "SUBSCRIBE",
+      "CFM_AMT": 5000000,
+      "CFM_SHR": 5000000,
+      "CFM_NAV": 1,
+      "FEE": 0,
+      "NET_AMT": 5000000,
+      "STATUS": "SUCCESS"
+    },
+    {
+      "CFM_NO": "CFM20250322004",
+      "APPLY_NO": "TA20250322003",
+      "CUSTOMER_ID": "CUS0000007",
+      "PORT_ID": "PORT001",
+      "CFM_DT": 20250322,
+      "TRD_TYPE": "SUBSCRIBE",
+      "CFM_AMT": 21024000,
+      "CFM_SHR": 20000000,
+      "CFM_NAV": 1.0512,
+      "FEE": 31536,
+      "NET_AMT": 20992464,
+      "STATUS": "SUCCESS"
+    },
+    {
+      "CFM_NO": "CFM20250320005",
+      "APPLY_NO": "AP20250320003",
+      "CUSTOMER_ID": "CUS0000003",
+      "PORT_ID": "PORT003",
+      "CFM_DT": 20250320,
+      "TRD_TYPE": "REDEEM",
+      "CFM_AMT": 7900000,
+      "CFM_SHR": 8101266,
+      "CFM_NAV": 0.9875,
+      "FEE": 4000,
+      "NET_AMT": 7896000,
+      "STATUS": "SUCCESS"
+    }
+  ],
+  "dwd_cust_trans_divd_info": [
+    {
+      "CUSTOMER_ID": "CUS0000001",
+      "PORT_ID": "PORT001",
+      "DIV_DT": 20250315,
+      "EX_DIV_DT": 20250316,
+      "PAY_DT": 20250318,
+      "DIV_PER_SHR": 0.005,
+      "HLD_SHR": 50000000,
+      "DIV_AMT": 250000,
+      "DIV_TYPE": "CASH",
+      "TAX": 0,
+      "NET_DIV_AMT": 250000
+    },
+    {
+      "CUSTOMER_ID": "CUS0000007",
+      "PORT_ID": "PORT001",
+      "DIV_DT": 20250315,
+      "EX_DIV_DT": 20250316,
+      "PAY_DT": 20250318,
+      "DIV_PER_SHR": 0.005,
+      "HLD_SHR": 150000000,
+      "DIV_AMT": 750000,
+      "DIV_TYPE": "CASH",
+      "TAX": 0,
+      "NET_DIV_AMT": 750000
+    },
+    {
+      "CUSTOMER_ID": "CUS0000002",
+      "PORT_ID": "PORT002",
+      "DIV_DT": 20250315,
+      "EX_DIV_DT": 20250316,
+      "PAY_DT": 20250318,
+      "DIV_PER_SHR": 0.005,
+      "HLD_SHR": 100000000,
+      "DIV_AMT": 500000,
+      "DIV_TYPE": "REINVEST",
+      "TAX": 0,
+      "NET_DIV_AMT": 500000
+    }
+  ],
+  "dwd_cust_trans_srl_info": [
+    {
+      "SRL_NO": "SRL20250324001",
+      "CUSTOMER_ID": "CUS0000001",
+      "PORT_ID": "PORT001",
+      "REL_NO": "AP20250324001",
+      "BIZ_DT": 20250324,
+      "BIZ_TYPE": "SUBSCRIBE",
+      "AMT": 10000000,
+      "BAL_BEFORE": 42560000,
+      "BAL_AFTER": 52560000,
+      "CCY": "CNY",
+      "REMARK": "追加申购稳健配置一号"
+    },
+    {
+      "SRL_NO": "SRL20250324002",
+      "CUSTOMER_ID": "CUS0000005",
+      "PORT_ID": "PORT005",
+      "REL_NO": "AP20250324002",
+      "BIZ_DT": 20250324,
+      "BIZ_TYPE": "SUBSCRIBE",
+      "AMT": 50000000,
+      "BAL_BEFORE": 287500000,
+      "BAL_AFTER": 337500000,
+      "CCY": "CNY",
+      "REMARK": "追加申购指数增强五号"
+    },
+    {
+      "SRL_NO": "SRL20250324003",
+      "CUSTOMER_ID": "CUS0000004",
+      "PORT_ID": "PORT004",
+      "REL_NO": "YH20250324001",
+      "BIZ_DT": 20250324,
+      "BIZ_TYPE": "SUBSCRIBE",
+      "AMT": 5000000,
+      "BAL_BEFORE": 195000000,
+      "BAL_AFTER": 200000000,
+      "CCY": "CNY",
+      "REMARK": "招商银行渠道申购短融货币四号"
+    },
+    {
+      "SRL_NO": "SRL20250322004",
+      "CUSTOMER_ID": "CUS0000007",
+      "PORT_ID": "PORT001",
+      "REL_NO": "TA20250322003",
+      "BIZ_DT": 20250322,
+      "BIZ_TYPE": "SUBSCRIBE",
+      "AMT": 21024000,
+      "BAL_BEFORE": 136656000,
+      "BAL_AFTER": 157680000,
+      "CCY": "CNY",
+      "REMARK": "TA渠道申购稳健配置一号"
+    },
+    {
+      "SRL_NO": "SRL20250320005",
+      "CUSTOMER_ID": "CUS0000003",
+      "PORT_ID": "PORT003",
+      "REL_NO": "AP20250320003",
+      "BIZ_DT": 20250320,
+      "BIZ_TYPE": "REDEEM",
+      "AMT": 7900000,
+      "BAL_BEFORE": 37525000,
+      "BAL_AFTER": 29625000,
+      "CCY": "CNY",
+      "REMARK": "赎回混合增强三号部分份额"
+    }
+  ],
+  "dwd_rsk_sentiment": [
+    {
+      "SENT_ID": "STM20250320001",
+      "TARGET_TYPE": "ISR",
+      "TARGET_CD": "ISR000005",
+      "PUB_DT": 20250320,
+      "PUB_TM": "09:15:30",
+      "SOURCE": "21世纪经济报道",
+      "TITLE": "万科多只债券价格异常波动，机构投资者加速减持",
+      "SENT_TYPE": "NEGATIVE",
+      "SCORE": -0.75,
+      "SUMMARY": "万科2027到期人民币债券价格单日下跌超过3%，多家公募基金证实以中债估值调减持仓，面临资产质量减记压力"
+    },
+    {
+      "SENT_ID": "STM20250321002",
+      "TARGET_TYPE": "ISR",
+      "TARGET_CD": "ISR000005",
+      "PUB_DT": 20250321,
+      "PUB_TM": "14:25:18",
+      "SOURCE": "财新网",
+      "TITLE": "万科一季度销售额同比下降42%，现金流紧张加剧",
+      "SENT_TYPE": "NEGATIVE",
+      "SCORE": -0.62,
+      "SUMMARY": "万科1-3月合同销售金额255.5亿元，同比减少42.4%，经营性现金流净额连续六个季度为负"
+    },
+    {
+      "SENT_ID": "STM20250322003",
+      "TARGET_TYPE": "ISR",
+      "TARGET_CD": "ISR000003",
+      "PUB_DT": 20250322,
+      "PUB_TM": "08: 0: 0",
+      "SOURCE": "中国证券报",
+      "TITLE": "工商银行2024年净利润同比增长2.3%，资产质量保持稳定",
+      "SENT_TYPE": "POSITIVE",
+      "SCORE": 0.55,
+      "SUMMARY": "工行2024年全年净利润6587亿元，不良贷款率为1.36%保持稳定，资本充足率提18.62%"
+    },
+    {
+      "SENT_ID": "STM20250323004",
+      "TARGET_TYPE": "ISR",
+      "TARGET_CD": "ISR000007",
+      "PUB_DT": 20250323,
+      "PUB_TM": "10:30: 0",
+      "SOURCE": "证券时报",
+      "TITLE": "招商银行零售业务AUM突破12万亿，财富管理转型成效显现",
+      "SENT_TYPE": "POSITIVE",
+      "SCORE": 0.68,
+      "SUMMARY": "招行2024年未零售AUM达到12.85万亿，同比增长8.5%，财富管理手续费及佣金收入同比增长15.6%"
+    }
+  ],
+  "dwd_rsk_credit": [
+    {
+      "ISR_ID": "ISR000005",
+      "BIZ_DT": 20250324,
+      "INTERNAL_RATING": "AA-",
+      "EXT_RATING": "AA-",
+      "PD_1Y": 0.0285,
+      "LGD": 0.45,
+      "EAD": 80000000,
+      "EXPECTED_LOSS": 1026000,
+      "WATCH_FLAG": "Y",
+      "LAST_RATING_DT": 20250320,
+      "ISR_NM": "万科企业股份有限公司"
+    },
+    {
+      "ISR_ID": "ISR000003",
+      "BIZ_DT": 20250324,
+      "INTERNAL_RATING": "AAA",
+      "EXT_RATING": "AAA",
+      "PD_1Y": 0.0003,
+      "LGD": 0.2,
+      "EAD": 300000000,
+      "EXPECTED_LOSS": 18000,
+      "WATCH_FLAG": "N",
+      "LAST_RATING_DT": 20250315,
+      "ISR_NM": "中国工商银行股份有限公司"
+    },
+    {
+      "ISR_ID": "ISR000007",
+      "BIZ_DT": 20250324,
+      "INTERNAL_RATING": "AAA",
+      "EXT_RATING": "AAA",
+      "PD_1Y": 0.0005,
+      "LGD": 0.22,
+      "EAD": 200000000,
+      "EXPECTED_LOSS": 22000,
+      "WATCH_FLAG": "N",
+      "LAST_RATING_DT": 20250318,
+      "ISR_NM": "招商银行股份有限公司"
+    },
+    {
+      "ISR_ID": "ISR000006",
+      "BIZ_DT": 20250324,
+      "INTERNAL_RATING": "AAA",
+      "EXT_RATING": "AAA",
+      "PD_1Y": 0.0008,
+      "LGD": 0.3,
+      "EAD": 150000000,
+      "EXPECTED_LOSS": 36000,
+      "WATCH_FLAG": "N",
+      "LAST_RATING_DT": 20250310,
+      "ISR_NM": "华能新能源股份有限公司"
+    }
+  ],
+  "dwd_rsk_credit_position": [
+    {
+      "PORT_ID": "PORT001",
+      "AST_CD": "2480006.IB",
+      "BIZ_DT": 20250324,
+      "EXPOSURE": 300000000,
+      "RATING": "AAA",
+      "DURATION": 1.95,
+      "EL_AMT": 18000,
+      "VAR_99": 850000,
+      "LIMIT_FLAG": "NORMAL"
+    },
+    {
+      "PORT_ID": "PORT001",
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "EXPOSURE": 200000000,
+      "RATING": "AAA",
+      "DURATION": 9.52,
+      "EL_AMT": 0,
+      "VAR_99": 1850000,
+      "LIMIT_FLAG": "NORMAL"
+    },
+    {
+      "PORT_ID": "PORT002",
+      "AST_CD": "230210.IB",
+      "BIZ_DT": 20250324,
+      "EXPOSURE": 800000000,
+      "RATING": "AAA",
+      "DURATION": 7.21,
+      "EL_AMT": 0,
+      "VAR_99": 4250000,
+      "LIMIT_FLAG": "NORMAL"
+    },
+    {
+      "PORT_ID": "PORT003",
+      "AST_CD": "112501234.SH",
+      "BIZ_DT": 20250324,
+      "EXPOSURE": 50000000,
+      "RATING": "AA-",
+      "DURATION": 1.15,
+      "EL_AMT": 641250,
+      "VAR_99": 1250000,
+      "LIMIT_FLAG": "WARN"
+    },
+    {
+      "PORT_ID": "PORT001",
+      "AST_CD": "112501234.SH",
+      "BIZ_DT": 20250324,
+      "EXPOSURE": 30000000,
+      "RATING": "AA-",
+      "DURATION": 1.15,
+      "EL_AMT": 384750,
+      "VAR_99": 750000,
+      "LIMIT_FLAG": "NORMAL"
+    }
+  ],
+  "dwd_crdt_agme_info": [
+    {
+      "AGME_NO": "AGM20240101001",
+      "CNTP_ID": "CNTP00001",
+      "AGME_TYPE": "NAFMII",
+      "EFF_DT": 20240101,
+      "EXP_DT": 20260101,
+      "LIMIT_AMT": 5000000000,
+      "USED_AMT": 1200000000,
+      "REMAIN_AMT": 3800000000,
+      "RISK_LVL": "LOW",
+      "BIZ_DT": 20250324,
+      "CNTP_NM": "中信证券股份有限公司"
+    },
+    {
+      "AGME_NO": "AGM20240301002",
+      "CNTP_ID": "CNTP00002",
+      "AGME_TYPE": "NAFMII",
+      "EFF_DT": 20240301,
+      "EXP_DT": 20260301,
+      "LIMIT_AMT": 3000000000,
+      "USED_AMT": 800000000,
+      "REMAIN_AMT": 2200000000,
+      "RISK_LVL": "LOW",
+      "BIZ_DT": 20250324,
+      "CNTP_NM": "中金公司固定收益部"
+    },
+    {
+      "AGME_NO": "AGM20230601003",
+      "CNTP_ID": "CNTP00004",
+      "AGME_TYPE": "INTERBANK",
+      "EFF_DT": 20230601,
+      "EXP_DT": 20250601,
+      "LIMIT_AMT": 8000000000,
+      "USED_AMT": 3200000000,
+      "REMAIN_AMT": 4800000000,
+      "RISK_LVL": "MID",
+      "BIZ_DT": 20250324,
+      "CNTP_NM": "兴业银行金融市场部"
+    }
+  ],
+  "dwd_crdt_main_rela_rela_info": [
+    {
+      "SRC_ISR_ID": "ISR000005",
+      "TGT_ISR_ID": "ISR000001",
+      "REL_TYPE": "SUBSIDIARY",
+      "SHARE_RATIO": 1,
+      "REMARK": "深圳市万科房地产有限公司为万科企业股份下属全资子公司",
+      "BIZ_DT": 20250324
+    },
+    {
+      "SRC_ISR_ID": "ISR000005",
+      "TGT_ISR_ID": "ISR000002",
+      "REL_TYPE": "SUBSIDIARY",
+      "SHARE_RATIO": 0.5259,
+      "REMARK": "万科物业发展股份有限公司为万科企业控股子公司",
+      "BIZ_DT": 20250324
+    },
+    {
+      "SRC_ISR_ID": "ISR000006",
+      "TGT_ISR_ID": "ISR000004",
+      "REL_TYPE": "PARENT",
+      "SHARE_RATIO": 0.5128,
+      "REMARK": "中国华能集团有限公司为华能新能源股份有限公司控股股东，同时提供担保",
+      "BIZ_DT": 20250324
+    },
+    {
+      "SRC_ISR_ID": "ISR000003",
+      "TGT_ISR_ID": "ISR000007",
+      "REL_TYPE": "SUBSIDIARY",
+      "SHARE_RATIO": 0.8,
+      "REMARK": "工银瑞信基金管理有限公司为中国工商银行控股80%的子公司",
+      "BIZ_DT": 20250324
+    }
+  ],
+  "dwd_mkt_bond": [
+    {
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "OPEN_PRC": 99.5,
+      "HIGH_PRC": 99.8,
+      "LOW_PRC": 99.45,
+      "CLOSE_PRC": 99.72,
+      "VOL": 1000000,
+      "AMT": 997200000,
+      "YTM": 0.0195,
+      "CHG_BP": -2
+    },
+    {
+      "AST_CD": "230210.IB",
+      "BIZ_DT": 20250324,
+      "OPEN_PRC": 101.2,
+      "HIGH_PRC": 101.45,
+      "LOW_PRC": 101.1,
+      "CLOSE_PRC": 101.35,
+      "VOL": 800000,
+      "AMT": 810800000,
+      "YTM": 0.0262,
+      "CHG_BP": -1
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "BIZ_DT": 20250324,
+      "OPEN_PRC": 100.85,
+      "HIGH_PRC": 101,
+      "LOW_PRC": 100.75,
+      "CLOSE_PRC": 100.92,
+      "VOL": 200000,
+      "AMT": 201840000,
+      "YTM": 0.0295,
+      "CHG_BP": 0
+    },
+    {
+      "AST_CD": "112311.SZ",
+      "BIZ_DT": 20250324,
+      "OPEN_PRC": 92.5,
+      "HIGH_PRC": 92.8,
+      "LOW_PRC": 91.8,
+      "CLOSE_PRC": 92.15,
+      "VOL": 50000,
+      "AMT": 46075000,
+      "YTM": 0.052,
+      "CHG_BP": 5
+    },
+    {
+      "AST_CD": "180401.IB",
+      "BIZ_DT": 20250324,
+      "OPEN_PRC": 100.3,
+      "HIGH_PRC": 100.5,
+      "LOW_PRC": 100.2,
+      "CLOSE_PRC": 100.42,
+      "VOL": 300000,
+      "AMT": 301260000,
+      "YTM": 0.0245,
+      "CHG_BP": -1
+    }
+  ],
+  "dwd_mkt_bond_amount": [
+    {
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "ISSUE_AMT": 50000000000,
+      "OUTSTANDING_AMT": 50000000000,
+      "REPAID_AMT": 0
+    },
+    {
+      "AST_CD": "230210.IB",
+      "BIZ_DT": 20250324,
+      "ISSUE_AMT": 120000000000,
+      "OUTSTANDING_AMT": 120000000000,
+      "REPAID_AMT": 0
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "BIZ_DT": 20250324,
+      "ISSUE_AMT": 10000000000,
+      "OUTSTANDING_AMT": 10000000000,
+      "REPAID_AMT": 0
+    },
+    {
+      "AST_CD": "112311.SZ",
+      "BIZ_DT": 20250324,
+      "ISSUE_AMT": 3000000000,
+      "OUTSTANDING_AMT": 2700000000,
+      "REPAID_AMT": 300000000
+    }
+  ],
+  "dwd_mkt_bond_creditrating": [
+    {
+      "AST_CD": "2480006.IB",
+      "RATING_DT": 20240315,
+      "AGENCY": "中诚信国际",
+      "BOND_RATING": "AAA",
+      "ISSUER_RATING": "AAA",
+      "OUTLOOK": "STABLE"
+    },
+    {
+      "AST_CD": "112311.SZ",
+      "RATING_DT": 20250320,
+      "AGENCY": "联合资信",
+      "BOND_RATING": "AA",
+      "ISSUER_RATING": "AA-",
+      "OUTLOOK": "NEGATIVE"
+    },
+    {
+      "AST_CD": "180401.IB",
+      "RATING_DT": 20240410,
+      "AGENCY": "联合资信",
+      "BOND_RATING": "AAA",
+      "ISSUER_RATING": "AAA",
+      "OUTLOOK": "STABLE"
+    },
+    {
+      "AST_CD": "127080.SZ",
+      "RATING_DT": 20240801,
+      "AGENCY": "大公国际",
+      "BOND_RATING": "AAA",
+      "ISSUER_RATING": "AAA",
+      "OUTLOOK": "STABLE"
+    }
+  ],
+  "dwd_mkt_bond_duration": [
+    {
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "MOD_DURATION": 9.52,
+      "MAC_DURATION": 9.71,
+      "CONVEXITY": 98.5,
+      "KEY_RATE_1Y": 0.05,
+      "KEY_RATE_3Y": 0.18,
+      "KEY_RATE_5Y": 0.42,
+      "KEY_RATE_10Y": 8.87
+    },
+    {
+      "AST_CD": "019735.IB",
+      "BIZ_DT": 20250324,
+      "MOD_DURATION": 18.76,
+      "MAC_DURATION": 19.2,
+      "CONVEXITY": 425.8,
+      "KEY_RATE_1Y": 0.02,
+      "KEY_RATE_3Y": 0.1,
+      "KEY_RATE_5Y": 0.25,
+      "KEY_RATE_10Y": 18.39
+    },
+    {
+      "AST_CD": "230210.IB",
+      "BIZ_DT": 20250324,
+      "MOD_DURATION": 7.21,
+      "MAC_DURATION": 7.4,
+      "CONVEXITY": 62.4,
+      "KEY_RATE_1Y": 0.06,
+      "KEY_RATE_3Y": 0.21,
+      "KEY_RATE_5Y": 0.55,
+      "KEY_RATE_10Y": 6.39
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "BIZ_DT": 20250324,
+      "MOD_DURATION": 1.95,
+      "MAC_DURATION": 2.01,
+      "CONVEXITY": 5.2,
+      "KEY_RATE_1Y": 0.32,
+      "KEY_RATE_3Y": 1.58,
+      "KEY_RATE_5Y": 0.05,
+      "KEY_RATE_10Y": 0
+    },
+    {
+      "AST_CD": "112311.SZ",
+      "BIZ_DT": 20250324,
+      "MOD_DURATION": 1.15,
+      "MAC_DURATION": 1.2,
+      "CONVEXITY": 1.8,
+      "KEY_RATE_1Y": 0.65,
+      "KEY_RATE_3Y": 0.5,
+      "KEY_RATE_5Y": 0,
+      "KEY_RATE_10Y": 0
+    }
+  ],
+  "dwd_mkt_bond_ecl": [
+    {
+      "AST_CD": "112311.SZ",
+      "BIZ_DT": 20250324,
+      "STAGE": 2,
+      "PD_12M": 0.0285,
+      "PD_LIFE": 0.082,
+      "LGD": 0.45,
+      "EAD": 3000000000,
+      "ECL_AMT": 38475000
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "BIZ_DT": 20250324,
+      "STAGE": 1,
+      "PD_12M": 0.0003,
+      "PD_LIFE": 0.0021,
+      "LGD": 0.2,
+      "EAD": 10000000000,
+      "ECL_AMT": 600000
+    },
+    {
+      "AST_CD": "127080.SZ",
+      "BIZ_DT": 20250324,
+      "STAGE": 1,
+      "PD_12M": 0.0008,
+      "PD_LIFE": 0.0042,
+      "LGD": 0.3,
+      "EAD": 2000000000,
+      "ECL_AMT": 480000
+    }
+  ],
+  "dwd_mkt_bond_market": [
+    {
+      "AST_CD": "019601.IB",
+      "BIZ_DT": 20250324,
+      "VOL": 1000000,
+      "AMT": 997200000,
+      "AVG_PRC": 99.72,
+      "AVG_YTM": 0.0195,
+      "TRADE_CNT": 156
+    },
+    {
+      "AST_CD": "230210.IB",
+      "BIZ_DT": 20250324,
+      "VOL": 800000,
+      "AMT": 810800000,
+      "AVG_PRC": 101.35,
+      "AVG_YTM": 0.0262,
+      "TRADE_CNT": 132
+    },
+    {
+      "AST_CD": "2480006.IB",
+      "BIZ_DT": 20250324,
+      "VOL": 200000,
+      "AMT": 201840000,
+      "AVG_PRC": 100.92,
+      "AVG_YTM": 0.0295,
+      "TRADE_CNT": 38
+    },
+    {
+      "AST_CD": "112311.SZ",
+      "BIZ_DT": 20250324,
+      "VOL": 50000,
+      "AMT": 46075000,
+      "AVG_PRC": 92.15,
+      "AVG_YTM": 0.052,
+      "TRADE_CNT": 12
+    },
+    {
+      "AST_CD": "180401.IB",
+      "BIZ_DT": 20250324,
+      "VOL": 300000,
+      "AMT": 301260000,
+      "AVG_PRC": 100.42,
+      "AVG_YTM": 0.0245,
+      "TRADE_CNT": 65
+    }
+  ],
+  "dwd_mkt_calendar": [
+    {
+      "CAL_DT": 20250324,
+      "CAL_TYPE": "IB",
+      "IS_TRADE": "Y",
+      "WEEK_DAY": 1
+    },
+    {
+      "CAL_DT": 20250325,
+      "CAL_TYPE": "IB",
+      "IS_TRADE": "Y",
+      "WEEK_DAY": 2
+    },
+    {
+      "CAL_DT": 20250328,
+      "CAL_TYPE": "IB",
+      "IS_TRADE": "Y",
+      "WEEK_DAY": 5
+    },
+    {
+      "CAL_DT": 20250329,
+      "CAL_TYPE": "IB",
+      "IS_TRADE": "N",
+      "WEEK_DAY": 6
+    },
+    {
+      "CAL_DT": 20250331,
+      "CAL_TYPE": "SSE",
+      "IS_TRADE": "Y",
+      "WEEK_DAY": 1
+    }
+  ],
+  "dwd_mkt_date": [
+    {
+      "DT": 20250324,
+      "YEAR": 2025,
+      "QUARTER": "Q1",
+      "MONTH": 3,
+      "DAY": 24,
+      "WEEK_OF_YEAR": 13,
+      "IS_MONTH_END": "N",
+      "IS_QUARTER_END": "N",
+      "IS_YEAR_END": "N"
+    },
+    {
+      "DT": 20250325,
+      "YEAR": 2025,
+      "QUARTER": "Q1",
+      "MONTH": 3,
+      "DAY": 25,
+      "WEEK_OF_YEAR": 13,
+      "IS_MONTH_END": "N",
+      "IS_QUARTER_END": "N",
+      "IS_YEAR_END": "N"
+    },
+    {
+      "DT": 20250331,
+      "YEAR": 2025,
+      "QUARTER": "Q1",
+      "MONTH": 3,
+      "DAY": 31,
+      "WEEK_OF_YEAR": 14,
+      "IS_MONTH_END": "Y",
+      "IS_QUARTER_END": "Y",
+      "IS_YEAR_END": "N"
+    }
+  ],
+  "dwd_mkt_curve": [
+    {
+      "CURVE_ID": "CGB",
+      "CURVE_NM": "国债收益率曲线",
+      "CURVE_TYPE": "TREASURY",
+      "CCY": "CNY",
+      "SOURCE": "中债登"
+    },
+    {
+      "CURVE_ID": "CDB",
+      "CURVE_NM": "国开债收益率曲线",
+      "CURVE_TYPE": "POLICY",
+      "CCY": "CNY",
+      "SOURCE": "中债登"
+    },
+    {
+      "CURVE_ID": "AAA_MTN",
+      "CURVE_NM": "AAA中票收益率曲线",
+      "CURVE_TYPE": "CREDIT",
+      "CCY": "CNY",
+      "SOURCE": "中债登"
+    },
+    {
+      "CURVE_ID": "AAAm_NCD",
+      "CURVE_NM": "AAA同业存单收益率曲线",
+      "CURVE_TYPE": "NCD",
+      "CCY": "CNY",
+      "SOURCE": "上海清算所"
+    },
+    {
+      "CURVE_ID": "SHIBOR",
+      "CURVE_NM": "SHIBOR利率曲线",
+      "CURVE_TYPE": "IRS",
+      "CCY": "CNY",
+      "SOURCE": "全国银行间同业拆借中心"
+    }
+  ],
+  "dwd_mkt_curve_quote": [
+    {
+      "CURVE_ID": "CGB",
+      "BIZ_DT": 20250324,
+      "TENOR": "1Y",
+      "YIELD": 0.0158,
+      "CHG_BP": -1
+    },
+    {
+      "CURVE_ID": "CGB",
+      "BIZ_DT": 20250324,
+      "TENOR": "5Y",
+      "YIELD": 0.0185,
+      "CHG_BP": -2
+    },
+    {
+      "CURVE_ID": "CGB",
+      "BIZ_DT": 20250324,
+      "TENOR": "10Y",
+      "YIELD": 0.0215,
+      "CHG_BP": -1
+    },
+    {
+      "CURVE_ID": "CDB",
+      "BIZ_DT": 20250324,
+      "TENOR": "10Y",
+      "YIELD": 0.0265,
+      "CHG_BP": -2
+    },
+    {
+      "CURVE_ID": "AAA_MTN",
+      "BIZ_DT": 20250324,
+      "TENOR": "3Y",
+      "YIELD": 0.0305,
+      "CHG_BP": 0
+    }
+  ],
+  "dwd_mkt_exrate": [
+    {
+      "CCY_PAIR": "USD/CNY",
+      "BIZ_DT": 20250324,
+      "MID": 7.095,
+      "BID": 7.092,
+      "ASK": 7.098,
+      "SRC": "中国人民银行"
+    },
+    {
+      "CCY_PAIR": "EUR/CNY",
+      "BIZ_DT": 20250324,
+      "MID": 7.685,
+      "BID": 7.68,
+      "ASK": 7.69,
+      "SRC": "中国人民银行"
+    },
+    {
+      "CCY_PAIR": "HKD/CNY",
+      "BIZ_DT": 20250324,
+      "MID": 0.9128,
+      "BID": 0.9123,
+      "ASK": 0.9133,
+      "SRC": "中国人民银行"
+    },
+    {
+      "CCY_PAIR": "JPY/CNY",
+      "BIZ_DT": 20250324,
+      "MID": 0.04725,
+      "BID": 0.0472,
+      "ASK": 0.0473,
+      "SRC": "中国人民银行"
+    }
+  ],
+  "dwd_mkt_fund": [
+    {
+      "AST_CD": "510300.SH",
+      "FUND_NM": "沪深300ETF",
+      "FUND_TYPE": "ETF",
+      "MGR_INST": "华泰柏瑞基金",
+      "CUSTODY_BANK": "中国工商银行",
+      "ESTAB_DT": 20120526,
+      "BENCHMARK": "沪深300指数",
+      "AUM": 61960000000,
+      "BIZ_DT": 20250324
+    },
+    {
+      "AST_CD": "161725.SZ",
+      "FUND_NM": "招商中证白酒指数分级",
+      "FUND_TYPE": "INDEX",
+      "MGR_INST": "招商基金",
+      "CUSTODY_BANK": "交通银行",
+      "ESTAB_DT": 20150518,
+      "BENCHMARK": "中证白酒指数",
+      "AUM": 11200000000,
+      "BIZ_DT": 20250324
+    },
+    {
+      "AST_CD": "159915.SZ",
+      "FUND_NM": "易方达创业板ETF",
+      "FUND_TYPE": "ETF",
+      "MGR_INST": "易方达基金",
+      "CUSTODY_BANK": "中国建设银行",
+      "ESTAB_DT": 20110920,
+      "BENCHMARK": "创业板指数",
+      "AUM": 25800000000,
+      "BIZ_DT": 20250324
+    },
+    {
+      "AST_CD": "510500.SH",
+      "FUND_NM": "南方中证500ETF",
+      "FUND_TYPE": "ETF",
+      "MGR_INST": "南方基金",
+      "CUSTODY_BANK": "中国建设银行",
+      "ESTAB_DT": 20130328,
+      "BENCHMARK": "中证500指数",
+      "AUM": 32500000000,
+      "BIZ_DT": 20250324
+    }
+  ],
+  "dwd_mkt_fund_allocation": [
+    {
+      "AST_CD": "510300.SH",
+      "RPT_DT": 20241231,
+      "AST_CLASS": "STOCK",
+      "MKT_VAL": 59460000000,
+      "RATIO": 0.952
+    },
+    {
+      "AST_CD": "510300.SH",
+      "RPT_DT": 20241231,
+      "AST_CLASS": "CASH",
+      "MKT_VAL": 3000000000,
+      "RATIO": 0.048
+    },
+    {
+      "AST_CD": "161725.SZ",
+      "RPT_DT": 20241231,
+      "AST_CLASS": "STOCK",
+      "MKT_VAL": 10752000000,
+      "RATIO": 0.96
+    },
+    {
+      "AST_CD": "161725.SZ",
+      "RPT_DT": 20241231,
+      "AST_CLASS": "CASH",
+      "MKT_VAL": 448000000,
+      "RATIO": 0.04
+    }
+  ],
+  "dwd_mkt_fund_derive": [
+    {
+      "AST_CD": "510300.SH",
+      "BIZ_DT": 20250324,
+      "SHARPE_1Y": 0.47,
+      "SORTINO_1Y": 0.62,
+      "MAX_DD_1Y": -0.125,
+      "VOL_1Y": 0.182,
+      "BETA_1Y": 1,
+      "ALPHA_1Y": 0.0008,
+      "TRACKING_ERR": 0.0012
+    },
+    {
+      "AST_CD": "161725.SZ",
+      "BIZ_DT": 20250324,
+      "SHARPE_1Y": 0.91,
+      "SORTINO_1Y": 1.18,
+      "MAX_DD_1Y": -0.0985,
+      "VOL_1Y": 0.215,
+      "BETA_1Y": 0.85,
+      "ALPHA_1Y": 0.0285,
+      "TRACKING_ERR": 0.0258
+    },
+    {
+      "AST_CD": "159915.SZ",
+      "BIZ_DT": 20250324,
+      "SHARPE_1Y": 0.45,
+      "SORTINO_1Y": 0.58,
+      "MAX_DD_1Y": -0.185,
+      "VOL_1Y": 0.258,
+      "BETA_1Y": 1.18,
+      "ALPHA_1Y": -0.0025,
+      "TRACKING_ERR": 0.0035
+    },
+    {
+      "AST_CD": "510500.SH",
+      "BIZ_DT": 20250324,
+      "SHARPE_1Y": 0.22,
+      "SORTINO_1Y": 0.3,
+      "MAX_DD_1Y": -0.225,
+      "VOL_1Y": 0.285,
+      "BETA_1Y": 1.25,
+      "ALPHA_1Y": -0.0085,
+      "TRACKING_ERR": 0.0025
+    }
+  ],
+  "dwd_mkt_fund_market": [
+    {
+      "AST_CD": "510300.SH",
+      "BIZ_DT": 20250324,
+      "UNIT_NAV": 3.952,
+      "ACC_NAV": 5.125,
+      "DAILY_RTN": 0.0035,
+      "VOL": 25600000,
+      "AMT": 10120000000
+    },
+    {
+      "AST_CD": "161725.SZ",
+      "BIZ_DT": 20250324,
+      "UNIT_NAV": 1.258,
+      "ACC_NAV": 2.385,
+      "DAILY_RTN": 0.0125,
+      "VOL": 18500000,
+      "AMT": 23280000
+    },
+    {
+      "AST_CD": "159915.SZ",
+      "BIZ_DT": 20250324,
+      "UNIT_NAV": 2.0125,
+      "ACC_NAV": 2.0125,
+      "DAILY_RTN": 0.0085,
+      "VOL": 12500000,
+      "AMT": 25160000
+    },
+    {
+      "AST_CD": "510500.SH",
+      "BIZ_DT": 20250324,
+      "UNIT_NAV": 6.0825,
+      "ACC_NAV": 6.0825,
+      "DAILY_RTN": -0.0042,
+      "VOL": 95000000,
+      "AMT": 577835000
+    }
+  ],
+  "dwd_mkt_fund_structure": [
+    {
+      "AST_CD": "510300.SH",
+      "RPT_DT": 20241231,
+      "HOLDER_TYPE": "INST",
+      "TOT_SHR": 9721600000,
+      "RATIO": 0.62
+    },
+    {
+      "AST_CD": "510300.SH",
+      "RPT_DT": 20241231,
+      "HOLDER_TYPE": "IND",
+      "TOT_SHR": 5958400000,
+      "RATIO": 0.38
+    },
+    {
+      "AST_CD": "161725.SZ",
+      "RPT_DT": 20241231,
+      "HOLDER_TYPE": "INST",
+      "TOT_SHR": 6800000000,
+      "RATIO": 0.85
+    },
+    {
+      "AST_CD": "161725.SZ",
+      "RPT_DT": 20241231,
+      "HOLDER_TYPE": "IND",
+      "TOT_SHR": 1200000000,
+      "RATIO": 0.15
+    },
+    {
+      "AST_CD": "159915.SZ",
+      "RPT_DT": 20241231,
+      "HOLDER_TYPE": "INST",
+      "TOT_SHR": 4930000000,
+      "RATIO": 0.58
+    },
+    {
+      "AST_CD": "159915.SZ",
+      "RPT_DT": 20241231,
+      "HOLDER_TYPE": "IND",
+      "TOT_SHR": 3570000000,
+      "RATIO": 0.42
+    }
+  ],
+  "dwd_mkt_fund_suspension": [
+    {
+      "AST_CD": "510300.SH",
+      "SUS_DT": 20250210,
+      "RES_DT": 20250211,
+      "SUS_TYPE": "OTHER",
+      "REASON": "重大信息披露"
+    },
+    {
+      "AST_CD": "510500.SH",
+      "SUS_DT": 20250115,
+      "RES_DT": 20250116,
+      "SUS_TYPE": "OTHER",
+      "REASON": "系统升级维护"
+    },
+    {
+      "AST_CD": "161725.SZ",
+      "SUS_DT": 20250131,
+      "RES_DT": 20250208,
+      "SUS_TYPE": "NEW_YEAR",
+      "REASON": "春节休市"
+    }
+  ],
+  "dwd_mkt_index": [
+    {
+      "INDEX_CD": "000300.SH",
+      "INDEX_NM": "沪深300",
+      "INDEX_TYPE": "EQUITY",
+      "PUBLISHER": "中证指数公司",
+      "BASE_DT": 20041231,
+      "BASE_VAL": 1000,
+      "BIZ_DT": 20250324
+    },
+    {
+      "INDEX_CD": "000905.SH",
+      "INDEX_NM": "中证500",
+      "INDEX_TYPE": "EQUITY",
+      "PUBLISHER": "中证指数公司",
+      "BASE_DT": 20041231,
+      "BASE_VAL": 1000,
+      "BIZ_DT": 20250324
+    },
+    {
+      "INDEX_CD": "399006.SZ",
+      "INDEX_NM": "创业板指",
+      "INDEX_TYPE": "EQUITY",
+      "PUBLISHER": "深证信息",
+      "BASE_DT": 20100531,
+      "BASE_VAL": 1000,
+      "BIZ_DT": 20250324
+    },
+    {
+      "INDEX_CD": "CBA00301.CS",
+      "INDEX_NM": "中债-总财富(总值)指数",
+      "INDEX_TYPE": "BOND",
+      "PUBLISHER": "中债指数",
+      "BASE_DT": 20021231,
+      "BASE_VAL": 100,
+      "BIZ_DT": 20250324
+    },
+    {
+      "INDEX_CD": "H11001.CSI",
+      "INDEX_NM": "中证公司债指数",
+      "INDEX_TYPE": "BOND",
+      "PUBLISHER": "中证指数公司",
+      "BASE_DT": 20021231,
+      "BASE_VAL": 100,
+      "BIZ_DT": 20250324
+    }
+  ],
+  "dwd_mkt_index_member": [
+    {
+      "INDEX_CD": "000300.SH",
+      "AST_CD": "600036.SH",
+      "BIZ_DT": 20250324,
+      "WEIGHT": 0.0185,
+      "IN_DT": 20050101,
+      "OUT_DT": ""
+    },
+    {
+      "INDEX_CD": "000300.SH",
+      "AST_CD": "601318.SH",
+      "BIZ_DT": 20250324,
+      "WEIGHT": 0.0152,
+      "IN_DT": 20070301,
+      "OUT_DT": ""
+    },
+    {
+      "INDEX_CD": "000300.SH",
+      "AST_CD": "000002.SZ",
+      "BIZ_DT": 20250324,
+      "WEIGHT": 0.0058,
+      "IN_DT": 20050101,
+      "OUT_DT": ""
+    },
+    {
+      "INDEX_CD": "000905.SH",
+      "AST_CD": "600036.SH",
+      "BIZ_DT": 20250324,
+      "WEIGHT": 0.0085,
+      "IN_DT": 20070101,
+      "OUT_DT": ""
+    },
+    {
+      "INDEX_CD": "399006.SZ",
+      "AST_CD": "000002.SZ",
+      "BIZ_DT": 20250324,
+      "WEIGHT": 0.0125,
+      "IN_DT": 20100601,
+      "OUT_DT": ""
+    }
+  ],
+  "dwd_mkt_index_quote": [
+    {
+      "INDEX_CD": "000300.SH",
+      "BIZ_DT": 20250324,
+      "OPEN_VAL": 3850.25,
+      "HIGH_VAL": 3892.5,
+      "LOW_VAL": 3845.8,
+      "CLOSE_VAL": 3880.15,
+      "VOL": 285000000000,
+      "AMT": 425000000000,
+      "DAILY_RTN": 0.0035,
+      "YTD_RTN": 0.0285
+    },
+    {
+      "INDEX_CD": "000905.SH",
+      "BIZ_DT": 20250324,
+      "OPEN_VAL": 5420.3,
+      "HIGH_VAL": 5465.8,
+      "LOW_VAL": 5410.5,
+      "CLOSE_VAL": 5452.7,
+      "VOL": 152000000000,
+      "AMT": 215000000000,
+      "DAILY_RTN": 0.0042,
+      "YTD_RTN": 0.0185
+    },
+    {
+      "INDEX_CD": "399006.SZ",
+      "BIZ_DT": 20250324,
+      "OPEN_VAL": 2185.4,
+      "HIGH_VAL": 2202.3,
+      "LOW_VAL": 2180.5,
+      "CLOSE_VAL": 2195.85,
+      "VOL": 95000000000,
+      "AMT": 142000000000,
+      "DAILY_RTN": 0.0058,
+      "YTD_RTN": 0.0125
+    },
+    {
+      "INDEX_CD": "CBA00301.CS",
+      "BIZ_DT": 20250324,
+      "OPEN_VAL": 235.18,
+      "HIGH_VAL": 235.32,
+      "LOW_VAL": 235.1,
+      "CLOSE_VAL": 235.25,
+      "VOL": 0,
+      "AMT": 0,
+      "DAILY_RTN": 0.0006,
+      "YTD_RTN": 0.0095
+    },
+    {
+      "INDEX_CD": "H11001.CSI",
+      "BIZ_DT": 20250324,
+      "OPEN_VAL": 232.85,
+      "HIGH_VAL": 233.1,
+      "LOW_VAL": 232.6,
+      "CLOSE_VAL": 232.95,
+      "VOL": 0,
+      "AMT": 0,
+      "DAILY_RTN": 0.0008,
+      "YTD_RTN": 0.0102
+    }
+  ],
+  "dwd_mkt_rate": [
+    {
+      "RATE_CD": "SHIBOR_ON",
+      "RATE_NM": "SHIBOR隔夜",
+      "SOURCE": "全国银行间同业拆借中心",
+      "CCY": "CNY",
+      "BIZ_DT": 20250324
+    },
+    {
+      "RATE_CD": "SHIBOR_1W",
+      "RATE_NM": "SHIBOR一周",
+      "SOURCE": "全国银行间同业拆借中心",
+      "CCY": "CNY",
+      "BIZ_DT": 20250324
+    },
+    {
+      "RATE_CD": "SHIBOR_3M",
+      "RATE_NM": "SHIBOR三个月",
+      "SOURCE": "全国银行间同业拆借中心",
+      "CCY": "CNY",
+      "BIZ_DT": 20250324
+    },
+    {
+      "RATE_CD": "LPR_1Y",
+      "RATE_NM": "1年期贷款市场报价利率",
+      "SOURCE": "中国人民银行",
+      "CCY": "CNY",
+      "BIZ_DT": 20250324
+    },
+    {
+      "RATE_CD": "LPR_5Y",
+      "RATE_NM": "5年期贷款市场报价利率",
+      "SOURCE": "中国人民银行",
+      "CCY": "CNY",
+      "BIZ_DT": 20250324
+    },
+    {
+      "RATE_CD": "DR007",
+      "RATE_NM": "银行间存款类机构7天加权利率",
+      "SOURCE": "全国银行间同业拆借中心",
+      "CCY": "CNY",
+      "BIZ_DT": 20250324
+    }
+  ],
+  "dwd_mkt_rate_quote": [
+    {
+      "RATE_CD": "SHIBOR_ON",
+      "BIZ_DT": 20250324,
+      "RATE_VAL": 0.0148,
+      "CHG_BP": -3
+    },
+    {
+      "RATE_CD": "SHIBOR_1W",
+      "BIZ_DT": 20250324,
+      "RATE_VAL": 0.0182,
+      "CHG_BP": -1
+    },
+    {
+      "RATE_CD": "SHIBOR_3M",
+      "BIZ_DT": 20250324,
+      "RATE_VAL": 0.0205,
+      "CHG_BP": 0
+    },
+    {
+      "RATE_CD": "LPR_1Y",
+      "BIZ_DT": 20250324,
+      "RATE_VAL": 0.031,
+      "CHG_BP": 0
+    },
+    {
+      "RATE_CD": "LPR_5Y",
+      "BIZ_DT": 20250324,
+      "RATE_VAL": 0.036,
+      "CHG_BP": 0
+    },
+    {
+      "RATE_CD": "DR007",
+      "BIZ_DT": 20250324,
+      "RATE_VAL": 0.0178,
+      "CHG_BP": -2
+    }
+  ],
+  "dwd_mkt_rating": [
+    {
+      "ISR_ID": "ISR000005",
+      "RATING_DT": 20250320,
+      "AGENCY": "联合资信",
+      "RATING": "AA-",
+      "PREV_RATING": "AA",
+      "ACTION": "DOWNGRADE",
+      "OUTLOOK": "NEGATIVE",
+      "BIZ_DT": 20250324
+    },
+    {
+      "ISR_ID": "ISR000003",
+      "RATING_DT": 20250315,
+      "AGENCY": "中诚信国际",
+      "RATING": "AAA",
+      "PREV_RATING": "AAA",
+      "ACTION": "AFFIRM",
+      "OUTLOOK": "STABLE",
+      "BIZ_DT": 20250324
+    },
+    {
+      "ISR_ID": "ISR000006",
+      "RATING_DT": 20250310,
+      "AGENCY": "大公国际",
+      "RATING": "AAA",
+      "PREV_RATING": "AAA",
+      "ACTION": "AFFIRM",
+      "OUTLOOK": "STABLE",
+      "BIZ_DT": 20250324
+    }
+  ],
+  "dwd_mkt_stock": [
+    {
+      "AST_CD": "600036.SH",
+      "STOCK_NM": "招商银行",
+      "EXCH": "SSE",
+      "INDUSTRY_CD": "J66",
+      "INDUSTRY_NM": "货币金融服务",
+      "LIST_DT": 20020409,
+      "TOT_CAP": 971509000000,
+      "FREE_CAP": 962229600000,
+      "ISR_ID": "ISR000003",
+      "BIZ_DT": 20250324
+    },
+    {
+      "AST_CD": "601318.SH",
+      "STOCK_NM": "中国平安",
+      "EXCH": "SSE",
+      "INDUSTRY_CD": "J67",
+      "INDUSTRY_NM": "保险业",
+      "LIST_DT": 20070301,
+      "TOT_CAP": 965196560000,
+      "FREE_CAP": 955768000000,
+      "ISR_ID": "ISR000004",
+      "BIZ_DT": 20250324
+    },
+    {
+      "AST_CD": "000002.SZ",
+      "STOCK_NM": "万科A",
+      "EXCH": "SZSE",
+      "INDUSTRY_CD": "K70",
+      "INDUSTRY_NM": "房地产业",
+      "LIST_DT": 19910129,
+      "TOT_CAP": 91073005584,
+      "FREE_CAP": 80223000000,
+      "ISR_ID": "ISR000005",
+      "BIZ_DT": 20250324
+    }
+  ],
+  "dwd_mkt_stock_yield": [
+    {
+      "AST_CD": "600036.SH",
+      "BIZ_DT": 20250324,
+      "OPEN_PRC": 38.1,
+      "HIGH_PRC": 38.65,
+      "LOW_PRC": 38.05,
+      "CLOSE_PRC": 38.52,
+      "VOL": 88500000,
+      "AMT": 3408870000,
+      "DAILY_RTN": 0.0125,
+      "WEEK_RTN": 0.0285,
+      "MONTH_RTN": 0.042,
+      "YTD_RTN": 0.085,
+      "TURNOVER": 0.0035,
+      "PE_TTM": 5.85,
+      "PB_LF": 0.92
+    },
+    {
+      "AST_CD": "601318.SH",
+      "BIZ_DT": 20250324,
+      "OPEN_PRC": 52.4,
+      "HIGH_PRC": 53.05,
+      "LOW_PRC": 52.3,
+      "CLOSE_PRC": 52.8,
+      "VOL": 51200000,
+      "AMT": 2703360000,
+      "DAILY_RTN": 0.0085,
+      "WEEK_RTN": 0.0182,
+      "MONTH_RTN": 0.0325,
+      "YTD_RTN": 0.0625,
+      "TURNOVER": 0.0028,
+      "PE_TTM": 8.25,
+      "PB_LF": 1.15
+    },
+    {
+      "AST_CD": "000002.SZ",
+      "BIZ_DT": 20250324,
+      "OPEN_PRC": 8.4,
+      "HIGH_PRC": 8.42,
+      "LOW_PRC": 8.2,
+      "CLOSE_PRC": 8.25,
+      "VOL": 93800000,
+      "AMT": 773850000,
+      "DAILY_RTN": -0.0185,
+      "WEEK_RTN": -0.0285,
+      "MONTH_RTN": -0.052,
+      "YTD_RTN": -0.125,
+      "TURNOVER": 0.0085,
+      "PE_TTM": 12.85,
+      "PB_LF": 0.45
+    },
+    {
+      "AST_CD": "600036.SH",
+      "BIZ_DT": 20250321,
+      "OPEN_PRC": 37.8,
+      "HIGH_PRC": 38.2,
+      "LOW_PRC": 37.65,
+      "CLOSE_PRC": 38.05,
+      "VOL": 81200000,
+      "AMT": 3089660000,
+      "DAILY_RTN": 0.0085,
+      "WEEK_RTN": 0.0158,
+      "MONTH_RTN": 0.0382,
+      "YTD_RTN": 0.082,
+      "TURNOVER": 0.0032,
+      "PE_TTM": 5.78,
+      "PB_LF": 0.91
+    }
+  ]
+}

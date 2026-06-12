@@ -1,0 +1,170 @@
+[
+  {
+    "code": "000300.SH",
+    "name": "沪深300",
+    "asset_type": "指数",
+    "exchange": "上交所",
+    "description": "沪深300指数，A股核心宽基指数",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    }
+  },
+  {
+    "code": "SZ399006",
+    "name": "创业板指",
+    "asset_type": "指数",
+    "exchange": "",
+    "description": "",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    }
+  },
+  {
+    "code": "ZZ000001",
+    "name": "红利低波",
+    "asset_type": "指数",
+    "exchange": "",
+    "description": "",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    }
+  },
+  {
+    "code": "HSTECH",
+    "name": "恒生科技",
+    "asset_type": "指数",
+    "exchange": "",
+    "description": "",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    }
+  },
+  {
+    "code": "SPX",
+    "name": "标普500",
+    "asset_type": "指数",
+    "exchange": "",
+    "description": "",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    }
+  },
+  {
+    "code": "GDAXI",
+    "name": "德国DAX",
+    "asset_type": "指数",
+    "exchange": "",
+    "description": "",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    }
+  },
+  {
+    "code": "ZQGZ10",
+    "name": "中国10年国债",
+    "asset_type": "指数",
+    "exchange": "",
+    "description": "",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    }
+  },
+  {
+    "code": "ZQGZ2",
+    "name": "中国2年国债",
+    "asset_type": "债券",
+    "exchange": "",
+    "description": "",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    }
+  },
+  {
+    "code": "B00Y",
+    "name": "布伦特原油",
+    "asset_type": "商品",
+    "exchange": "ICE能源期货",
+    "description": "",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    }
+  },
+  {
+    "code": "GLD",
+    "name": "黄金",
+    "asset_type": "商品",
+    "exchange": "",
+    "description": "",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    }
+  },
+  {
+    "code": "IRON",
+    "name": "铁矿石",
+    "asset_type": "商品",
+    "exchange": "",
+    "description": "",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    }
+  },
+  {
+    "code": "YSJS",
+    "name": "中国有色金属",
+    "asset_type": "商品",
+    "exchange": "",
+    "description": "",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-22T11:14:32.000Z"
+    }
+  }
+]

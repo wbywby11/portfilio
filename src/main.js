@@ -10,8 +10,11 @@ import VXETable from 'vxe-table';
 import VxeTooltip from 'vxe-table/lib/tooltip';
 import VXETablePluginElement from 'vxe-table-plugin-element'
 import 'vxe-table-plugin-element/dist/style.css'
+import 'vue-virtual-scroller/dist/vue-virtual-scroller.css'
+import VueVirtualScroller from 'vue-virtual-scroller'
 
 Vue.use(ElementUI);
+Vue.use(VueVirtualScroller);
 VXETable.use(VXETablePluginElement)
 Vue.use(VXETable);
 Vue.use(VxeTooltip);

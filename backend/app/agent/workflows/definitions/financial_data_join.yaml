@@ -1,0 +1,86 @@
+# 金融多表关联工作流
+#
+# 刚性三步序列：分别查询左表和右表，再按关联键执行 join。
+# 不经过 LLM，由 WorkflowEngine 纯引擎执行。
+# 典型场景：客户基本信息 LEFT JOIN 贷款合同、产品信息 LEFT JOIN 持仓明细
+
+workflow_id: financial_data_join
+name: 金融多表关联查询
+description: 批量查询两张业务表并按关联键执行表连接，适用于客户-合同、产品-持仓、机构-指标等关联场景
+
+input_schema:
+  type: object
+  properties:
+    left_collection:
+      type: string
+      description: 左表集合名称，如 customers
+    right_collection:
+      type: string
+      description: 右表集合名称，如 loan_contracts
+    join_keys:
+      description: 关联键，字符串（单键）或字符串数组（复合键），如 "customer_id" 或 ["customer_id", "product_type"]
+    join_type:
+      type: string
+      enum: [left, right, inner, outer]
+      description: 连接类型，默认 left（左连接）
+      default: left
+    validate:
+      type: string
+      enum: [many_to_many, one_to_one, one_to_many, many_to_one]
+      description: 关联键唯一性校验模式，默认 many_to_many（不校验）
+      default: many_to_many
+    left_filters:
+      type: array
+      description: 左表查询条件，格式 [{field, op, value}]，可选
+      items:
+        type: object
+    right_filters:
+      type: array
+      description: 右表查询条件，格式 [{field, op, value}]，可选
+      items:
+        type: object
+    limit:
+      type: integer
+      description: 单表查询上限，默认 1000
+      default: 1000
+  required:
+    - left_collection
+    - right_collection
+    - join_keys
+
+steps:
+  - step_id: query_left
+    name: 查询左表
+    tool_name: data_query
+    parameters:
+      action: query
+      collection: "${input.left_collection}"
+      filters: "${input.left_filters}"
+      limit: "${input.limit}"
+    timeout: 60
+    on_failure: abort
+
+  - step_id: query_right
+    name: 查询右表
+    tool_name: data_query
+    parameters:
+      action: query
+      collection: "${input.right_collection}"
+      filters: "${input.right_filters}"
+      limit: "${input.limit}"
+    timeout: 60
+    on_failure: abort
+
+  - step_id: join_tables
+    name: 执行表连接
+    tool_name: data_transform
+    parameters:
+      action: join
+      left_ref: query_left
+      right_ref: query_right
+      config:
+        join_keys: "${input.join_keys}"
+        join_type: "${input.join_type}"
+        validate: "${input.validate}"
+    timeout: 120
+    on_failure: abort

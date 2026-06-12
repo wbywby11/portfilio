@@ -206,6 +206,8 @@ export default {
       try {
         await this.$store.dispatch('asset/fetchAssetList', {
           category: this.searchForm.category,
+          code: this.searchForm.code || undefined,
+          name: this.searchForm.name || undefined,
           page: this.pagination.current,
           pageSize: this.pagination.pageSize
         });
@@ -216,6 +218,7 @@ export default {
       }
     },
     handleSearch() {
+      this.pagination.current = 1;
       this.fetchData();
     },
     handleReset() {

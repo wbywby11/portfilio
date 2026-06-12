@@ -48,6 +48,19 @@
               下载 Markdown
             </el-button>
           </div>
+          <!-- 结构化表格数据（含资产交互） -->
+          <div v-else-if="hasTableData(tool)" class="tool-section">
+            <div class="tool-section-title">执行结果</div>
+            <ChatDataTable
+              :records="getTableData(tool).records"
+              :summary="getTableData(tool).summary"
+              :recordCount="getTableData(tool).recordCount"
+              :dataShape="getTableData(tool).dataShape"
+              :stepKey="tool.name"
+              :traceable-assets="getTableData(tool).traceableAssets || []"
+              @asset-click="handleAssetClick"
+            />
+          </div>
           <!-- 结果（非报告时显示默认 JSON） -->
           <div v-else-if="tool.result !== undefined && tool.result !== null" class="tool-section">
             <div class="tool-section-title">执行结果</div>
@@ -86,8 +99,11 @@
 </template>
 
 <script>
+import ChatDataTable from './ChatDataTable.vue'
+
 export default {
   name: 'AgentResultCard',
+  components: { ChatDataTable },
   props: {
     toolCalls: {
       type: Array,
@@ -326,6 +342,52 @@ export default {
           this.$echarts.getInstanceByDom(dom).dispose()
         }
       })
+    },
+
+    /**
+     * 从 result.data 中提取数据数组，支持多种常见字段名
+     */
+    _extractDataArray(data) {
+      if (!data) return null
+      const arr = data.records || data.prices || data.items || data.rows
+      return Array.isArray(arr) && arr.length > 0 ? arr : null
+    },
+
+    /**
+     * 检查 tool result 中是否包含结构化表格数据
+     */
+    hasTableData(tool) {
+      const result = this.parseResult(tool)
+      if (!result || !result.data) return false
+      return !!this._extractDataArray(result.data)
+    },
+
+    /**
+     * 从 tool result 中提取表格数据（含可追踪资产）
+     */
+    getTableData(tool) {
+      const result = this.parseResult(tool)
+      if (!result || !result.data) return null
+      const dataArray = this._extractDataArray(result.data)
+      if (!dataArray) return null
+      const traceableAssets = result.traceable_assets
+        || result.data.traceable_assets
+        || (result.metadata && result.metadata.traceable_assets)
+        || []
+      return {
+        records: dataArray,
+        summary: result.summary || '',
+        recordCount: (result.metadata && result.metadata.record_count) || dataArray.length,
+        dataShape: (result.metadata && result.metadata.data_shape) || 'table',
+        traceableAssets
+      }
+    },
+
+    /**
+     * 处理资产点击：向上冒泡给父组件
+     */
+    handleAssetClick(payload) {
+      this.$emit('asset-click', payload)
     }
   }
 }

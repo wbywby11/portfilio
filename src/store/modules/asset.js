@@ -52,12 +52,17 @@ const actions = {
       const response = await getAssetList({
         asset_type: params.category,
         is_active: params.status !== 'inactive',
+        code: params.code || undefined,
+        name: params.name || undefined,
         skip: ((params.page || 1) - 1) * (params.pageSize || 20),
         limit: params.pageSize || 20
       });
       
-      // 后端返回的数据可能被包装 in data 字段中
-      const rawList = Array.isArray(response) ? response : (response.data || []);
+      // 后端返回 PageData：{ items: [], total, page, page_size, pages }
+      const pageData = Array.isArray(response) ? null : (response.data || null);
+      const rawList = pageData && pageData.items ? pageData.items
+        : (Array.isArray(response) ? response : (response.data || []));
+      const total = pageData && pageData.total != null ? pageData.total : rawList.length;
       const list = rawList.map(item => ({
         id: item.id,
         code: item.code,
@@ -77,7 +82,7 @@ const actions = {
       }));
       
       commit('SET_ASSET_LIST', list);
-      commit('SET_TOTAL', list.length);
+      commit('SET_TOTAL', total);
       return list;
     } catch (error) {
       console.error('获取资产列表失败:', error);

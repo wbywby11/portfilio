@@ -226,6 +226,7 @@
 <script>
 import dayjs from 'dayjs';
 import * as echarts from 'echarts';
+import { downsampleParallel } from '@/utils/downsample';
 
 export default {
   name: 'BacktestDetailDialog',
@@ -260,37 +261,15 @@ export default {
       chartType: 'both', // total: 总净值, unit: 单位净值, both: 双轴对比
       weightChartType: 'stacked', // stacked: 堆叠面积图, line: 折线图
       drawdownData: [], // 回撤数据
-      volatilityData: [] // 波动率数据
+      volatilityData: [], // 波动率数据
+      cachedAllPositions: [] // 缓存展开后的持仓数组，避免分页时重复遍历
     };
   },
   computed: {
     paginatedPositions() {
-      if (!this.record.result.positions) return [];
-      
-      // 将每个日期的持仓展开为单独的行
-      let allPositions = [];
-      this.record.result.positions.forEach(positionRecord => {
-        const date = positionRecord.date;
-        if (positionRecord.positions && Array.isArray(positionRecord.positions)) {
-          positionRecord.positions.forEach(pos => {
-            allPositions.push({
-              date: date,
-              asset_code: pos.asset_code,
-              asset_name: pos.asset_name,
-              weight: pos.weight,
-              shares: pos.shares,
-              price: pos.price,
-              market_value: pos.market_value, // 使用 market_value 替代 value
-              portfolio_value: positionRecord.portfolio_value,
-              rebalance_reason: positionRecord.rebalance_reason
-            });
-          });
-        }
-      });
-      
       const start = (this.positionCurrentPage - 1) * this.positionPageSize;
       const end = start + this.positionPageSize;
-      return allPositions.slice(start, end);
+      return this.cachedAllPositions.slice(start, end);
     },
     correlationAssets() {
       if (!this.record.result.correlation_matrix) return [];
@@ -311,14 +290,7 @@ export default {
       });
     },
     totalPositionRecords() {
-      if (!this.record.result.positions) return 0;
-      let count = 0;
-      this.record.result.positions.forEach(positionRecord => {
-        if (positionRecord.positions && Array.isArray(positionRecord.positions)) {
-          count += positionRecord.positions.length;
-        }
-      });
-      return count;
+      return this.cachedAllPositions.length;
     },
     hasWeightChanges() {
       return (
@@ -328,6 +300,35 @@ export default {
     }
   },
   watch: {
+    'record.result.positions': {
+      handler(positions) {
+        if (!positions) {
+          this.cachedAllPositions = [];
+          return;
+        }
+        let all = [];
+        positions.forEach(positionRecord => {
+          const date = positionRecord.date;
+          if (positionRecord.positions && Array.isArray(positionRecord.positions)) {
+            positionRecord.positions.forEach(pos => {
+              all.push({
+                date: date,
+                asset_code: pos.asset_code,
+                asset_name: pos.asset_name,
+                weight: pos.weight,
+                shares: pos.shares,
+                price: pos.price,
+                market_value: pos.market_value,
+                portfolio_value: positionRecord.portfolio_value,
+                rebalance_reason: positionRecord.rebalance_reason
+              });
+            });
+          }
+        });
+        this.cachedAllPositions = all;
+      },
+      immediate: true
+    },
     value(val) {
       this.visible = val;
       if (val) {
@@ -437,8 +438,8 @@ export default {
       const returnCurve = this.record.result.return_curve || [];
       
       // 准备数据
-      const dates = equityCurve.map(item => dayjs(item.date).format('MM-DD'));
-      const unitValues = equityCurve.map(item => item.unit_value);
+      let dates = equityCurve.map(item => dayjs(item.date).format('MM-DD'));
+      let unitValues = equityCurve.map(item => item.unit_value);
       
       // 累计收益率数据（从 return_curve 获取）
       let returnValues = [];
@@ -449,6 +450,16 @@ export default {
         // 如果没有 return_curve，从 unit_value 计算
         const initialValue = unitValues[0] || 1;
         returnValues = unitValues.map(val => ((val - initialValue) / initialValue) * 100);
+      }
+
+      // 降采样：限制最多 500 个数据点，避免大数据量时 ECharts 卡顿
+      const maxPoints = 500;
+      if (dates.length > maxPoints) {
+        const sampledUnit = downsampleParallel(dates, unitValues, maxPoints);
+        const sampledReturn = downsampleParallel(dates, returnValues, maxPoints);
+        dates = sampledUnit.dates;
+        unitValues = sampledUnit.values;
+        returnValues = sampledReturn.values;
       }
       
       // 准备图表配置
@@ -815,8 +826,13 @@ export default {
         return;
       }
       
-      const dates = this.drawdownData.map(item => dayjs(item.date).format('MM-DD'));
-      const values = this.drawdownData.map(item => item.value);
+      let dates = this.drawdownData.map(item => dayjs(item.date).format('MM-DD'));
+      let values = this.drawdownData.map(item => item.value);
+
+      // 降采样：限制最多 500 个数据点
+      const sampledDD = downsampleParallel(dates, values, 500);
+      dates = sampledDD.dates;
+      values = sampledDD.values;
       
       const option = {
         tooltip: {
@@ -883,11 +899,23 @@ export default {
       if (!this.volatilityChart || this.volatilityData.length === 0) {
         return;
       }
-      
-      const dates = this.volatilityData.map(item => dayjs(item.date).format('MM-DD'));
-      const values = this.volatilityData.map(item => item.value);
+
+      // 降采样波动率数据：保留完整元数据用于 tooltip 和 markPoint
+      const MAX_VOL_POINTS = 500;
+      let sampledVolData = this.volatilityData;
+      if (this.volatilityData.length > MAX_VOL_POINTS) {
+        const step = (this.volatilityData.length - 1) / (MAX_VOL_POINTS - 1);
+        const indices = [];
+        for (let k = 0; k < MAX_VOL_POINTS; k++) {
+          indices.push(Math.round(k * step));
+        }
+        sampledVolData = indices.map(idx => this.volatilityData[idx]);
+      }
+
+      const dates = sampledVolData.map(item => dayjs(item.date).format('MM-DD'));
+      const values = sampledVolData.map(item => item.value);
       const targetVolPercent = 5; // 目标波动率默认 5%，可从 record 扩展
-      const volResetPoints = this.volatilityData
+      const volResetPoints = sampledVolData
         .map((item, i) => (item.isVolReset ? { name: '波动率重置', coord: [i, item.value] } : null))
         .filter(Boolean);
       
@@ -901,7 +929,7 @@ export default {
             const date = params[0].axisValue;
             const value = params[0].value;
             const idx = params[0].dataIndex;
-            const isReset = this.volatilityData[idx] && this.volatilityData[idx].isVolReset;
+            const isReset = sampledVolData[idx] && sampledVolData[idx].isVolReset;
             return `${date}<br />组合波动率: ${(value != null ? value : 0).toFixed(2)}%<br />目标波动率: ${targetVolPercent}%${isReset ? '<br /><span style="color:#E6A23C">◆ 波动率重置调仓日</span>' : ''}`;
           }
         },

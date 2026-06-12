@@ -190,21 +190,24 @@ export default {
   computed: {
     ...mapGetters('user', ['userName']),
     ...mapState('portfolio', ['portfolioList']),
-    ...mapState('strategy', ['strategyList']),
+    // strategy 模块的 state 名为 strategyModelList，仅有 getter 别名 strategyList，
+    // 使用 mapState('strategy', ['strategyList']) 会拿到 undefined 并在 .length 时崩溃。
+    ...mapGetters('strategy', ['strategyList']),
     ...mapState('asset', ['assetList']),
     portfolioCount() {
-      return this.portfolioList.length;
+      return (this.portfolioList || []).length;
     },
     strategyCount() {
-      return this.strategyList.length;
+      return (this.strategyList || []).length;
     },
     assetCount() {
-      return this.assetList.length;
+      return (this.assetList || []).length;
     },
     avgReturn() {
-      if (this.portfolioList.length === 0) return 0;
-      const sum = this.portfolioList.reduce((acc, p) => acc + (p.totalReturn || 0), 0);
-      return sum / this.portfolioList.length;
+      const list = this.portfolioList || [];
+      if (list.length === 0) return 0;
+      const sum = list.reduce((acc, p) => acc + (p.totalReturn || 0), 0);
+      return sum / list.length;
     }
   },
   created() {
@@ -213,7 +216,8 @@ export default {
   methods: {
     async loadData() {
       await this.$store.dispatch('portfolio/fetchPortfolioList');
-      await this.$store.dispatch('strategy/fetchStrategyList');
+      // strategy 模块的实际 action 名为 fetchStrategyModelList（无 fetchStrategyList）
+      await this.$store.dispatch('strategy/fetchStrategyModelList');
       await this.$store.dispatch('asset/fetchAssetList');
       
       this.recentPortfolios = this.portfolioList.slice(0, 5).map(p => ({

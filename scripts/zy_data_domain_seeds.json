@@ -1,0 +1,51 @@
+{
+  "dwd_ast_info": [
+    {
+      "AST_CD": "019601.IB",
+      "AST_NM": "25国债03",
+      "AST_TYPE": "BOND",
+      "AST_SUB_TYPE": "CGB",
+      "ISR_ID": "ISR000001",
+      "CCY": "CNY",
+      "LIST_DT": "20250115",
+      "MATURITY_DT": "20350115",
+      "COUPON_RATE": 0.0195,
+      "ISSUE_AMT": 50000000000,
+      "MARKET": "银行间",
+      "BOND_TERM": 10
+    }
+  ],
+  "dwd_isr_institution": [
+    {
+      "ISR_ID": "ISR000001",
+      "ISR_NM": "中华人民共和国财政部",
+      "ISR_SHORT_NM": "财政部",
+      "ISR_TYPE": "SOVEREIGN",
+      "CREDIT_CD": "11100000000100176T",
+      "INDUSTRY_CD": "S9510",
+      "REG_PROV": "北京",
+      "LIST_FLAG": "N",
+      "REG_CAP_AMT": 0,
+      "EST_DT": "19490701",
+      "BIZ_DT": "20250324"
+    }
+  ],
+  "dwd_ptl_info": [
+    {
+      "PORT_ID": "PORT001",
+      "PORT_NM": "稳健配置一号",
+      "PORT_SHORT_NM": "稳健1号",
+      "PORT_TYPE": "MIXED",
+      "RISK_LVL": "R3",
+      "ESTAB_DT": "20210601",
+      "CCY": "CNY",
+      "BENCHMARK": "中债综合指数*70%+沪深300*30%",
+      "SHR_NAV": 1.0512,
+      "ACC_NAV": 1.1835,
+      "AUM": 1250000000,
+      "MGR_INST": "ISR000008",
+      "CUSTODY_BANK": "ISR000003",
+      "STATUS": "ACTIVE"
+    }
+  ]
+}

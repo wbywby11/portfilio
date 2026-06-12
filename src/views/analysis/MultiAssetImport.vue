@@ -66,13 +66,18 @@
           </el-form-item>
         </el-form>
         <vxe-table
+          ref="previewTable"
           border
           stripe
           max-height="400"
           :data="previewAssets"
           :scroll-y="{enabled: true}"
           show-overflow="title"
+          :checkbox-config="{ showHeader: true, checkAll: true, highlight: true, range: false, trigger: 'row' }"
+          @checkbox-all="onCheckboxSelectionChange"
+          @checkbox-change="onCheckboxSelectionChange"
         >
+          <vxe-column type="checkbox" width="50" align="center" />
           <vxe-column field="code" title="资产代码" width="140" />
           <vxe-column field="name" title="资产名称" min-width="160" show-overflow="title" />
           <vxe-column field="price_count" title="行情条数" width="100" />
@@ -123,7 +128,7 @@
           :status="importProgress === 100 ? 'success' : undefined"
         />
         <div style="margin-top: 12px; color: #606266;">
-          当前：{{ currentImportAsset || '-' }} （{{ importDoneCount }}/{{ previewAssets.length }}）
+          当前：{{ currentImportAsset || '-' }} （{{ importDoneCount }}/{{ importTotalCount }}）
         </div>
         <div
           v-if="rowImportDetailLine"
@@ -167,6 +172,8 @@ export default {
       fileList: [],
       selectedFile: null,
       previewAssets: [],
+      selectedAssets: [],
+      importTotalCount: 0,
       globalOverwriteName: false,
       globalReplaceExisting: false,
       parsing: false,
@@ -175,13 +182,15 @@ export default {
       currentImportAsset: '',
       importErrors: [],
       rowImportDetailLine: '',
-      _rowImportProgressTimer: null
+      _rowImportProgressTimer: null,
+      /** 进度轮询与当前 progress_id 绑定，丢弃过期请求的响应 */
+      _rowImportPollProgressId: null
     };
   },
   computed: {
     importProgress() {
-      if (this.previewAssets.length === 0) return 0;
-      return Math.round((this.importDoneCount / this.previewAssets.length) * 100);
+      if (!this.importTotalCount) return 0;
+      return Math.round((this.importDoneCount / this.importTotalCount) * 100);
     }
   },
   beforeDestroy() {
@@ -195,6 +204,7 @@ export default {
       return `p-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     },
     stopRowImportProgressPoll() {
+      this._rowImportPollProgressId = null;
       if (this._rowImportProgressTimer) {
         clearInterval(this._rowImportProgressTimer);
         this._rowImportProgressTimer = null;
@@ -203,13 +213,14 @@ export default {
     startRowImportProgressPoll(progressId) {
       this.stopRowImportProgressPoll();
       if (!progressId) return;
+      this._rowImportPollProgressId = progressId;
       let hadSnap = false;
-      let inFlight = false;
       const tick = () => {
-        if (inFlight) return;
-        inFlight = true;
-        getPriceImportProgress(progressId)
+        const id = this._rowImportPollProgressId;
+        if (!id) return;
+        getPriceImportProgress(id)
           .then((res) => {
+            if (this._rowImportPollProgressId !== id) return;
             const snap = unwrapPriceImportProgressPayload(res);
             if (snap) {
               hadSnap = true;
@@ -219,12 +230,10 @@ export default {
             }
           })
           .catch(() => {
+            if (this._rowImportPollProgressId !== id) return;
             if (!hadSnap) {
               this.rowImportDetailLine = '无法拉取进度（请检查网络或登录态）';
             }
-          })
-          .finally(() => {
-            inFlight = false;
           });
       };
       tick();
@@ -245,6 +254,7 @@ export default {
           replace_existing: false
         }));
         this.previewAssets = assets;
+        this.selectAllPreviewRows();
       } catch (err) {
         this.$message.error('解析失败：' + (err.response?.data?.detail || err.message || '未知错误'));
       } finally {
@@ -255,6 +265,7 @@ export default {
       this.selectedFile = null;
       this.fileList = [];
       this.previewAssets = [];
+      this.selectedAssets = [];
     },
     applyGlobalToAll() {
       this.previewAssets.forEach(a => {
@@ -263,13 +274,40 @@ export default {
       });
       this.$message.success('已应用到全部');
     },
+    onCheckboxSelectionChange() {
+      const table = this.$refs.previewTable;
+      if (table && typeof table.getCheckboxRecords === 'function') {
+        this.selectedAssets = table.getCheckboxRecords();
+      }
+    },
+    selectAllPreviewRows() {
+      this.$nextTick(() => {
+        const table = this.$refs.previewTable;
+        if (table && typeof table.setAllCheckboxRow === 'function') {
+          table.setAllCheckboxRow(true);
+          this.selectedAssets = table.getCheckboxRecords();
+        } else {
+          this.selectedAssets = this.previewAssets.slice();
+        }
+      });
+    },
     async startImport() {
       if (!this.selectedFile || this.previewAssets.length === 0) {
         this.$message.warning('请先选择文件');
         return;
       }
+      // 同步一次勾选状态，避免微任务丢失
+      this.onCheckboxSelectionChange();
+      const targets = this.selectedAssets && this.selectedAssets.length
+        ? this.selectedAssets.slice()
+        : [];
+      if (targets.length === 0) {
+        this.$message.warning('请至少勾选一个资产');
+        return;
+      }
       this.importing = true;
       this.importDoneCount = 0;
+      this.importTotalCount = targets.length;
       this.importErrors = [];
       this.rowImportDetailLine = '';
       try {
@@ -281,8 +319,8 @@ export default {
           codeToData[a.code] = a;
         });
 
-        for (let i = 0; i < this.previewAssets.length; i++) {
-          const p = this.previewAssets[i];
+        for (let i = 0; i < targets.length; i++) {
+          const p = targets[i];
           this.currentImportAsset = `${p.name} (${p.code})`;
           const full = codeToData[p.code];
           if (!full || !full.prices || full.prices.length === 0) {
@@ -305,12 +343,20 @@ export default {
           } catch (err) {
             this.importErrors.push(`${p.code}: ${err.response?.data?.detail || err.message || '导入失败'}`);
           } finally {
+            // 后端是同步的，POST返回时写入已完成，做一次最终进度拉取来更新UI
+            try {
+              const finalRes = await getPriceImportProgress(progressId);
+              const finalSnap = unwrapPriceImportProgressPayload(finalRes);
+              if (finalSnap) {
+                this.rowImportDetailLine = formatPriceImportProgressLine(finalSnap);
+              }
+            } catch (e) { /* 忽略最终拉取失败 */ }
             this.stopRowImportProgressPoll();
           }
           this.importDoneCount++;
         }
 
-        this.$message.success(`导入完成：${this.importDoneCount}/${this.previewAssets.length} 个资产`);
+        this.$message.success(`导入完成：${this.importDoneCount}/${targets.length} 个资产`);
       } catch (err) {
         this.$message.error('导入失败：' + (err.response?.data?.detail || err.message || '未知错误'));
       } finally {

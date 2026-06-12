@@ -176,39 +176,56 @@
           
           <!-- 显示策略参数信息 -->
           <el-form-item v-if="selectedStrategyInfo && selectedStrategyInfo.parameters" label="策略参数">
-            <el-card shadow="never" style="background-color: #f5f7fa;">
-              <div slot="header" style="font-size: 14px; font-weight: 500;">
-                <span>{{ selectedStrategyInfo.name || '策略参数' }}</span>
-                <span style="margin-left: 10px; color: #909399; font-size: 12px;">
-                  ({{ selectedStrategyInfo.template_name || selectedStrategyInfo.template_code }})
-                </span>
-              </div>
-              <el-descriptions :column="2" border size="small">
-                <el-descriptions-item
-                  v-for="(value, key) in selectedStrategyInfo.parameters"
-                  :key="key"
-                  :label="getParameterLabel(key)"
-                  :span="1"
-                >
-                  <template v-if="typeof value === 'object' && value !== null && !Array.isArray(value)">
-                    <!-- 字典类型参数，显示为键值对 -->
-                    <div v-if="Object.keys(value).length > 0" style="font-size: 12px;">
-                      <div v-for="(dictValue, dictKey) in value" :key="dictKey" style="margin-bottom: 4px;">
-                        <el-tag size="mini" style="margin-right: 4px;">{{ dictKey }}</el-tag>
-                        <span>{{ formatParameterValue(dictValue) }}</span>
+            <!-- 主观调仓策略：折叠时仅显示摘要行 -->
+            <div v-if="isManualAllocationStrategy && !manualParamsExpanded" class="manual-params-summary">
+              <el-tag size="small" type="info">主观配置</el-tag>
+              <span class="summary-text">{{ manualParamsAssetCount }} 个资产 · {{ manualParamsAdjustmentCount }} 个调仓日</span>
+              <el-button type="text" size="mini" @click="manualParamsExpanded = true">
+                展开参数详情 <i class="el-icon-arrow-down"></i>
+              </el-button>
+              <el-tooltip content="主观调仓策略可在下方权重初始化与调仓矩阵中查看与编辑完整参数" placement="top">
+                <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+              </el-tooltip>
+            </div>
+            <!-- 非主观策略，或主观策略展开后：显示完整参数详情 -->
+            <template v-if="!isManualAllocationStrategy || manualParamsExpanded">
+              <el-card shadow="never" style="background-color: #f5f7fa;">
+                <div slot="header" style="font-size: 14px; font-weight: 500;">
+                  <span>{{ selectedStrategyInfo.name || '策略参数' }}</span>
+                  <span style="margin-left: 10px; color: #909399; font-size: 12px;">
+                    ({{ selectedStrategyInfo.template_name || selectedStrategyInfo.template_code }})
+                  </span>
+                </div>
+                <el-descriptions :column="2" border size="small">
+                  <el-descriptions-item
+                    v-for="(value, key) in selectedStrategyInfo.parameters"
+                    :key="key"
+                    :label="getParameterLabel(key)"
+                    :span="1"
+                  >
+                    <template v-if="typeof value === 'object' && value !== null && !Array.isArray(value)">
+                      <!-- 字典类型参数，显示为键值对 -->
+                      <div v-if="Object.keys(value).length > 0" style="font-size: 12px;">
+                        <div v-for="(dictValue, dictKey) in value" :key="dictKey" style="margin-bottom: 4px;">
+                          <el-tag size="mini" style="margin-right: 4px;">{{ dictKey }}</el-tag>
+                          <span>{{ formatParameterValue(dictValue) }}</span>
+                        </div>
                       </div>
-                    </div>
-                    <span v-else style="color: #909399;">空配置</span>
-                  </template>
-                  <template v-else>
-                    {{ formatParameterValue(value) }}
-                  </template>
-                </el-descriptions-item>
-              </el-descriptions>
-            </el-card>
-            <el-tooltip content="策略模型配置的参数，这些参数将用于回测计算" placement="top">
-              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-            </el-tooltip>
+                      <span v-else style="color: #909399;">空配置</span>
+                    </template>
+                    <template v-else>
+                      {{ formatParameterValue(value) }}
+                    </template>
+                  </el-descriptions-item>
+                </el-descriptions>
+              </el-card>
+              <el-button v-if="isManualAllocationStrategy" type="text" size="mini" @click="manualParamsExpanded = false" style="margin-top: 4px;">
+                收起 <i class="el-icon-arrow-up"></i>
+              </el-button>
+              <el-tooltip content="策略模型配置的参数，这些参数将用于回测计算" placement="top">
+                <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
+              </el-tooltip>
+            </template>
           </el-form-item>
 
           <!-- 单策略下显示动量选择器参数（多策略时使用下方「各策略选择器参数」避免重复） -->
@@ -474,6 +491,12 @@
                 </el-form>
               </el-card>
             </el-form-item>
+            <!-- 主观策略：调仓日执行方式（步进暂停 vs 一次执行到底） -->
+            <el-form-item label="调仓日执行方式">
+              <el-checkbox v-model="form.manual_preset_step">
+                预设调仓日步进暂停（在每档调仓日当日推演完成后暂停，便于查看绩效后再继续；取消勾选则一次执行到底）
+              </el-checkbox>
+            </el-form-item>
             <!-- 主观策略：预设调仓日期与权重（仅在这些日期调仓） -->
             <el-form-item label="预设调仓日期与权重">
               <el-card shadow="never" style="background-color: #f0f9ff; border: 1px solid #b3d8ff;">
@@ -482,89 +505,14 @@
                 </div>
                 <div style="margin-bottom: 12px; color: #606266; font-size: 13px;">
                   主观策略<strong>不设</strong>周期性调仓与波动率阈值重置，仅在下方预设的日期调仓。若策略模型中已配置调仓日与权重，将自动带出；否则请在此添加。每个调仓日可填预设权重——<strong>回测运行到该日会暂停</strong>，可查看绩效后按预设权重调仓并继续。请至少添加一个调仓日。
-                  <span v-if="Object.keys(maxWeightDict).length > 0" style="color: #909399;">各资产权重按指数编制规则设上限，悬停输入框可查看上限。</span>
                 </div>
-                <el-form :model="form" label-width="80px" style="margin-bottom: 0;">
-                <div
-                  v-for="(adj, idx) in form.manual_weight_adjustments"
-                  :key="idx"
-                  style="border: 1px solid #DCDFE6; border-radius: 4px; padding: 12px; margin-bottom: 12px; background: #fff;"
-                >
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <span style="font-weight: 500;">调仓日 {{ idx + 1 }}</span>
-                    <el-button type="text" size="small" @click="removeManualAdjustment(idx)" style="color: #F56C6C;">删除</el-button>
-                  </div>
-                  <el-row :gutter="16">
-                    <el-col :span="8">
-                      <el-form-item label="日期" label-width="80px">
-                        <el-date-picker
-                          v-model="adj.date"
-                          type="date"
-                          placeholder="选择调仓日期（仅工作日）"
-                          value-format="yyyy-MM-dd"
-                          :picker-options="rebalanceDatePickerOptions"
-                          style="width: 100%;"
-                          @change="$refs.form && $refs.form.clearValidate()"
-                        ></el-date-picker>
-                      </el-form-item>
-                    </el-col>
-                    <el-col :span="8">
-                      <el-form-item label="是否归一化" label-width="90px">
-                        <el-switch v-model="adj.auto_normalize"></el-switch>
-                        <el-tooltip content="可选。开启则将该日权重归一化至 100%；关闭则按填写值使用。" placement="top">
-                          <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-                        </el-tooltip>
-                      </el-form-item>
-                    </el-col>
-                  </el-row>
-                  <el-form-item label="资产权重" label-width="80px">
-                    <div style="display: flex; flex-wrap: wrap; gap: 12px;">
-                      <div
-                        v-for="code in (selectedStrategyInfo && selectedStrategyInfo.asset_codes) || []"
-                        :key="code"
-                        style="display: flex; align-items: center; gap: 4px; min-width: 140px;"
-                      >
-                        <span style="font-size: 12px; min-width: 120px; overflow: hidden; text-overflow: ellipsis;" :title="(selectedStrategyInfo.asset_names && selectedStrategyInfo.asset_names[code]) ? code + ' - ' + selectedStrategyInfo.asset_names[code] : code">{{ (selectedStrategyInfo.asset_names && selectedStrategyInfo.asset_names[code]) ? code + ' - ' + selectedStrategyInfo.asset_names[code] : code }}</span>
-                        <el-tooltip v-if="maxWeightDict[code] != null" :content="'指数编制规则上限 ' + ((maxWeightDict[code] || 0) * 100).toFixed(0) + '%'" placement="top">
-                          <span>
-                            <el-input-number
-                              v-model="adj.weights[code]"
-                              :min="0"
-                              :max="maxWeightDict[code] != null ? maxWeightDict[code] : 1"
-                              :step="0.05"
-                              :precision="4"
-                              size="small"
-                              controls-position="right"
-                              style="width: 90px;"
-                              @change="onAdjustmentWeightChange(idx)"
-                            ></el-input-number>
-                          </span>
-                        </el-tooltip>
-                        <el-input-number
-                          v-else
-                          v-model="adj.weights[code]"
-                          :min="0"
-                          :max="1"
-                          :step="0.05"
-                          :precision="4"
-                          size="small"
-                          controls-position="right"
-                          style="width: 90px;"
-                          @change="onAdjustmentWeightChange(idx)"
-                        ></el-input-number>
-                      </div>
-                    </div>
-                    <div v-if="getAdjustmentWeightSum(idx) !== null" style="margin-top: 8px; font-size: 12px;" :style="{ color: Math.abs(getAdjustmentWeightSum(idx) - 1) < 0.001 ? '#67C23A' : '#E6A23C' }">
-                      权重和：{{ (getAdjustmentWeightSum(idx) * 100).toFixed(2) }}%
-                      <span v-if="Math.abs(getAdjustmentWeightSum(idx) - 1) > 0.001 && adj.auto_normalize">（将自动归一化）</span>
-                      <span v-else-if="Math.abs(getAdjustmentWeightSum(idx) - 1) > 0.001 && !adj.auto_normalize">（不归一化，按填写值使用）</span>
-                    </div>
-                  </el-form-item>
-                </div>
-                <el-button type="primary" size="small" plain @click="addManualAdjustment">
-                  <i class="el-icon-plus"></i> 添加调仓日
-                </el-button>
-                </el-form>
+                <SubjectiveWeightsMatrixTable
+                  :asset-codes="(selectedStrategyInfo && selectedStrategyInfo.asset_codes) || []"
+                  :resolve-label="resolveSingleAssetLabel"
+                  :adjustments="form.manual_weight_adjustments"
+                  :max-leverage="runMaxLeverage || getMaxLeverageForStrategy(selectedStrategyInfo)"
+                  @update:adjustments="onManualAdjustmentsUpdate"
+                />
               </el-card>
             </el-form-item>
           </template>
@@ -583,6 +531,11 @@
                 style="width: 160px;"
               ></el-input-number>
               <span style="margin-left: 8px; color: #909399; font-size: 12px;">（主观策略：权重和不得超过此倍数；动量选择策略：资产权重按此倍数缩放，不归一化）</span>
+            </el-form-item>
+            <el-form-item label="调仓日执行方式">
+              <el-checkbox v-model="form.manual_preset_step">
+                预设调仓日步进暂停（在每档调仓日当日推演完成后暂停，便于查看绩效后再继续；取消勾选则一次执行到底，对所有主观策略生效）
+              </el-checkbox>
             </el-form-item>
             <el-form-item label="主观策略：预设调仓日期与权重">
               <el-card shadow="never" style="background-color: #f0f9ff; border: 1px solid #b3d8ff;">
@@ -644,75 +597,13 @@
                       </div>
                     </div>
                     <div style="font-size: 13px; font-weight: 500; margin-bottom: 8px; color: #303133;">预设调仓日期与权重</div>
-                    <div
-                      v-for="(adj, idx) in getMultiStrategyManualAdjustmentsList(s.id)"
-                      :key="idx"
-                      style="border: 1px solid #DCDFE6; border-radius: 4px; padding: 12px; margin-bottom: 12px; background: #fff;"
-                    >
-                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span style="font-weight: 500;">调仓日 {{ idx + 1 }}</span>
-                        <el-button type="text" size="small" @click="removeMultiStrategyManualAdjustment(s.id, idx)" style="color: #F56C6C;">删除</el-button>
-                      </div>
-                      <el-row :gutter="16">
-                        <el-col :span="8">
-                          <el-form-item label="日期" label-width="80px">
-                            <el-date-picker
-                              v-model="adj.date"
-                              type="date"
-                              placeholder="选择调仓日期"
-                              value-format="yyyy-MM-dd"
-                              :picker-options="rebalanceDatePickerOptions"
-                              style="width: 100%;"
-                            ></el-date-picker>
-                          </el-form-item>
-                        </el-col>
-                        <el-col :span="8">
-                          <el-form-item label="是否归一化" label-width="90px">
-                            <el-switch v-model="adj.auto_normalize"></el-switch>
-                          </el-form-item>
-                        </el-col>
-                      </el-row>
-                      <el-form-item label="资产权重" label-width="80px">
-                        <div style="display: flex; flex-wrap: wrap; gap: 12px;">
-                          <div
-                            v-for="code in (s.asset_codes || [])"
-                            :key="code"
-                            style="display: flex; align-items: center; gap: 4px; min-width: 140px;"
-                          >
-                            <span style="font-size: 12px; min-width: 120px; overflow: hidden; text-overflow: ellipsis;" :title="(s.asset_names && s.asset_names[code]) ? code + ' - ' + s.asset_names[code] : code">{{ (s.asset_names && s.asset_names[code]) ? code + ' - ' + s.asset_names[code] : code }}</span>
-                            <el-tooltip v-if="multiStrategyMaxWeightDict[code] != null" :content="'指数编制规则上限 ' + ((multiStrategyMaxWeightDict[code] || 0) * 100).toFixed(0) + '%'" placement="top">
-                              <el-input-number
-                                v-model="adj.weights[code]"
-                                :min="0"
-                                :max="multiStrategyMaxWeightDict[code] != null ? multiStrategyMaxWeightDict[code] : 1"
-                                :step="0.05"
-                                :precision="4"
-                                size="small"
-                                controls-position="right"
-                                style="width: 90px;"
-                              ></el-input-number>
-                            </el-tooltip>
-                            <el-input-number
-                              v-else
-                              v-model="adj.weights[code]"
-                              :min="0"
-                              :max="1"
-                              :step="0.05"
-                              :precision="4"
-                              size="small"
-                              controls-position="right"
-                              style="width: 90px;"
-                            ></el-input-number>
-                          </div>
-                        </div>
-                        <div v-if="getMultiStrategyAdjustmentWeightSum(s.id, idx) !== null" style="margin-top: 8px; font-size: 12px;" :style="{ color: Math.abs(getMultiStrategyAdjustmentWeightSum(s.id, idx) - 1) < 0.001 ? '#67C23A' : '#E6A23C' }">
-                          权重和：{{ (getMultiStrategyAdjustmentWeightSum(s.id, idx) * 100).toFixed(2) }}%
-                        </div>
-                      </el-form-item>
-                    </div>
-                    <el-button type="primary" size="small" plain @click="addMultiStrategyManualAdjustment(s.id)">
-                      <i class="el-icon-plus"></i> 添加调仓日
-                    </el-button>
+                    <SubjectiveWeightsMatrixTable
+                      :asset-codes="s.asset_codes || []"
+                      :resolve-label="(code) => resolveMultiAssetLabel(s, code)"
+                      :adjustments="getMultiStrategyManualAdjustmentsList(s.id)"
+                      :max-leverage="getEffectiveMaxLeverage(s)"
+                      @update:adjustments="(val) => onMultiStrategyAdjustmentsUpdate(s.id, val)"
+                    />
                     </el-form>
                   </el-collapse-item>
                 </el-collapse>
@@ -1024,12 +915,14 @@
 import { mapState } from 'vuex';
 import dayjs from 'dayjs';
 import BacktestResult from './BacktestResult.vue';
+import SubjectiveWeightsMatrixTable from '@/components/SubjectiveWeightsMatrixTable.vue';
 import { getMaxWeightsByCodes, computeMetricsFromSnapshots } from '@/api/strategy';
 
 export default {
   name: 'BacktestExecution',
   components: {
-    BacktestResult
+    BacktestResult,
+    SubjectiveWeightsMatrixTable
   },
   data() {
     return {
@@ -1067,7 +960,9 @@ export default {
         // 多策略对比：每个主观策略的权重初始化（本次回测）{ [strategyId]: { [code]: number } }，默认值为策略模型默认权重
         multiStrategyRunManualWeights: {},
         // 杠杆倍数限制（本次回测，不填则使用策略模型配置；用于动态限制初始化权重、预设调仓日权重、步进调仓权重）
-        run_max_leverage: null
+        run_max_leverage: null,
+        // 主观策略：是否在调仓日暂停步进（默认暂停；取消勾选则一次执行到底）
+        manual_preset_step: true
       },
       executing: false,
       backtestResults: null,
@@ -1107,6 +1002,8 @@ export default {
       originalRunManualWeights: null,       // 单策略：从策略加载的权重初始化
       originalMultiStrategyManualAdjustments: {},   // 多策略：{ [strategyId]: [...] }
       originalMultiStrategyRunManualWeights: {},   // 多策略：{ [strategyId]: {...} }
+      // 主观调仓策略参数卡片折叠状态：默认折叠，仅显示摘要
+      manualParamsExpanded: false,
       // 同步确认对话框
       syncConfirmDialog: {
         visible: false,
@@ -1259,6 +1156,34 @@ export default {
     // 资产池大小
     assetPoolSize() {
       return this.assetPoolForSelection.length || 100;
+    },
+    // 主观调仓策略参数摘要：资产数量（取自策略模型 manual_weights 键数）
+    manualParamsAssetCount() {
+      const params = (this.selectedStrategyInfo && this.selectedStrategyInfo.parameters) || {};
+      const mw = params.manual_weights;
+      if (mw && typeof mw === 'object') {
+        return Object.keys(mw).length;
+      }
+      // 兜底：使用本次回测的权重初始化（form.run_manual_weights）
+      const rmw = this.form && this.form.run_manual_weights;
+      if (rmw && typeof rmw === 'object') {
+        return Object.keys(rmw).length;
+      }
+      return 0;
+    },
+    // 主观调仓策略参数摘要：调仓日数量（取自策略模型 manual_weight_adjustments 数组长度）
+    manualParamsAdjustmentCount() {
+      const params = (this.selectedStrategyInfo && this.selectedStrategyInfo.parameters) || {};
+      const adjs = params.manual_weight_adjustments;
+      if (Array.isArray(adjs)) {
+        return adjs.length;
+      }
+      // 兜底：使用本次回测的调仓数组（form.manual_weight_adjustments）
+      const fAdjs = this.form && this.form.manual_weight_adjustments;
+      if (Array.isArray(fAdjs)) {
+        return fAdjs.length;
+      }
+      return 0;
     },
     // 是否为主观配置策略（支持权重初始化与交互式权重调整）
     isManualAllocationStrategy() {
@@ -1652,6 +1577,34 @@ export default {
       if (!adj || !adj.weights) return null;
       return Object.values(adj.weights).reduce((s, v) => s + (Number(v) || 0), 0);
     },
+    /** 单策略主观：解析资产代码到展示名称 */
+    resolveSingleAssetLabel(code) {
+      const s = this.selectedStrategyInfo;
+      if (s && s.asset_names && s.asset_names[code]) {
+        return code + ' - ' + s.asset_names[code];
+      }
+      return code;
+    },
+    /** 多策略主观：解析资产代码到展示名称 */
+    resolveMultiAssetLabel(strategy, code) {
+      if (strategy && strategy.asset_names && strategy.asset_names[code]) {
+        return code + ' - ' + strategy.asset_names[code];
+      }
+      return code;
+    },
+    /** 矩阵表更新单策略预设调仓数据 */
+    onManualAdjustmentsUpdate(val) {
+      this.form.manual_weight_adjustments = Array.isArray(val) ? val : [];
+      if (this.$refs.form) this.$refs.form.clearValidate();
+    },
+    /** 矩阵表更新多策略某个主观策略的预设调仓数据 */
+    onMultiStrategyAdjustmentsUpdate(strategyId, val) {
+      const m = this.form.multiStrategyManualAdjustments || {};
+      this.$set(this.form, 'multiStrategyManualAdjustments', {
+        ...m,
+        [strategyId]: Array.isArray(val) ? val : []
+      });
+    },
     /** 从策略模型取最大杠杆（默认 4 = 400%） */
     getMaxLeverageForStrategy(strategy) {
       if (!strategy) return 4;
@@ -1773,6 +1726,14 @@ export default {
           this.$message.warning('多策略对比最多选择5个策略，已自动保留前5个');
           this.form.strategy_ids = this.form.strategy_ids.slice(0, 5);
         }
+        
+        // 为多策略模式的所有策略构建 asset_names 映射
+        this.$nextTick(async () => {
+          const strategies = this.selectedStrategies || [];
+          for (const strategy of strategies) {
+            await this.buildAssetNamesForStrategy(strategy);
+          }
+        });
       } else {
         // 单策略模式：确保 strategy_ids 是单个值
         if (Array.isArray(this.form.strategy_ids)) {
@@ -1782,9 +1743,9 @@ export default {
       this.updateSelectedStrategyInfo();
     },
     async updateSelectedStrategyInfo() {
-      // 更新选中的策略信息（用于显示资产池和参数等）
+      // 更新选中的策略信息(用于显示资产池和参数等)
       let strategyId = null;
-      
+          
       if (this.form.backtest_mode === 'single') {
         // 单策略模式
         strategyId = Array.isArray(this.form.strategy_ids) 
@@ -1796,7 +1757,7 @@ export default {
           strategyId = this.form.strategy_ids[0];
         }
       }
-      
+          
       if (strategyId) {
         // 先从列表中查找
         const strategy = this.strategyList.find(s => s.id === strategyId);
@@ -1804,7 +1765,7 @@ export default {
         const isManual = code === 'manual_allocation' || code === 'manual_allocation_strategy'
           || (code.toLowerCase && code.toLowerCase().includes('manual') && code.toLowerCase().includes('allocation'));
         const hasManualWeights = strategy && strategy.parameters && typeof strategy.parameters.manual_weights === 'object' && strategy.parameters.manual_weights !== null;
-        // 列表信息不完整，或为主观配置策略时拉取完整策略（保证权重初始化与预设调仓日能带出）
+        // 列表信息不完整,或为主观配置策略时拉取完整策略(保证权重初始化与预设调仓日能带出)
         const needFull = strategy && (
           !strategy.parameters ||
           !strategy.parameter_labels ||
@@ -1814,14 +1775,20 @@ export default {
           try {
             const fullStrategy = await this.$store.dispatch('strategy/fetchStrategyModel', strategyId);
             this.selectedStrategyInfo = fullStrategy;
+            // 构建 asset_names 映射
+            await this.buildAssetNamesForStrategy(this.selectedStrategyInfo);
             this.initSelectionParams(fullStrategy);
           } catch (error) {
             console.error('获取策略详情失败:', error);
             this.selectedStrategyInfo = strategy;
+            // 构建 asset_names 映射
+            await this.buildAssetNamesForStrategy(this.selectedStrategyInfo);
             this.initSelectionParams(strategy);
           }
         } else {
           this.selectedStrategyInfo = strategy;
+          // 构建 asset_names 映射
+          await this.buildAssetNamesForStrategy(this.selectedStrategyInfo);
           this.initSelectionParams(strategy);
         }
       } else {
@@ -1844,7 +1811,37 @@ export default {
         this.initMultiStrategySelectionParams();
       }
     },
-    /** 从模型带出权重初始化到 form.run_manual_weights，供本次回测使用或覆盖 */
+    /** 为策略构建 asset_names 映射(从资产库获取名称) */
+    async buildAssetNamesForStrategy(strategy) {
+      if (!strategy || !strategy.asset_codes || strategy.asset_codes.length === 0) {
+        return;
+      }
+      // 如果已有 asset_names,跳过
+      if (strategy.asset_names && Object.keys(strategy.asset_names).length > 0) {
+        return;
+      }
+      try {
+        // 从资产库获取所有资产选项
+        const assetOptions = await this.$store.dispatch('asset/fetchAssetOptions');
+        // 构建 code -> name 映射
+        const assetNames = {};
+        strategy.asset_codes.forEach(code => {
+          const asset = assetOptions.find(a => a.code === code);
+          assetNames[code] = asset ? asset.name : code;
+        });
+        // 设置到策略对象上
+        this.$set(strategy, 'asset_names', assetNames);
+      } catch (error) {
+        console.error('获取资产名称失败:', error);
+        // 失败时使用 code 作为 name
+        const assetNames = {};
+        strategy.asset_codes.forEach(code => {
+          assetNames[code] = code;
+        });
+        this.$set(strategy, 'asset_names', assetNames);
+      }
+    },
+    /** 从模型带出权重初始化到 form.run_manual_weights,供本次回测使用或覆盖 */
     syncRunManualWeights() {
       const codes = (this.selectedStrategyInfo && this.selectedStrategyInfo.asset_codes) || [];
       const fromModel = this.modelManualWeights;
@@ -3181,7 +3178,11 @@ export default {
                     weights: adj.weights && Object.keys(adj.weights).length > 0 ? { ...adj.weights } : undefined,
                     auto_normalize: adj.auto_normalize === true
                   }));
-                backtestData.step_phase = 'start';
+                // 仅在勾选了调仓日步进暂停时才以 step 模式启动；否则一次执行到底，不传 step_phase
+                if (this.form.manual_preset_step) {
+                  backtestData.step_phase = 'start';
+                  backtestData.manual_preset_step = true;
+                }
                 // 多策略主观：优先用本次回测权重初始化（multiStrategyRunManualWeights），无则用首个预设日权重
                 if (this.form.backtest_mode === 'multi') {
                   const runWeights = this.form.multiStrategyRunManualWeights && this.form.multiStrategyRunManualWeights[strategyId];
@@ -3255,7 +3256,8 @@ export default {
               }
 
               // 主观策略步进回测：到预设调仓日暂停，弹出对话框由用户选择 预设权重/实时输入/不调仓（支持单策略与多策略）
-              const manualPaused = resultData && resultData.phase === 'paused' && (
+              // 仅当用户勾选了 manual_preset_step 时才进入步进交互，否则视为一次执行到底
+              const manualPaused = this.form.manual_preset_step && resultData && resultData.phase === 'paused' && (
                 (this.form.backtest_mode === 'single' && this.isManualAllocationStrategy) ||
                 (this.form.backtest_mode === 'multi' && this.isStrategyManual(strategy))
               );
@@ -3605,5 +3607,17 @@ export default {
   font-size: 14px;
   font-weight: 600;
   color: #303133;
+}
+
+/* 主观调仓策略参数折叠摘要行 */
+.manual-params-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 32px;
+}
+.manual-params-summary .summary-text {
+  color: #606266;
+  font-size: 13px;
 }
 </style>

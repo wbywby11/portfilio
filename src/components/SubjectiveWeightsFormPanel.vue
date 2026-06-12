@@ -2,12 +2,48 @@
   <div class="swfp">
     <!-- 初始化权重 -->
     <div class="swfp-section">
-      <div class="swfp-section-head">
-        <span class="swfp-section-title">默认资产权重</span>
+      <div
+        class="swfp-section-head swfp-section-head--toggle"
+        :class="{ 'is-open': !initCollapsed }"
+        role="button"
+        tabindex="0"
+        :aria-expanded="String(!initCollapsed)"
+        @click="toggleInitCollapsed"
+        @keydown.enter.prevent="toggleInitCollapsed"
+        @keydown.space.prevent="toggleInitCollapsed">
+        <div class="swfp-head-left">
+          <span class="swfp-section-title">默认资产权重</span>
+          <div v-if="assetCodes.length" class="swfp-summary-chips" @click.stop>
+            <span class="swfp-chip swfp-chip--total">
+              <i class="el-icon-coin"></i>
+              <em>{{ assetCodes.length }}</em><span class="swfp-chip-unit">个资产</span>
+            </span>
+            <span class="swfp-chip-sep">·</span>
+            <span class="swfp-chip swfp-chip--configured">
+              已配置 <em>{{ manualInitConfiguredCount }}</em>
+            </span>
+            <span class="swfp-chip-sep">·</span>
+            <span class="swfp-chip" :class="manualInitSumChipClass">
+              总权重 <em>{{ manualInitSumPct }}%</em>
+            </span>
+            <span class="swfp-mini-meter" :title="`权重合计 ${manualInitSumPct}%`">
+              <span
+                class="swfp-mini-meter__fill"
+                :class="manualInitSumChipClass"
+                :style="{ width: miniMeterWidth }"></span>
+            </span>
+          </div>
+        </div>
+        <button type="button" class="swfp-toggle-btn" @click.stop="toggleInitCollapsed">
+          <span>{{ initCollapsed ? '展开详情' : '收起' }}</span>
+          <i class="el-icon-arrow-down swfp-toggle-arrow"></i>
+        </button>
       </div>
-      <p class="swfp-hint">
+      <p v-if="!initCollapsed" class="swfp-hint">
         为期初建仓设置各底层资产权重（0～100%）。合计建议为 100%；超过 100% 无法保存。可使用滑块或数字微调；下方条形为当前占比示意。
       </p>
+      <el-collapse-transition>
+        <div v-show="!initCollapsed">
       <div v-if="!assetCodes.length" class="swfp-empty">请先在上方「选择资产」中至少选择一个资产</div>
       <div v-else class="subjective-editor-body swfp-editor">
         <div v-for="code in assetCodes" :key="'swfp-init-' + code" class="swfp-init-block">
@@ -46,6 +82,8 @@
           <el-button type="text" size="small" @click="normalizeManualInit">归一化到 100%</el-button>
         </div>
       </div>
+        </div>
+      </el-collapse-transition>
     </div>
 
     <!-- 预设调仓 -->
@@ -54,87 +92,31 @@
         <span class="swfp-section-title">预设调仓日期与权重</span>
       </div>
       <p class="swfp-hint">
-        每个调仓日配置当日目标权重。「保存时归一化」或本条「归一化到 100%」会按当前比例缩放到合计 100%，且结果保留两位小数。至少保留一条已填日期的记录。
+        以矩阵方式编辑各调仓日的目标权重（百分比）。点击单元格直接编辑，支持行内归一化、复制、等权填充等操作；至少保留一条已填日期的记录。
       </p>
       <div v-if="!assetCodes.length" class="swfp-empty">请先在上方「选择资产」中至少选择一个资产</div>
-      <template v-else>
-        <div
-          v-for="(row, idx) in adjustments"
-          :key="'swfp-preset-' + idx"
-          class="subjective-preset-card">
-          <div class="subjective-preset-head">
-            <span class="subjective-preset-title">调仓日 {{ idx + 1 }}</span>
-            <el-button type="text" class="subjective-preset-remove" @click="$emit('remove-preset', idx)">删除本条</el-button>
-          </div>
-          <div class="subjective-preset-toolbar">
-            <el-date-picker
-              v-model="row.date"
-              type="date"
-              placeholder="选择调仓日期"
-              size="small"
-              value-format="yyyy-MM-dd"
-              style="width: 168px;" />
-            <span class="subjective-preset-switch-label">保存时归一化</span>
-            <el-switch v-model="row.auto_normalize" />
-          </div>
-          <div class="subjective-preset-weights">
-            <div class="subjective-preset-weight-actions">
-              <el-button type="text" size="small" @click="applyPresetRowNormalize(row)">归一化到 100%</el-button>
-              <span class="subjective-preset-weight-actions-hint">按当前比例，保留两位小数</span>
-            </div>
-            <div v-for="code in assetCodes" :key="'swfp-pw-' + idx + '-' + code" class="swfp-init-block">
-              <div class="subjective-editor-row subjective-editor-row--compact">
-                <span class="subjective-editor-label" :title="code">{{ resolveLabel(code) }}</span>
-                <el-slider
-                  :value="presetWeight(row, code)"
-                  :min="0"
-                  :max="1"
-                  :step="0.01"
-                  :format-tooltip="formatWeightSliderTooltip"
-                  class="subjective-editor-slider"
-                  @input="v => setPresetWeight(row, code, v)" />
-                <el-input-number
-                  :value="presetWeight(row, code)"
-                  :min="0"
-                  :max="1"
-                  :step="0.05"
-                  :precision="4"
-                  size="small"
-                  controls-position="right"
-                  class="subjective-editor-num"
-                  @change="v => setPresetWeight(row, code, v)" />
-              </div>
-              <div class="swfp-bar-row swfp-bar-row--compact">
-                <span class="weight-pct weight-pct--current">{{ formatPct(presetWeight(row, code) * 100) }}</span>
-                <div class="weight-bar-track">
-                  <div
-                    class="weight-bar-fill weight-bar-fill--new"
-                    :style="{ width: barWidth(presetWeight(row, code)) }" />
-                </div>
-              </div>
-            </div>
-            <div class="subjective-preset-row-sum" :class="manualPresetRowSumClass(row)">
-              本条权重合计：{{ manualPresetRowSumPct(row) }}%
-            </div>
-          </div>
-        </div>
-        <el-button type="primary" plain size="small" icon="el-icon-plus" class="swfp-add-btn" @click="$emit('add-preset')">
-          添加调仓日
-        </el-button>
-      </template>
+      <SubjectiveWeightsMatrixTable
+        v-else
+        :asset-codes="assetCodes"
+        :resolve-label="resolveLabel"
+        :adjustments="manualWeightAdjustments"
+        :max-leverage="maxLeverage"
+        @update:adjustments="onAdjustmentsUpdate"
+      />
     </div>
   </div>
 </template>
 
 <script>
 import {
-  normalizeWeightsToTwoDecimalSumOne,
   formatWeightSliderTooltip,
   subjectiveBarWidthPct
 } from '@/utils/subjectiveWeights';
+import SubjectiveWeightsMatrixTable from './SubjectiveWeightsMatrixTable.vue';
 
 export default {
   name: 'SubjectiveWeightsFormPanel',
+  components: { SubjectiveWeightsMatrixTable },
   props: {
     assetCodes: {
       type: Array,
@@ -151,12 +133,13 @@ export default {
     resolveLabel: {
       type: Function,
       required: true
+    },
+    maxLeverage: {
+      type: Number,
+      default: 1
     }
   },
   computed: {
-    adjustments() {
-      return this.manualWeightAdjustments;
-    },
     manualInitSumRatio() {
       return this.assetCodes.reduce((s, c) => s + (Number(this.manualWeights[c]) || 0), 0);
     },
@@ -165,10 +148,37 @@ export default {
     },
     manualInitSumClass() {
       return this.manualInitSumRatio > 1.00001 ? 'subjective-sum--warn' : '';
+    },
+    manualInitConfiguredCount() {
+      return this.assetCodes.reduce((n, c) => {
+        const v = Number(this.manualWeights[c]);
+        return n + (v > 0 ? 1 : 0);
+      }, 0);
+    },
+    manualInitSumChipClass() {
+      const r = this.manualInitSumRatio;
+      if (r > 1.00001) return 'is-over';
+      if (Math.abs(r - 1) < 0.005) return 'is-perfect';
+      if (r > 0) return 'is-partial';
+      return 'is-empty';
+    },
+    miniMeterWidth() {
+      const r = this.manualInitSumRatio;
+      if (!(r > 0)) return '0%';
+      const pct = Math.min(r, 1) * 100;
+      return pct.toFixed(2) + '%';
     }
+  },
+  data() {
+    return {
+      initCollapsed: true
+    };
   },
   methods: {
     formatWeightSliderTooltip,
+    toggleInitCollapsed() {
+      this.initCollapsed = !this.initCollapsed;
+    },
     weightOf(code) {
       const v = this.manualWeights[code];
       return v != null && !Number.isNaN(Number(v)) ? Number(v) : 0;
@@ -178,20 +188,6 @@ export default {
       if (n < 0) n = 0;
       if (n > 1) n = 1;
       this.$set(this.manualWeights, code, n);
-    },
-    presetWeight(row, code) {
-      if (!row || !row.weights) return 0;
-      const v = row.weights[code];
-      return v != null && !Number.isNaN(Number(v)) ? Number(v) : 0;
-    },
-    setPresetWeight(row, code, v) {
-      if (!row.weights || typeof row.weights !== 'object') {
-        this.$set(row, 'weights', {});
-      }
-      let n = v != null && !Number.isNaN(Number(v)) ? Number(v) : 0;
-      if (n < 0) n = 0;
-      if (n > 1) n = 1;
-      this.$set(row.weights, code, n);
     },
     normalizeManualInit() {
       const t = this.manualInitSumRatio;
@@ -203,33 +199,19 @@ export default {
         this.$set(this.manualWeights, c, (Number(this.manualWeights[c]) || 0) / t);
       });
     },
-    applyPresetRowNormalize(row) {
-      if (!row || !row.weights || !this.assetCodes.length) return;
-      const w = {};
-      this.assetCodes.forEach(c => {
-        w[c] = Number(row.weights[c]) || 0;
-      });
-      const t = this.assetCodes.reduce((s, c) => s + w[c], 0);
-      if (t <= 0) {
-        this.$message.warning('本条权重合计为 0，无法归一化');
-        return;
+    /**
+     * 矩阵表格更新调仓权重列表：
+     * 1. 原地替换数组内容，保持父组件引用一致（兼容现有非 .sync 绑定）
+     * 2. 同步抛出 update:manualWeightAdjustments，兼容 .sync 写法
+     */
+    onAdjustmentsUpdate(newList) {
+      const list = Array.isArray(newList) ? newList : [];
+      if (Array.isArray(this.manualWeightAdjustments)) {
+        this.manualWeightAdjustments.splice(0, this.manualWeightAdjustments.length, ...list);
       }
-      const out = normalizeWeightsToTwoDecimalSumOne(w, this.assetCodes);
-      this.assetCodes.forEach(c => {
-        this.$set(row.weights, c, out[c]);
-      });
+      this.$emit('update:manualWeightAdjustments', list);
     },
-    manualPresetRowSumRatio(row) {
-      if (!row || !row.weights) return 0;
-      return this.assetCodes.reduce((s, c) => s + (Number(row.weights[c]) || 0), 0);
-    },
-    manualPresetRowSumPct(row) {
-      return (this.manualPresetRowSumRatio(row) * 100).toFixed(1);
-    },
-    manualPresetRowSumClass(row) {
-      const r = this.manualPresetRowSumRatio(row);
-      return r > 1.00001 && !row.auto_normalize ? 'subjective-sum--warn' : '';
-    },
+
     formatPct(pct) {
       if (pct == null || Number.isNaN(Number(pct))) return '—';
       return `${Number(pct).toFixed(2)}%`;
@@ -263,6 +245,177 @@ export default {
   font-size: 14px;
   font-weight: 600;
   color: #303133;
+  letter-spacing: 0.2px;
+}
+
+/* —— 可折叠表头 —— */
+.swfp-section-head--toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #f5f8ff 0%, #f7faf6 100%);
+  border: 1px solid #e4ebf5;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  user-select: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.swfp-section-head--toggle::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, #409eff, #67c23a);
+  opacity: 0.7;
+}
+
+.swfp-section-head--toggle:hover {
+  border-color: #c6d8f4;
+  box-shadow: 0 2px 10px rgba(64, 158, 255, 0.08);
+}
+
+.swfp-section-head--toggle:focus-visible {
+  outline: 2px solid #409eff;
+  outline-offset: 2px;
+}
+
+.swfp-section-head--toggle.is-open {
+  background: linear-gradient(135deg, #eef4ff 0%, #f0f9ec 100%);
+  border-color: #c6d8f4;
+}
+
+.swfp-head-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* —— 摘要 chips —— */
+.swfp-summary-chips {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: #5c6b80;
+}
+
+.swfp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #e4ebf5;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}
+
+.swfp-chip i {
+  font-size: 12px;
+  color: #909399;
+}
+
+.swfp-chip em {
+  font-style: normal;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 2px;
+}
+
+.swfp-chip-unit {
+  color: #909399;
+}
+
+.swfp-chip-sep {
+  color: #c8d0dc;
+}
+
+.swfp-chip--configured em {
+  color: #409eff;
+}
+
+.swfp-chip.is-empty em { color: #909399; }
+.swfp-chip.is-partial em { color: #e6a23c; }
+.swfp-chip.is-perfect {
+  background: rgba(103, 194, 58, 0.08);
+  border-color: rgba(103, 194, 58, 0.4);
+}
+.swfp-chip.is-perfect em { color: #67c23a; }
+.swfp-chip.is-over {
+  background: rgba(245, 108, 108, 0.08);
+  border-color: rgba(245, 108, 108, 0.4);
+}
+.swfp-chip.is-over em { color: #f56c6c; }
+
+/* —— 迷你进度条 —— */
+.swfp-mini-meter {
+  display: inline-block;
+  width: 64px;
+  height: 4px;
+  border-radius: 2px;
+  background: #e4e7ed;
+  overflow: hidden;
+  margin-left: 2px;
+}
+
+.swfp-mini-meter__fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #95d475, #67c23a);
+  transition: width 0.25s ease;
+}
+
+.swfp-mini-meter__fill.is-partial {
+  background: linear-gradient(90deg, #f3d19e, #e6a23c);
+}
+.swfp-mini-meter__fill.is-over {
+  background: linear-gradient(90deg, #f89898, #f56c6c);
+}
+.swfp-mini-meter__fill.is-empty {
+  background: #dcdfe6;
+}
+
+/* —— 切换按钮 —— */
+.swfp-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #409eff;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+  flex: 0 0 auto;
+}
+
+.swfp-toggle-btn:hover {
+  background: rgba(64, 158, 255, 0.08);
+  border-color: rgba(64, 158, 255, 0.3);
+}
+
+.swfp-toggle-arrow {
+  transition: transform 0.25s ease;
+}
+
+.swfp-section-head--toggle.is-open .swfp-toggle-arrow {
+  transform: rotate(180deg);
 }
 
 .swfp-hint {
@@ -310,10 +463,6 @@ export default {
   margin-bottom: 6px;
 }
 
-.subjective-editor-row--compact {
-  margin-bottom: 4px;
-}
-
 .subjective-editor-label {
   flex: 0 0 148px;
   font-size: 13px;
@@ -341,12 +490,6 @@ export default {
   margin: 0 0 10px 160px;
   padding-bottom: 8px;
   border-bottom: 1px solid #e8ecf1;
-}
-
-.swfp-bar-row--compact {
-  margin-left: 160px;
-  margin-bottom: 6px;
-  padding-bottom: 6px;
 }
 
 .swfp-init-block:last-child .swfp-bar-row {
@@ -403,72 +546,5 @@ export default {
 .subjective-sum--warn {
   color: #e6a23c;
   font-weight: 600;
-}
-
-.subjective-preset-card {
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 12px 14px;
-  margin-bottom: 14px;
-  background: #fafafa;
-}
-
-.subjective-preset-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.subjective-preset-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.subjective-preset-remove {
-  color: #f56c6c !important;
-}
-
-.subjective-preset-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.subjective-preset-switch-label {
-  font-size: 13px;
-  color: #606266;
-}
-
-.subjective-preset-weights {
-  padding-top: 4px;
-  border-top: 1px dashed #dcdfe6;
-}
-
-.subjective-preset-weight-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.subjective-preset-weight-actions-hint {
-  font-size: 12px;
-  color: #909399;
-}
-
-.subjective-preset-row-sum {
-  font-size: 12px;
-  color: #909399;
-  margin-top: 8px;
-  text-align: right;
-}
-
-.swfp-add-btn {
-  margin-top: 4px;
 }
 </style>

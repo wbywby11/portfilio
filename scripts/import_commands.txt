@@ -1,0 +1,59 @@
+============================================================
+  大类资产底层数据导入命令（复制到 mongosh 中执行）
+  数据库: asset_allocation
+  资产数: 22 | 行情数: 17,820
+============================================================
+
+-- 第一步：连接数据库
+-- mongosh "mongodb://localhost:27017/asset_allocation"
+
+-- 第二步：清除这22个资产的旧数据（仅删本批，不影响其他资产）
+
+var CODES = ["CBA00101.CS","000300.SH","518880.SH","159980.SZ","159981.SZ","159985.SZ","501018.SH","160216.SZ","164701.SZ","161226.SZ","DR007.IB"];
+
+var CODES = ["CBA00101.CS","000300.SH","CCFI.WI","NMFI.WI","NFFI.WI","CIFI.WI","JJRI.WI","OOFI.WI","SOFI.WI","ENFI.WI","APFI.WI","NMBM.WI","CRFI.WI","518880.SH","159980.SZ","159981.SZ","159985.SZ","501018.SH","160216.SZ","164701.SZ","161226.SZ","DR007.IB"];
+
+db.assets.deleteMany({ code: { $in: CODES } });
+db.asset_prices.deleteMany({ asset_code: { $in: CODES } });
+
+-- 第三步：导入 assets（22条，直接在 mongosh 中执行）
+
+db.assets.insertMany([
+  { code: "CBA00101.CS", name: "中债-新综合财富(总值)指数", asset_type: "指数", exchange: "中证指数", description: "中债综合财富指数，反映债券市场整体表现", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "000300.SH", name: "沪深300", asset_type: "指数", exchange: "上交所", description: "沪深300指数，A股核心宽基指数", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "CCFI.WI", name: "Wind商品综合", asset_type: "指数", exchange: "Wind", description: "Wind商品综合指数，大宗商品综合表现", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "NMFI.WI", name: "Wind贵金属", asset_type: "指数", exchange: "Wind", description: "Wind贵金属指数", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "NFFI.WI", name: "Wind有色", asset_type: "指数", exchange: "Wind", description: "Wind有色金属指数", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "CIFI.WI", name: "Wind化工", asset_type: "指数", exchange: "Wind", description: "Wind化工指数", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "JJRI.WI", name: "Wind煤焦钢矿", asset_type: "指数", exchange: "Wind", description: "Wind煤焦钢矿指数", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "OOFI.WI", name: "Wind油脂油料", asset_type: "指数", exchange: "Wind", description: "Wind油脂油料指数", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "SOFI.WI", name: "Wind软商品", asset_type: "指数", exchange: "Wind", description: "Wind软商品指数", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "ENFI.WI", name: "Wind能源", asset_type: "指数", exchange: "Wind", description: "Wind能源指数", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "APFI.WI", name: "Wind农副产品", asset_type: "指数", exchange: "Wind", description: "Wind农副产品指数", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "NMBM.WI", name: "Wind非金属建材", asset_type: "指数", exchange: "Wind", description: "Wind非金属建材指数", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "CRFI.WI", name: "Wind谷物", asset_type: "指数", exchange: "Wind", description: "Wind谷物指数", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "518880.SH", name: "黄金ETF华安", asset_type: "基金", exchange: "上交所", description: "华安黄金ETF，跟踪黄金现货价格", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "159980.SZ", name: "有色ETF大成", asset_type: "基金", exchange: "深交所", description: "大成有色金属ETF", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "159981.SZ", name: "能源化工ETF建信", asset_type: "基金", exchange: "深交所", description: "建信能源化工ETF", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "159985.SZ", name: "豆粕ETF华夏", asset_type: "基金", exchange: "深交所", description: "华夏豆粕ETF", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "501018.SH", name: "南方原油LOF", asset_type: "基金", exchange: "上交所", description: "南方原油LOF，QDII跟踪原油期货", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "160216.SZ", name: "国泰商品LOF", asset_type: "基金", exchange: "深交所", description: "国泰大宗商品LOF", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "164701.SZ", name: "黄金LOF", asset_type: "基金", exchange: "深交所", description: "前海开源黄金LOF", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "161226.SZ", name: "国投白银LOF", asset_type: "基金", exchange: "深交所", description: "国投瑞银白银LOF", is_active: true, created_at: new Date(), updated_at: new Date() },
+  { code: "DR007.IB", name: "银存间质押7日", asset_type: "指数", exchange: "银行间", description: "银行间7天质押回购利率DR007", is_active: true, created_at: new Date(), updated_at: new Date() }
+]);
+
+-- 第四步：导入 asset_prices（17,820条，退出 mongosh 后在命令行执行）
+
+mongoimport --uri "mongodb://localhost:27017/asset_allocation" --collection asset_prices --file "d:\portfilio\scripts\asset_prices.json" --jsonArray
+
+-- 第五步：确保唯一索引（回到 mongosh 执行）
+
+db.assets.createIndex({ code: 1 }, { unique: true });
+db.asset_prices.createIndex({ asset_code: 1, date: 1 }, { unique: true });
+
+-- 第六步：验证数据
+
+var CODES = ["CBA00101.CS","000300.SH","CCFI.WI","NMFI.WI","NFFI.WI","CIFI.WI","JJRI.WI","OOFI.WI","SOFI.WI","ENFI.WI","APFI.WI","NMBM.WI","CRFI.WI","518880.SH","159980.SZ","159981.SZ","159985.SZ","501018.SH","160216.SZ","164701.SZ","161226.SZ","DR007.IB"];
+print("assets: " + db.assets.countDocuments({ code: { $in: CODES } }));
+print("asset_prices: " + db.asset_prices.countDocuments({ asset_code: { $in: CODES } }));

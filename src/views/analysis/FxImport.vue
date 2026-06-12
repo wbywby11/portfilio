@@ -1,5 +1,7 @@
 <template>
   <div class="fx-import">
+    <el-tabs v-model="activeTab" type="border-card">
+      <el-tab-pane label="汇率数据" name="fx">
     <el-card class="upload-card">
       <div slot="header" class="clearfix">
         <span><i class="el-icon-upload2"></i> 汇率数据导入</span>
@@ -125,19 +127,29 @@
         <div v-else ref="fxChart" class="fx-chart"></div>
       </div>
     </el-card>
+      </el-tab-pane>
+      <el-tab-pane label="交易日历" name="calendar">
+        <trade-calendar-panel />
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script>
 import * as echarts from 'echarts';
 import { importFxRates, getFxStats, getFxRates, saveFxManualRates } from '@/api/fx';
+import TradeCalendarPanel from '@/components/TradeCalendarPanel';
 
 const FX_COLUMNS = ['EUR', 'USD', 'HKD', 'CNH'];
 
 export default {
   name: 'FxImport',
+  components: {
+    TradeCalendarPanel
+  },
   data() {
     return {
+      activeTab: 'fx',
       fileList: [],
       selectedFile: null,
       uploading: false,
@@ -422,5 +434,12 @@ export default {
 .fx-chart {
   width: 100%;
   height: 440px;
+}
+.fx-import .el-tabs {
+  border-radius: 8px;
+  overflow: hidden;
+}
+.fx-import .el-tabs__content {
+  padding: 20px;
 }
 </style>

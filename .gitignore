@@ -7,3 +7,24 @@ yarn-debug.log*
 yarn-error.log*
 package-lock.json
 yarn.lock
+
+# Python / backend
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+backend_archive.zip
+.env
+
+# Data files
+*.xlsx
+*.xls
+*.zip
+backend/data/uploads/
+backend/data/imports/
+backend/backtest_exports/
+backend/raw_data/
+openapi*.json
+hs_err_pid*.log

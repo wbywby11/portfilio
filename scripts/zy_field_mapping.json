@@ -1,0 +1,377 @@
+{
+  "dwd_ast_info": {
+    "rename": {
+      "AST_NAME": "AST_NM",
+      "CUSTOMER_ID": "ISR_ID",
+      "LIST_DATE": "LIST_DT",
+      "MDATE": "MATURITY_DT"
+    },
+    "fill": {
+      "AST_SUB_TYPE": "CGB",
+      "BOND_TERM": "10Y",
+      "COUPON_RATE": 0.0356,
+      "CCY": "CNY",
+      "BIZ_DT": "2025-03-24",
+      "MARKET": "IB"
+    }
+  },
+  "dwd_ast_info_ch": {
+    "rename": {
+      "DATA_DT": "BIZ_DT"
+    },
+    "fill": {
+      "DURATION": 0.011,
+      "VAL_YIELD": 0.021,
+      "CONVEXITY": 52.41,
+      "VAL_SRC": "",
+      "VAL_NET_PRC": 106.0471,
+      "VAL_FULL_PRC": 105.1505,
+      "RATING_AGENCY": ""
+    }
+  },
+  "dwd_ast_info_zg": {
+    "rename": {
+      "DATA_DT": "BIZ_DT"
+    },
+    "fill": {
+      "DURATION": 0.0457,
+      "VAL_YIELD": 0.0135,
+      "CONVEXITY": 90.17,
+      "VAL_SRC": "",
+      "VAL_NET_PRC": 95.447,
+      "VAL_FULL_PRC": 98.2796,
+      "RATING_AGENCY": ""
+    }
+  },
+  "dwd_ast_yield_info": {
+    "rename": {
+      "DATA_DT": "BIZ_DT"
+    },
+    "fill": {
+      "YIELD_EX": 0.0302,
+      "SETTLE_PRC": 95.398,
+      "MONTH_RTN": 0.018,
+      "YTD_RTN": 0.036,
+      "DAILY_RTN": 0.0318,
+      "WEEK_RTN": 0.0188,
+      "YIELD_TM": 0.0336
+    }
+  },
+  "dwd_ast_cf_plan": {
+    "rename": {
+      "CF_DATE": "CF_DT"
+    },
+    "fill": {
+      "CCY": "CNY"
+    }
+  },
+  "dwd_ast_pledge": {
+    "rename": {
+      "DATA_DT": "BIZ_DT",
+      "PLEDGE_RATE": "PLEDGE_RATIO"
+    },
+    "fill": {
+      "PLEDGE_NOTE": "",
+      "PLEDGE_BOND_CD": "",
+      "PLEDGE_FLAG": "N",
+      "PLEDGE_STD_BOND": 809.43
+    }
+  },
+  "dwd_ast_party": {
+    "rename": {
+      "DATA_DT": "BIZ_DT",
+      "PARTY_NAME": "PARTY_NM"
+    },
+    "fill": {}
+  },
+  "dwd_ast_exe_plan": {
+    "rename": {
+      "EXE_DATE": "EXE_DT",
+      "EXE_PRICE": "EXE_PRC"
+    },
+    "fill": {
+      "NOTE": ""
+    }
+  },
+  "dwd_ast_fund_manager": {
+    "rename": {
+      "FM_ID": "MANAGER_ID",
+      "FM_NAME": "MANAGER_NM"
+    },
+    "fill": {
+      "START_DT": "2025-03-24",
+      "SHR_FLAG": "N",
+      "AST_CD": "019601.IB",
+      "END_DT": "2030-12-31"
+    }
+  },
+  "dwd_ast_bottom_raito": {
+    "rename": {},
+    "fill": {
+      "BTM_NM": "底层资产",
+      "BTM_AST_CD": ""
+    }
+  },
+  "dwd_ast_fiveclass": {
+    "rename": {
+      "DATA_DT": "BIZ_DT",
+      "FIVE_CLASS": "CLASS_LVL"
+    },
+    "fill": {
+      "ADJ_FLAG": "N",
+      "LAST_LVL": "NORMAL"
+    }
+  },
+  "dwd_ast_calc_rule": {
+    "rename": {
+      "CALC_RULE": "FORMULA"
+    },
+    "fill": {
+      "AST_TYPE": "BOND",
+      "RULE_NM": "计算规则",
+      "EFF_DT": "2025-03-24",
+      "RULE_CD": ""
+    }
+  },
+  "dwd_isr_institution": {
+    "rename": {
+      "DATA_DT": "BIZ_DT",
+      "INDUSTRY_GB": "INDUSTRY_CD",
+      "CUSTOMER_ID": "ISR_ID"
+    },
+    "fill": {
+      "LIST_FLAG": "",
+      "CREDIT_CD": "",
+      "ISR_SHORT_NM": "",
+      "EST_DT": "2025-03-24",
+      "ISR_NM": "",
+      "REG_PROV": "",
+      "REG_CAP_AMT": 7492260.92,
+      "ISR_TYPE": ""
+    }
+  },
+  "dwd_isr_institution_finance": {
+    "rename": {
+      "CUSTOMER_ID": "ISR_ID",
+      "REPORT_DATE": "RPT_DT"
+    },
+    "fill": {
+      "TOT_AST": 805.82,
+      "TOT_LIA": 698.14,
+      "EQUITY": 340.25,
+      "ROA": 155.48,
+      "RPT_TYPE": "",
+      "NET_PRFT": 957.21
+    }
+  },
+  "dwd_isr_trd_cntp": {
+    "rename": {
+      "DATA_DT": "BIZ_DT"
+    },
+    "fill": {
+      "CNTP_NM": "",
+      "SETT_ACCT": "",
+      "LINKED_ISR_ID": "",
+      "SETT_BANK": "",
+      "RATING": "",
+      "CNTP_ID": "",
+      "MARKET": "IB",
+      "WHITELIST": ""
+    }
+  },
+  "dwd_ptl_info": {
+    "rename": {
+      "CURR": "CCY",
+      "START_DATE": "ESTAB_DT",
+      "PROD_CD": "PORT_ID",
+      "PROD_ABBR": "PORT_NM",
+      "INT_BENCHMARK": "BENCHMARK"
+    },
+    "fill": {
+      "PORT_SHORT_NM": "产品简称",
+      "AUM": 336.59,
+      "SHR_NAV": 96.3912,
+      "CUSTODY_BANK": "",
+      "STATUS": "ACTIVE",
+      "MGR_INST": ""
+    }
+  },
+  "tag_ptl_info": {
+    "rename": {},
+    "fill": {}
+  },
+  "dwd_ptl_fee": {
+    "rename": {
+      "PROD_CD": "PORT_ID"
+    },
+    "fill": {
+      "EXP_DT": "2030-12-31",
+      "EFF_DT": "2025-03-24",
+      "FEE_BASE": ""
+    }
+  },
+  "dwd_val_summary": {
+    "rename": {
+      "DATA_DT": "BIZ_DT",
+      "PROD_CD": "PORT_ID"
+    },
+    "fill": {
+      "WEIGHT": 0.0139,
+      "AST_CLASS": "BOND",
+      "ACI_AMT": 847646871.98,
+      "MKT_VAL": 104.0559
+    }
+  },
+  "dwd_val_detail": {
+    "rename": {
+      "DATA_DT": "BIZ_DT",
+      "PROD_CD": "PORT_ID"
+    },
+    "fill": {
+      "MKT_PRC": 107.1069,
+      "MKT_VAL": 105.946,
+      "COST_PRC": 103.0434,
+      "AMORT_AMT": 973142648.22,
+      "DAILY_PNL": 378.53,
+      "COST_AMT": 552488590.64,
+      "HLD_QTY": 879693,
+      "REAL_PNL": 628.64,
+      "ACI_AMT": 885566296.19,
+      "UNREAL_PNL": 361.64
+    }
+  },
+  "dwd_val_bal": {
+    "rename": {
+      "DATA_DT": "BIZ_DT",
+      "PROD_CD": "PORT_ID"
+    },
+    "fill": {
+      "ACC_CD": "",
+      "CR_BAL": 192.29,
+      "DR_BAL": 69.56,
+      "CCY": "CNY",
+      "ACC_NM": "",
+      "BAL": 661.26
+    }
+  },
+  "dwd_trn_trade_ast": {
+    "rename": {
+      "TRAN_SIDE": "BS_DIR",
+      "LONG_CURRENCY": "CCY",
+      "LONG_QUANTITY": "QTY",
+      "SETTLE_DATE": "SETT_DT",
+      "TRAN_DATE": "TRADE_DT"
+    },
+    "fill": {
+      "AMT": 773295272.45,
+      "TRADER": "",
+      "PRC": 109.7783,
+      "CNTP_ID": "",
+      "MARKET": "IB",
+      "STATUS": "ACTIVE"
+    }
+  },
+  "dwd_trn_trade_ptl": {
+    "rename": {
+      "TRADE_AMT": "AMT",
+      "PROD_CD": "PORT_ID",
+      "TRADE_QTY": "QTY",
+      "TRADE_DATE": "TRADE_DT"
+    },
+    "fill": {
+      "SETT_DT": "2025-03-25",
+      "FEE": 4278.04,
+      "BS_DIR": "B",
+      "CCY": "CNY",
+      "PRC": 107.9973,
+      "AST_CD": "019601.IB"
+    }
+  },
+  "dwd_cust_info": {
+    "rename": {
+      "DATA_DT": "BIZ_DT",
+      "CUST_ID": "CUSTOMER_ID",
+      "CUST_NAME": "CUST_NM",
+      "OPEN_DATE": "OPEN_DT",
+      "RISK_LEVEL": "RISK_LVL"
+    },
+    "fill": {
+      "ADDR": "",
+      "SELLER_ID": "",
+      "BIRTH_DT": "1985-06-15",
+      "GENDER": "M",
+      "CHANNEL": "DIRECT"
+    }
+  },
+  "dwd_cust_make_pstn_info": {
+    "rename": {
+      "DATA_DT": "BIZ_DT",
+      "CUST_ID": "CUSTOMER_ID"
+    },
+    "fill": {
+      "HLD_SHR": 408591,
+      "COST_AMT": 278695629.51,
+      "HLD_AMT": 636048759.82,
+      "FIRST_BUY_DT": "2025-03-24",
+      "AVAIL_SHR": 392554,
+      "FROZEN_SHR": 180555,
+      "UNREAL_PNL": 370.18,
+      "PORT_ID": "PORT001"
+    }
+  },
+  "dwd_mkt_bond": {
+    "rename": {
+      "AMOUNT": "AMT",
+      "DATA_DT": "BIZ_DT",
+      "CLOSE_PRICE": "CLOSE_PRC",
+      "HIGH_PRICE": "HIGH_PRC",
+      "LOW_PRICE": "LOW_PRC",
+      "OPEN_PRICE": "OPEN_PRC",
+      "VOLUME": "VOL"
+    },
+    "fill": {
+      "CHG_BP": 0.0184,
+      "YTM": 266.98
+    }
+  },
+  "dwd_mkt_fund": {
+    "rename": {
+      "DATA_DT": "BIZ_DT"
+    },
+    "fill": {
+      "ESTAB_DT": "2025-03-24",
+      "FUND_NM": "基金名称",
+      "AUM": 936.65,
+      "CUSTODY_BANK": "",
+      "BENCHMARK": "",
+      "MGR_INST": "",
+      "FUND_TYPE": "OPEN"
+    }
+  },
+  "dwd_mkt_index": {
+    "rename": {
+      "BASE_DATE": "BASE_DT",
+      "DATA_DT": "BIZ_DT",
+      "INDEX_NAME": "INDEX_NM"
+    },
+    "fill": {
+      "BASE_VAL": 104.7205,
+      "PUBLISHER": ""
+    }
+  },
+  "dwd_mkt_stock": {
+    "rename": {
+      "DATA_DT": "BIZ_DT",
+      "MKT_CD": "EXCH",
+      "AST_NAME": "STOCK_NM",
+      "MARKET_CAP": "TOT_CAP"
+    },
+    "fill": {
+      "INDUSTRY_CD": "",
+      "LIST_DT": "2025-03-24",
+      "INDUSTRY_NM": "行业",
+      "ISR_ID": "ISR000001",
+      "FREE_CAP": 609521874.66
+    }
+  }
+}

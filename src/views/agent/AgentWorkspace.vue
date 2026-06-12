@@ -218,7 +218,7 @@ export default {
           sceneKey: this.currentScene
         })
       }
-      this.$store.dispatch('agent/loadConversations')
+      this.$store.dispatch('agent/loadConversations', { silent: true })
     },
 
     /** 快捷问题：直接发送（与中间栏空状态快捷问题一致，须传入文案给 handleSend） */

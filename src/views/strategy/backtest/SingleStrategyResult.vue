@@ -242,7 +242,9 @@
 
 <script>
 import * as echarts from 'echarts';
+import { debounce } from 'lodash';
 import { updateBacktestRemark } from '@/api/strategy';
+import { downsampleParallel } from '@/utils/downsample';
 
 export default {
   name: 'SingleStrategyResult',
@@ -474,23 +476,34 @@ export default {
   },
   mounted() {
     console.log('[BacktestRecord] SingleStrategyResult mounted', 'strategyName=', this.strategyName, 'modelId=', this.modelId, 'recordId=', this.recordId, 'canSaveRemark=', this.canSaveRemark);
+    // 创建防抖的 resize handler（所有图表共享一个）
+    this._resizeHandler = debounce(() => {
+      Object.values(this.chartInstances).forEach(chart => {
+        if (chart && !chart.isDisposed()) {
+          chart.resize();
+          // position chart 需要额外更新 graphic 定位
+          if (chart._updateGraphicPositions) {
+            setTimeout(chart._updateGraphicPositions, this.isMultiStrategy ? 150 : 50);
+          }
+        }
+      });
+    }, 200);
+    window.addEventListener('resize', this._resizeHandler);
     // 延迟初始化，确保DOM完全渲染
     setTimeout(() => {
       this.initAllCharts();
     }, 300);
   },
   beforeDestroy() {
-    // 清理所有图表实例和事件监听器
+    // 移除统一的 resize 监听器
+    if (this._resizeHandler) {
+      window.removeEventListener('resize', this._resizeHandler);
+      this._resizeHandler = null;
+    }
+    // 销毁所有图表实例
     Object.values(this.chartInstances).forEach(chart => {
-      if (chart) {
-        // 移除resize事件监听器
-        if (chart._resizeHandler) {
-          window.removeEventListener('resize', chart._resizeHandler);
-        }
-        // 销毁图表实例
-        if (typeof chart.dispose === 'function') {
-          chart.dispose();
-        }
+      if (chart && typeof chart.dispose === 'function') {
+        chart.dispose();
       }
     });
     this.chartInstances = {};
@@ -545,32 +558,45 @@ export default {
         const navEl = document.getElementById(`nav-chart-${this.chartId}`);
         const hasSize = navEl && navEl.offsetWidth > 0 && navEl.offsetHeight > 0;
         if (!hasSize) return;
+        // 分帧渲染：逐个 requestAnimationFrame 降低主线程阻塞
+        const tasks = [];
         if (this.navData && this.navData.length > 0) {
-          this.initNavChart();
-          this.initDrawdownChart();
+          tasks.push(() => this.initNavChart());
+          tasks.push(() => this.initDrawdownChart());
         }
         if (this.positionData && this.positionData.length > 0) {
-          this.initPositionChart();
+          tasks.push(() => this.initPositionChart());
         }
         if (this.volatilityData && this.volatilityData.length > 0) {
-          this.initVolatilityChart();
+          tasks.push(() => this.initVolatilityChart());
         }
+        const runNext = (index) => {
+          if (index >= tasks.length) return;
+          requestAnimationFrame(() => {
+            tasks[index]();
+            runNext(index + 1);
+          });
+        };
+        runNext(0);
       });
     },
     initNavChart() {
       const chartDom = document.getElementById(`nav-chart-${this.chartId}`);
       if (!chartDom || chartDom.offsetWidth === 0) return;
-      const existingChart = echarts.getInstanceByDom(chartDom);
-      if (existingChart) {
-        existingChart.dispose();
+      const key = `nav-chart-${this.chartId}`;
+      let myChart = this.chartInstances[key];
+      if (!myChart || myChart.isDisposed()) {
+        myChart = echarts.init(chartDom);
+        this.chartInstances[key] = myChart;
       }
-      const myChart = echarts.init(chartDom);
-      // 存储图表实例
-      this.chartInstances[`nav-chart-${this.chartId}`] = myChart;
       
-      const dates = this.navData.map(d => d.date);
-      const navs = this.navData.map(d => d.nav);
-      const drawdowns = this.navData.map(d => d.drawdown);
+      let dates = this.navData.map(d => d.date);
+      let navs = this.navData.map(d => d.nav);
+
+      // 降采样：限制最多 500 个数据点，避免大数据量时 ECharts 卡顿
+      const sampledNav = downsampleParallel(dates, navs, 500);
+      dates = sampledNav.dates;
+      navs = sampledNav.values;
 
       const option = {
         tooltip: {
@@ -629,38 +655,30 @@ export default {
         ]
       };
 
-      myChart.setOption(option);
+      myChart.setOption(option, true);
       
       // 延迟resize，确保容器有正确的尺寸
       setTimeout(() => {
         myChart.resize();
       }, 100);
-      
-      // 响应式调整
-      const resizeHandler = () => {
-        if (myChart && !myChart.isDisposed()) {
-          myChart.resize();
-        }
-      };
-      window.addEventListener('resize', resizeHandler);
-      
-      // 存储resize处理器，用于清理
-      myChart._resizeHandler = resizeHandler;
     },
     initDrawdownChart() {
       const chartDom = document.getElementById(`drawdown-chart-${this.chartId}`);
       if (!chartDom || chartDom.offsetWidth === 0) return;
-      const existingChart = echarts.getInstanceByDom(chartDom);
-      if (existingChart) {
-        existingChart.dispose();
+      const key = `drawdown-chart-${this.chartId}`;
+      let myChart = this.chartInstances[key];
+      if (!myChart || myChart.isDisposed()) {
+        myChart = echarts.init(chartDom);
+        this.chartInstances[key] = myChart;
       }
       
-      const myChart = echarts.init(chartDom);
-      // 存储图表实例
-      this.chartInstances[`drawdown-chart-${this.chartId}`] = myChart;
-      
-      const dates = this.navData.map(d => d.date);
-      const drawdowns = this.navData.map(d => (d.drawdown || 0) * 100);
+      let dates = this.navData.map(d => d.date);
+      let drawdowns = this.navData.map(d => (d.drawdown || 0) * 100);
+
+      // 降采样：限制最多 500 个数据点
+      const sampledDD = downsampleParallel(dates, drawdowns, 500);
+      dates = sampledDD.dates;
+      drawdowns = sampledDD.values;
 
       const option = {
         tooltip: {
@@ -724,36 +742,22 @@ export default {
         ]
       };
 
-      myChart.setOption(option);
+      myChart.setOption(option, true);
       
       // 延迟resize，确保容器有正确的尺寸
       setTimeout(() => {
         myChart.resize();
       }, 100);
-      
-      // 响应式调整
-      const resizeHandler = () => {
-        if (myChart && !myChart.isDisposed()) {
-          myChart.resize();
-        }
-      };
-      window.addEventListener('resize', resizeHandler);
-      myChart._resizeHandler = resizeHandler;
     },
     initPositionChart() {
       const chartDom = document.getElementById(`position-chart-${this.chartId}`);
       if (!chartDom || chartDom.offsetWidth === 0) return;
-      const existingChart = echarts.getInstanceByDom(chartDom);
-      if (existingChart) {
-        if (existingChart._resizeHandler) {
-          window.removeEventListener('resize', existingChart._resizeHandler);
-        }
-        existingChart.dispose();
+      const key = `position-chart-${this.chartId}`;
+      let myChart = this.chartInstances[key];
+      if (!myChart || myChart.isDisposed()) {
+        myChart = echarts.init(chartDom);
+        this.chartInstances[key] = myChart;
       }
-      
-      const myChart = echarts.init(chartDom);
-      // 存储图表实例
-      this.chartInstances[`position-chart-${this.chartId}`] = myChart;
 
       const snapshots = this.result.snapshots || [];
       if (snapshots.length === 0) return;
@@ -918,7 +922,7 @@ export default {
         }))
       };
 
-      myChart.setOption(option);
+      myChart.setOption(option, true);
       myChart.resize();
 
       // 使用 convertToPixel 精确对齐文字与调仓竖线，重叠时错行展示，文字横向（与图1单策略一致）
@@ -992,32 +996,32 @@ export default {
       const graphicDelay = this.isMultiStrategy ? 550 : 250;
       setTimeout(updateGraphicPositions, graphicDelay);
 
-      // 响应式调整（多策略折叠面板内需更长延迟确保 DOM 尺寸就绪）
-      const resizeHandler = () => {
-        if (myChart && !myChart.isDisposed()) {
-          myChart.resize();
-          setTimeout(updateGraphicPositions, this.isMultiStrategy ? 150 : 50);
-        }
-      };
-      window.addEventListener('resize', resizeHandler);
-      myChart._resizeHandler = resizeHandler;
+      // 为 position chart 额外注册 graphic 定位更新（由统一 resize handler 触发后补偿）
+      myChart._updateGraphicPositions = updateGraphicPositions;
     },
     initVolatilityChart() {
       const chartDom = document.getElementById(`volatility-chart-${this.chartId}`);
       if (!chartDom || chartDom.offsetWidth === 0) return;
-      const existingChart = echarts.getInstanceByDom(chartDom);
-      if (existingChart) {
-        if (existingChart._resizeHandler) {
-          window.removeEventListener('resize', existingChart._resizeHandler);
-        }
-        existingChart.dispose();
+      const key = `volatility-chart-${this.chartId}`;
+      let myChart = this.chartInstances[key];
+      if (!myChart || myChart.isDisposed()) {
+        myChart = echarts.init(chartDom);
+        this.chartInstances[key] = myChart;
       }
-      
-      const myChart = echarts.init(chartDom);
-      // 存储图表实例
-      this.chartInstances[`volatility-chart-${this.chartId}`] = myChart;
-      const dates = this.volatilityData.map(d => d.date);
-      const volatilities = this.volatilityData.map(d => (d.volatility || 0) * 100);
+      // 降采样波动率数据：保留完整元数据用于 tooltip 和 markPoint
+      const MAX_VOL_POINTS = 500;
+      let sampledVolData = this.volatilityData;
+      if (this.volatilityData.length > MAX_VOL_POINTS) {
+        const step = (this.volatilityData.length - 1) / (MAX_VOL_POINTS - 1);
+        const indices = [];
+        for (let k = 0; k < MAX_VOL_POINTS; k++) {
+          indices.push(Math.round(k * step));
+        }
+        sampledVolData = indices.map(idx => this.volatilityData[idx]);
+      }
+
+      const dates = sampledVolData.map(d => d.date);
+      const volatilities = sampledVolData.map(d => (d.volatility || 0) * 100);
       const targetVolPercent = (this.targetVol || 0.05) * 100;
 
       // 调仓类型文案（波动率图按日，仅调仓日有含义）
@@ -1029,11 +1033,11 @@ export default {
       };
 
       // 波动率重置日：markPoint 标注
-      const volResetPoints = this.volatilityData
+      const volResetPoints = sampledVolData
         .map((d, i) => (d.isVolReset ? { name: '波动率重置', coord: [i, (d.volatility || 0) * 100] } : null))
         .filter(Boolean);
       // 人工干预调仓日：markPoint 标注（与波动率重置区分）
-      const manualPoints = this.volatilityData
+      const manualPoints = sampledVolData
         .map((d, i) => (d.isRebalanceDay && d.isManualAdjustment ? { name: '人工干预', coord: [i, (d.volatility || 0) * 100] } : null))
         .filter(Boolean);
 
@@ -1046,7 +1050,7 @@ export default {
           formatter: (params) => {
             const param = params[0];
             const idx = param.dataIndex;
-            const d = this.volatilityData[idx];
+            const d = sampledVolData[idx];
             const typeLabel = getVolRebalanceLabel(d);
             let html = `${param.name}<br/>组合波动率: ${(param.value != null ? param.value : 0).toFixed(2)}%<br/>目标波动率: ${targetVolPercent.toFixed(2)}%`;
             if (typeLabel) html += `<br/><strong>调仓类型：${typeLabel}</strong>`;
@@ -1102,21 +1106,12 @@ export default {
         ]
       };
 
-      myChart.setOption(option);
+      myChart.setOption(option, true);
       
       // 延迟resize，确保容器有正确的尺寸
       setTimeout(() => {
         myChart.resize();
       }, 100);
-      
-      // 响应式调整
-      const resizeHandler = () => {
-        if (myChart && !myChart.isDisposed()) {
-          myChart.resize();
-        }
-      };
-      window.addEventListener('resize', resizeHandler);
-      myChart._resizeHandler = resizeHandler;
     },
     formatPercent(num) {
       if (num === null || num === undefined) return '-';

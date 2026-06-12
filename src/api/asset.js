@@ -12,6 +12,8 @@ export function getAssetList(params) {
     params: {
       asset_type: params.asset_type,
       is_active: params.is_active !== undefined ? params.is_active : true,
+      code: params.code || undefined,
+      name: params.name || undefined,
       skip: params.skip || 0,
       limit: params.limit || 100
     }
@@ -166,6 +168,31 @@ export function importPricesJson(payload) {
       prices: payload.prices || []
     },
     timeout: 600000
+  });
+}
+
+/**
+ * 删除某一资产在指定日期的单条行情（K线）记录
+ * @param {string} assetCode - 资产代码
+ * @param {string} date - YYYY-MM-DD
+ */
+export function deleteAssetPrice(assetCode, date) {
+  return request({
+    url: `/api/v1/assets/${assetCode}/prices/${date}`,
+    method: 'delete'
+  });
+}
+
+/**
+ * 批量删除某资产多个日期的行情记录
+ * @param {string} assetCode - 资产代码
+ * @param {string[]} dates - YYYY-MM-DD 列表
+ */
+export function deleteAssetPricesBatch(assetCode, dates) {
+  return request({
+    url: `/api/v1/assets/${assetCode}/prices`,
+    method: 'delete',
+    data: { dates }
   });
 }
 

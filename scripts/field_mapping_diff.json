@@ -1,0 +1,6027 @@
+{
+  "summary": {
+    "total_config_tables": 80,
+    "total_mock_files": 67,
+    "tables_with_both": 65,
+    "tables_config_only": 15,
+    "tables_mock_only": 2,
+    "config_only_list": [
+      "dwd_ast_info_ch",
+      "dwd_ast_info_zg",
+      "dwd_cash_acc",
+      "dwd_mkt_fund_derive",
+      "dwd_rsk_credit_position",
+      "dwd_trn_order",
+      "dwd_trn_trade_jy",
+      "dwd_trn_trade_val",
+      "dwd_trn_trade_zg",
+      "dwd_val_rpt_bs",
+      "dwd_val_rpt_cf",
+      "dwd_val_rpt_is",
+      "dwd_val_valtable",
+      "dwd_val_voucher",
+      "tag_ptl_info"
+    ],
+    "mock_only_list": [
+      "dwd_cust_trans_apply_info_ta",
+      "dwd_mkt_benchmark_kind"
+    ],
+    "tables_with_field_diff": 65,
+    "all_possible_renames": {
+      "AST_CD -> AST_TYPE": [
+        "dwd_ast_calc_rule"
+      ],
+      "CASH_AMT -> CF_AMT": [
+        "dwd_ast_cf_plan"
+      ],
+      "CASH_TYPE -> CF_TYPE": [
+        "dwd_ast_cf_plan"
+      ],
+      "VDATE -> CF_DT": [
+        "dwd_ast_cf_plan"
+      ],
+      "EXERCISE_PRICE -> EXE_PRC": [
+        "dwd_ast_exe_plan"
+      ],
+      "EXERCISE_TYPE -> EXE_TYPE": [
+        "dwd_ast_exe_plan"
+      ],
+      "EXERCISE_DATE -> EXE_DT": [
+        "dwd_ast_exe_plan"
+      ],
+      "FIVE_CLASS_RESULT -> CLASS_REASON": [
+        "dwd_ast_fiveclass"
+      ],
+      "STARTDATE -> START_DT": [
+        "dwd_ast_fund_manager"
+      ],
+      "FUND_MANAGER_ID -> MANAGER_ID": [
+        "dwd_ast_fund_manager"
+      ],
+      "ANN_DATE -> END_DT": [
+        "dwd_ast_fund_manager"
+      ],
+      "MANAGER_POST -> MANAGER_NM": [
+        "dwd_ast_fund_manager"
+      ],
+      "LIST_DATE -> LIST_DT": [
+        "dwd_ast_info"
+      ],
+      "AST_NAME -> AST_NM": [
+        "dwd_ast_info"
+      ],
+      "MKT_CD -> MARKET": [
+        "dwd_ast_info"
+      ],
+      "BOND_TYPE -> BOND_TERM": [
+        "dwd_ast_info"
+      ],
+      "ASSET_BOT_TYPE -> AST_SUB_TYPE": [
+        "dwd_ast_info"
+      ],
+      "COL_RATE -> COUPON_RATE": [
+        "dwd_ast_info"
+      ],
+      "PUBLISH_DATE -> BIZ_DT": [
+        "dwd_ast_info",
+        "dwd_mkt_fund"
+      ],
+      "ISSUE_TYPE -> ISR_ID": [
+        "dwd_ast_info"
+      ],
+      "START_DATE -> MATURITY_DT": [
+        "dwd_ast_info"
+      ],
+      "COUNTY -> CCY": [
+        "dwd_ast_info"
+      ],
+      "PARTY_NAME -> PARTY_NM": [
+        "dwd_ast_party"
+      ],
+      "PARTY_TYPE -> PARTY_ROLE": [
+        "dwd_ast_party"
+      ],
+      "ANN_DATE -> BIZ_DT": [
+        "dwd_ast_party"
+      ],
+      "PLEDGE_AST_CD -> PLEDGE_STD_BOND": [
+        "dwd_ast_pledge"
+      ],
+      "PLEDGE_PAR -> PLEDGE_FLAG": [
+        "dwd_ast_pledge"
+      ],
+      "PLEDGE_AMT -> PLEDGE_NOTE": [
+        "dwd_ast_pledge"
+      ],
+      "DATA_DT -> BIZ_DT": [
+        "dwd_ast_pledge",
+        "dwd_ast_yield_info",
+        "dwd_cust_make_pstn_info",
+        "dwd_cust_trans_acct_info",
+        "dwd_isr_trd_cntp",
+        "dwd_mkt_bond",
+        "dwd_mkt_bond_amount",
+        "dwd_mkt_bond_ecl",
+        "dwd_mkt_bond_market",
+        "dwd_mkt_curve_quote",
+        "dwd_mkt_exrate",
+        "dwd_mkt_fund_market",
+        "dwd_mkt_index_quote",
+        "dwd_mkt_stock",
+        "dwd_ptl_acct_bal",
+        "dwd_ptl_ast_hld",
+        "dwd_ptl_holder_summary",
+        "dwd_rsk_credit",
+        "dwd_val_bal",
+        "dwd_val_detail",
+        "dwd_val_notice",
+        "dwd_val_summary"
+      ],
+      "PLEDGE_QUANTITY -> PLEDGE_BOND_CD": [
+        "dwd_ast_pledge"
+      ],
+      "YIELD -> YIELD_TM": [
+        "dwd_ast_yield_info"
+      ],
+      "AGMT_NO -> AGME_NO": [
+        "dwd_crdt_agme_info"
+      ],
+      "MAIN_NO -> REMAIN_AMT": [
+        "dwd_crdt_agme_info"
+      ],
+      "DATA_DT -> EXP_DT": [
+        "dwd_crdt_agme_info",
+        "dwd_ptl_fee"
+      ],
+      "SHARE_PRICE -> SHARE_RATIO": [
+        "dwd_crdt_main_rela_rela_info"
+      ],
+      "SECU_TYPE -> REL_TYPE": [
+        "dwd_crdt_main_rela_rela_info"
+      ],
+      "PROD_ISSUE_DATE -> SRC_ISR_ID": [
+        "dwd_crdt_main_rela_rela_info"
+      ],
+      "ISSUER -> TGT_ISR_ID": [
+        "dwd_crdt_main_rela_rela_info"
+      ],
+      "RGST_DT -> BIZ_DT": [
+        "dwd_crdt_main_rela_rela_info"
+      ],
+      "CUST_NAME -> CUST_NM": [
+        "dwd_cust_info"
+      ],
+      "BIRTHDAY -> BIRTH_DT": [
+        "dwd_cust_info"
+      ],
+      "EMAIL_NO -> EMAIL": [
+        "dwd_cust_info"
+      ],
+      "CUST_CD -> CUSTOMER_ID": [
+        "dwd_cust_info",
+        "dwd_cust_make_pstn_info",
+        "dwd_cust_trans_cfm_info",
+        "dwd_cust_trans_divd_info",
+        "dwd_cust_trans_srl_info"
+      ],
+      "TEL_NO -> ID_NO": [
+        "dwd_cust_info"
+      ],
+      "CERT_TYPE -> ID_TYPE": [
+        "dwd_cust_info"
+      ],
+      "BIZ_LINE -> BIZ_DT": [
+        "dwd_cust_info"
+      ],
+      "OPEN_ACCT_BANK -> OPEN_DT": [
+        "dwd_cust_info"
+      ],
+      "TA_TRANS_ACCT_NO -> ACCT_NO": [
+        "dwd_cust_trans_acct_info"
+      ],
+      "CORE_CUST_NO -> CUSTOMER_ID": [
+        "dwd_cust_trans_acct_info"
+      ],
+      "BELG_BANK -> BANK": [
+        "dwd_cust_trans_acct_info"
+      ],
+      "CONFIRM_NO -> CFM_NO": [
+        "dwd_cust_trans_cfm_info"
+      ],
+      "CONFIRM_AMT -> CFM_AMT": [
+        "dwd_cust_trans_cfm_info"
+      ],
+      "CONFIRM_DT -> CFM_DT": [
+        "dwd_cust_trans_cfm_info"
+      ],
+      "CUST_TYPE -> TRD_TYPE": [
+        "dwd_cust_trans_cfm_info"
+      ],
+      "DATA_DT -> PAY_DT": [
+        "dwd_cust_trans_divd_info"
+      ],
+      "CONFIRM_AMT -> DIV_AMT": [
+        "dwd_cust_trans_divd_info"
+      ],
+      "CONFIRM_DT -> DIV_DT": [
+        "dwd_cust_trans_divd_info"
+      ],
+      "CUST_TYPE -> DIV_TYPE": [
+        "dwd_cust_trans_divd_info"
+      ],
+      "BIZ_CD -> BIZ_DT": [
+        "dwd_cust_trans_srl_info"
+      ],
+      "CONFIRM_NO -> SRL_NO": [
+        "dwd_cust_trans_srl_info"
+      ],
+      "CONFIRM_AMT -> AMT": [
+        "dwd_cust_trans_srl_info"
+      ],
+      "CUST_TYPE -> BIZ_TYPE": [
+        "dwd_cust_trans_srl_info"
+      ],
+      "PROD_TRANS_SRL_NO -> REL_NO": [
+        "dwd_cust_trans_srl_info"
+      ],
+      "INDUSTRY_CH -> INDUSTRY_CD": [
+        "dwd_isr_institution"
+      ],
+      "DATA_DT -> EST_DT": [
+        "dwd_isr_institution"
+      ],
+      "CUSTOMER_TYPE -> ISR_TYPE": [
+        "dwd_isr_institution"
+      ],
+      "CUSTOMER_NAME -> ISR_SHORT_NM": [
+        "dwd_isr_institution"
+      ],
+      "CUSTOMER_ID -> ISR_ID": [
+        "dwd_isr_institution",
+        "dwd_isr_institution_finance"
+      ],
+      "ECIF_CODE -> CREDIT_CD": [
+        "dwd_isr_institution"
+      ],
+      "NET_PROFIT -> NET_PRFT": [
+        "dwd_isr_institution_finance"
+      ],
+      "TOTAL_LIAB -> TOT_LIA": [
+        "dwd_isr_institution_finance"
+      ],
+      "TOTAL_ASSET -> TOT_AST": [
+        "dwd_isr_institution_finance"
+      ],
+      "DATA_DT -> RPT_DT": [
+        "dwd_isr_institution_finance",
+        "dwd_mkt_fund_allocation",
+        "dwd_mkt_fund_structure"
+      ],
+      "C_CTPA_TYPE -> CNTP_TYPE": [
+        "dwd_isr_trd_cntp"
+      ],
+      "VC_CTPA_NAME -> CNTP_NM": [
+        "dwd_isr_trd_cntp"
+      ],
+      "VC_CTPA_INCD -> CNTP_ID": [
+        "dwd_isr_trd_cntp"
+      ],
+      "CPRICE -> CLOSE_PRC": [
+        "dwd_mkt_bond"
+      ],
+      "FPRICE -> LOW_PRC": [
+        "dwd_mkt_bond"
+      ],
+      "TRADABLEAMOUNT -> AMT": [
+        "dwd_mkt_bond"
+      ],
+      "VALID_DATE -> REPAID_AMT": [
+        "dwd_mkt_bond_amount"
+      ],
+      "B_INFO_OUTSTANDINGBALANCE -> OUTSTANDING_AMT": [
+        "dwd_mkt_bond_amount"
+      ],
+      "DATA_DT -> RATING_DT": [
+        "dwd_mkt_bond_creditrating",
+        "dwd_mkt_rating"
+      ],
+      "CREDITRATING -> BOND_RATING": [
+        "dwd_mkt_bond_creditrating"
+      ],
+      "DURATION -> MOD_DURATION": [
+        "dwd_mkt_bond_duration"
+      ],
+      "DURATION9Y -> MAC_DURATION": [
+        "dwd_mkt_bond_duration"
+      ],
+      "ECL_RATE -> ECL_AMT": [
+        "dwd_mkt_bond_ecl"
+      ],
+      "ECL_STAGE -> STAGE": [
+        "dwd_mkt_bond_ecl"
+      ],
+      "ECL_LGD -> LGD": [
+        "dwd_mkt_bond_ecl"
+      ],
+      "AVERAGE_PRICE -> AVG_PRC": [
+        "dwd_mkt_bond_market"
+      ],
+      "TRAN_DATE -> CAL_DT": [
+        "dwd_mkt_calendar"
+      ],
+      "CURVE_NAME -> CURVE_NM": [
+        "dwd_mkt_curve"
+      ],
+      "CURVE_VARIETY -> CURVE_TYPE": [
+        "dwd_mkt_curve"
+      ],
+      "TRAN_DATE -> DT": [
+        "dwd_mkt_date"
+      ],
+      "QUOT_CCY -> CCY_PAIR": [
+        "dwd_mkt_exrate"
+      ],
+      "DATA_DT -> ESTAB_DT": [
+        "dwd_mkt_fund"
+      ],
+      "MAKTVLE_VALUE -> MKT_VAL": [
+        "dwd_mkt_fund_allocation"
+      ],
+      "S_DQ_RESUMPDATE -> RES_DT": [
+        "dwd_mkt_fund_suspension"
+      ],
+      "DATA_DT -> SUS_DT": [
+        "dwd_mkt_fund_suspension"
+      ],
+      "S_DQ_SUSPENDTYPE -> SUS_TYPE": [
+        "dwd_mkt_fund_suspension"
+      ],
+      "INDEX_NAME -> INDEX_NM": [
+        "dwd_mkt_index"
+      ],
+      "INDEX_CODE -> INDEX_CD": [
+        "dwd_mkt_index",
+        "dwd_mkt_index_member",
+        "dwd_mkt_index_quote"
+      ],
+      "INDEX_KIND -> INDEX_TYPE": [
+        "dwd_mkt_index"
+      ],
+      "DATA_DT -> BASE_DT": [
+        "dwd_mkt_index"
+      ],
+      "DATA_DT -> OUT_DT": [
+        "dwd_mkt_index_member"
+      ],
+      "VALID_DATE -> IN_DT": [
+        "dwd_mkt_index_member"
+      ],
+      "YIDRETURN -> YTD_RTN": [
+        "dwd_mkt_index_quote"
+      ],
+      "INVALID_DATE -> OPEN_VAL": [
+        "dwd_mkt_index_quote"
+      ],
+      "VALID_DATE -> LOW_VAL": [
+        "dwd_mkt_index_quote"
+      ],
+      "W4RETURN -> DAILY_RTN": [
+        "dwd_mkt_index_quote"
+      ],
+      "INT_RATE_NAME -> RATE_NM": [
+        "dwd_mkt_rate"
+      ],
+      "PUB_DATE -> BIZ_DT": [
+        "dwd_mkt_rate"
+      ],
+      "INT_RATE_ID -> RATE_CD": [
+        "dwd_mkt_rate",
+        "dwd_mkt_rate_quote"
+      ],
+      "INT_RATE -> BIZ_DT": [
+        "dwd_mkt_rate_quote"
+      ],
+      "VALID_DATE -> RATE_VAL": [
+        "dwd_mkt_rate_quote"
+      ],
+      "CHANGE -> EXCH": [
+        "dwd_mkt_stock"
+      ],
+      "L_STOP_DATE -> LIST_DT": [
+        "dwd_mkt_stock"
+      ],
+      "INDUSTRY_RETURN -> INDUSTRY_NM": [
+        "dwd_mkt_stock"
+      ],
+      "CAP_STOCK -> STOCK_NM": [
+        "dwd_mkt_stock"
+      ],
+      "MONTH_TRRATE -> MONTH_RTN": [
+        "dwd_mkt_stock_yield"
+      ],
+      "WEEK_TRRATE -> WEEK_RTN": [
+        "dwd_mkt_stock_yield"
+      ],
+      "DEAL_DATE -> BIZ_DT": [
+        "dwd_mkt_stock_yield"
+      ],
+      "DAY_DEAL_AMT -> AMT": [
+        "dwd_mkt_stock_yield"
+      ],
+      "ACCT_NAME -> ACCT_NM": [
+        "dwd_ptl_acc"
+      ],
+      "BANK_DEP -> BANK_BR": [
+        "dwd_ptl_acc"
+      ],
+      "ACCT_ID -> AMT": [
+        "dwd_ptl_acct_bal"
+      ],
+      "VALID_DATE -> BAL_TYPE": [
+        "dwd_ptl_acct_bal"
+      ],
+      "ACTG_CLASS -> AST_CLASS": [
+        "dwd_ptl_asset_config_info"
+      ],
+      "MARKET_VAL -> MAX_RATIO": [
+        "dwd_ptl_asset_config_info"
+      ],
+      "STKQTY -> HLD_QTY": [
+        "dwd_ptl_ast_hld"
+      ],
+      "VALID_DATE -> ACI_AMT": [
+        "dwd_ptl_ast_hld",
+        "dwd_val_summary"
+      ],
+      "SPREAD_RATE -> TRADE_DT": [
+        "dwd_ptl_cedetail"
+      ],
+      "FEE_AMT -> FEE_BASE": [
+        "dwd_ptl_fee"
+      ],
+      "TOP1_AMOUNT -> TOT_AMT": [
+        "dwd_ptl_holder_summary"
+      ],
+      "TOP1_SHARE -> TOT_SHR": [
+        "dwd_ptl_holder_summary"
+      ],
+      "PORT_NATURE -> PORT_NM": [
+        "dwd_ptl_info"
+      ],
+      "CUSTODIAN -> CUSTODY_BANK": [
+        "dwd_ptl_info"
+      ],
+      "MKT_BENCHMARK -> BENCHMARK": [
+        "dwd_ptl_info"
+      ],
+      "PORT_MODEL -> PORT_ID": [
+        "dwd_ptl_info"
+      ],
+      "START_DATE -> ESTAB_DT": [
+        "dwd_ptl_info"
+      ],
+      "PORT_STAT -> PORT_SHORT_NM": [
+        "dwd_ptl_info"
+      ],
+      "PROD_STATUS -> STATUS": [
+        "dwd_ptl_info"
+      ],
+      "CURR -> CCY": [
+        "dwd_ptl_info"
+      ],
+      "MANAGERS -> MGR_INST": [
+        "dwd_ptl_info"
+      ],
+      "ISSUER_NAME -> SHR_NAV": [
+        "dwd_ptl_info"
+      ],
+      "MANAGERS -> MANAGER_NM": [
+        "dwd_ptl_managers"
+      ],
+      "DATA_DT -> START_DT": [
+        "dwd_ptl_managers"
+      ],
+      "VALID_DATE -> END_DT": [
+        "dwd_ptl_managers"
+      ],
+      "RAISE_END_DATE -> OPEN_DT": [
+        "dwd_ptl_open_plan"
+      ],
+      "VALID_DATE -> LAST_RATING_DT": [
+        "dwd_rsk_credit"
+      ],
+      "SENTIMENT_TYPE -> SENT_TYPE": [
+        "dwd_rsk_sentiment"
+      ],
+      "INS_CODE -> SCORE": [
+        "dwd_rsk_sentiment"
+      ],
+      "DATA_DT -> PUB_DT": [
+        "dwd_rsk_sentiment"
+      ],
+      "SELLER_AMT -> SELLER_NM": [
+        "dwd_seller_info"
+      ],
+      "SELLER_QUT -> SELLER_TYPE": [
+        "dwd_seller_info"
+      ],
+      "SELLER_ORG_CD -> SELLER_ID": [
+        "dwd_seller_info"
+      ],
+      "ORG_CD -> ORG": [
+        "dwd_seller_info"
+      ],
+      "DATA_DT -> ENTRY_DT": [
+        "dwd_seller_info"
+      ],
+      "PROD_NAME -> PHONE": [
+        "dwd_seller_info"
+      ],
+      "SETTLE_DATE -> SETT_DT": [
+        "dwd_trn_trade_ast"
+      ],
+      "TRAN_DATE -> TRADE_DT": [
+        "dwd_trn_trade_ast"
+      ],
+      "COUNTER_PARTY -> CNTP_ID": [
+        "dwd_trn_trade_ast"
+      ],
+      "LONG_QUANTITY -> QTY": [
+        "dwd_trn_trade_ast"
+      ],
+      "LONG_CURRENCY -> CCY": [
+        "dwd_trn_trade_ast"
+      ],
+      "NET_PRICE -> PRC": [
+        "dwd_trn_trade_ast"
+      ],
+      "TRAN_STATUS -> STATUS": [
+        "dwd_trn_trade_ast"
+      ],
+      "TRADER_NAME -> TRADER": [
+        "dwd_trn_trade_ast"
+      ],
+      "LONG_AMOUNT -> AMT": [
+        "dwd_trn_trade_ast"
+      ],
+      "TRADE_MARKET -> MARKET": [
+        "dwd_trn_trade_ast"
+      ],
+      "P_SUB_AMOUNT -> AMT": [
+        "dwd_trn_trade_ptl"
+      ],
+      "PRD_CD -> PRC": [
+        "dwd_trn_trade_ptl"
+      ],
+      "DATA_DT -> SETT_DT": [
+        "dwd_trn_trade_ptl"
+      ],
+      "VALID_DATE -> TRADE_DT": [
+        "dwd_trn_trade_ptl"
+      ],
+      "AST_NAME -> ACC_NM": [
+        "dwd_val_bal"
+      ],
+      "AST_CD -> ACC_CD": [
+        "dwd_val_bal"
+      ],
+      "NET_PRICE -> MKT_PRC": [
+        "dwd_val_detail"
+      ],
+      "DEPT_ID -> PORT_ID": [
+        "dwd_val_detail"
+      ],
+      "L_NET_PRICE -> COST_PRC": [
+        "dwd_val_detail"
+      ],
+      "HOLDING_AMOUNT -> ACI_AMT": [
+        "dwd_val_detail"
+      ],
+      "AST_NAME -> COST_AMT": [
+        "dwd_val_detail"
+      ],
+      "AMOR_GL -> AMORT_AMT": [
+        "dwd_val_detail"
+      ],
+      "VALID_DATE -> MKT_VAL": [
+        "dwd_val_detail"
+      ],
+      "PUB_DATE -> PUB_DT": [
+        "dwd_val_notice"
+      ],
+      "PORT_NAME -> PORT_ID": [
+        "dwd_val_notice"
+      ],
+      "NOTICE_STATUS -> NOTICE_TYPE": [
+        "dwd_val_notice"
+      ],
+      "NET_ASSET -> AST_CLASS": [
+        "dwd_val_summary"
+      ]
+    }
+  },
+  "tables": {
+    "dwd_ast_bottom_raito": {
+      "config_fields": [
+        "AST_CD",
+        "BTM_AST_CD",
+        "RATIO",
+        "BTM_NM"
+      ],
+      "mock_fields": [
+        "DEBT_ASSET_RATIO",
+        "EQUITY_ASSET_RATIO",
+        "CMDTY_DERIV_RATIO",
+        "AST_CD",
+        "VALID_DATE"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "BTM_AST_CD",
+        "BTM_NM",
+        "RATIO"
+      ],
+      "only_in_mock": [
+        "CMDTY_DERIV_RATIO",
+        "DEBT_ASSET_RATIO",
+        "EQUITY_ASSET_RATIO",
+        "VALID_DATE"
+      ],
+      "possible_rename": {},
+      "match_rate": "1/4"
+    },
+    "dwd_ast_calc_rule": {
+      "config_fields": [
+        "AST_TYPE",
+        "RULE_CD",
+        "RULE_NM",
+        "FORMULA",
+        "EFF_DT"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "REMARK",
+        "VALID_DATE",
+        "YIELD",
+        "IS_MODIFY"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "AST_TYPE",
+        "EFF_DT",
+        "FORMULA",
+        "RULE_CD",
+        "RULE_NM"
+      ],
+      "only_in_mock": [
+        "AST_CD",
+        "IS_MODIFY",
+        "REMARK",
+        "VALID_DATE",
+        "YIELD"
+      ],
+      "possible_rename": {
+        "AST_CD": "AST_TYPE"
+      },
+      "match_rate": "0/5"
+    },
+    "dwd_ast_cf_plan": {
+      "config_fields": [
+        "AST_CD",
+        "CF_DT",
+        "CF_TYPE",
+        "CF_AMT",
+        "CCY"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "VDATE",
+        "MDATE",
+        "PAY_DATE",
+        "PRIN_AMT",
+        "INT_AMT",
+        "CASH_AMT",
+        "PAY_TYPE",
+        "CASH_TYPE",
+        "EFFECTFLAG",
+        "REMARK",
+        "SEQ_NO",
+        "IS_MODIFY",
+        "INT_PRIN_AMT",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "CCY",
+        "CF_AMT",
+        "CF_DT",
+        "CF_TYPE"
+      ],
+      "only_in_mock": [
+        "CASH_AMT",
+        "CASH_TYPE",
+        "DATA_DT",
+        "EFFECTFLAG",
+        "INT_AMT",
+        "INT_PRIN_AMT",
+        "IS_MODIFY",
+        "MDATE",
+        "PAY_DATE",
+        "PAY_TYPE",
+        "PRIN_AMT",
+        "REMARK",
+        "SEQ_NO",
+        "VDATE"
+      ],
+      "possible_rename": {
+        "CASH_AMT": "CF_AMT",
+        "CASH_TYPE": "CF_TYPE",
+        "VDATE": "CF_DT"
+      },
+      "match_rate": "1/5"
+    },
+    "dwd_ast_exe_plan": {
+      "config_fields": [
+        "AST_CD",
+        "EXE_DT",
+        "EXE_TYPE",
+        "EXE_PRC",
+        "NOTE"
+      ],
+      "mock_fields": [
+        "EXERCISE_REMARK",
+        "EXERCISE_STATUS",
+        "EXERCISE_DATE",
+        "MDATE",
+        "AST_CD",
+        "ACT_EXERCISE_DATE",
+        "DATA_DT",
+        "VDATE",
+        "EXERCISE_PRICE",
+        "IS_MODIFY",
+        "EXERCISE_TYPE"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "EXE_DT",
+        "EXE_PRC",
+        "EXE_TYPE",
+        "NOTE"
+      ],
+      "only_in_mock": [
+        "ACT_EXERCISE_DATE",
+        "DATA_DT",
+        "EXERCISE_DATE",
+        "EXERCISE_PRICE",
+        "EXERCISE_REMARK",
+        "EXERCISE_STATUS",
+        "EXERCISE_TYPE",
+        "IS_MODIFY",
+        "MDATE",
+        "VDATE"
+      ],
+      "possible_rename": {
+        "EXERCISE_PRICE": "EXE_PRC",
+        "EXERCISE_TYPE": "EXE_TYPE",
+        "EXERCISE_DATE": "EXE_DT"
+      },
+      "match_rate": "1/5"
+    },
+    "dwd_ast_fiveclass": {
+      "config_fields": [
+        "AST_CD",
+        "BIZ_DT",
+        "CLASS_LVL",
+        "CLASS_REASON",
+        "ADJ_FLAG",
+        "LAST_LVL"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "VALID_DATE",
+        "FIVE_CLASS_RESULT",
+        "INVALID_DATE"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "ADJ_FLAG",
+        "BIZ_DT",
+        "CLASS_LVL",
+        "CLASS_REASON",
+        "LAST_LVL"
+      ],
+      "only_in_mock": [
+        "FIVE_CLASS_RESULT",
+        "INVALID_DATE",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "FIVE_CLASS_RESULT": "CLASS_REASON"
+      },
+      "match_rate": "1/6"
+    },
+    "dwd_ast_fund_manager": {
+      "config_fields": [
+        "AST_CD",
+        "MANAGER_ID",
+        "MANAGER_NM",
+        "START_DT",
+        "END_DT",
+        "SHR_FLAG"
+      ],
+      "mock_fields": [
+        "LEAVEDATE",
+        "NAME",
+        "MANAGER_POST",
+        "EDUCATION",
+        "ANN_DATE",
+        "FUND_MANAGER_ID",
+        "MANAGE_YEARS",
+        "DATA_DT",
+        "RESUME",
+        "GENDER",
+        "STARTDATE",
+        "NATIONALITY",
+        "IS_SERVICE",
+        "DEPT_ID",
+        "AST_CD",
+        "BIRTHYEAR",
+        "MANAGE_FUND_COUNT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "END_DT",
+        "MANAGER_ID",
+        "MANAGER_NM",
+        "SHR_FLAG",
+        "START_DT"
+      ],
+      "only_in_mock": [
+        "ANN_DATE",
+        "BIRTHYEAR",
+        "DATA_DT",
+        "DEPT_ID",
+        "EDUCATION",
+        "FUND_MANAGER_ID",
+        "GENDER",
+        "IS_SERVICE",
+        "LEAVEDATE",
+        "MANAGER_POST",
+        "MANAGE_FUND_COUNT",
+        "MANAGE_YEARS",
+        "NAME",
+        "NATIONALITY",
+        "RESUME",
+        "STARTDATE"
+      ],
+      "possible_rename": {
+        "STARTDATE": "START_DT",
+        "FUND_MANAGER_ID": "MANAGER_ID",
+        "ANN_DATE": "END_DT",
+        "MANAGER_POST": "MANAGER_NM"
+      },
+      "match_rate": "1/6"
+    },
+    "dwd_ast_info": {
+      "config_fields": [
+        "AST_CD",
+        "AST_NM",
+        "AST_TYPE",
+        "AST_SUB_TYPE",
+        "ISR_ID",
+        "CCY",
+        "LIST_DT",
+        "MATURITY_DT",
+        "COUPON_RATE",
+        "ISSUE_AMT",
+        "MARKET",
+        "BOND_TERM",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "CUSTOMER_ID",
+        "MKT_CD",
+        "EXT_CD",
+        "DTS_TYPE",
+        "VDATE",
+        "MDATE",
+        "OPEN_TYPE",
+        "BOARD",
+        "OUPON_SPECIES",
+        "AST_ABBR",
+        "AST_NAME",
+        "AST_TYPE",
+        "AST_TYPE2",
+        "AST_TYPE3",
+        "AST_TYPE4",
+        "AST_TYPE5",
+        "WIND_TYPE",
+        "WIND_TYPE2",
+        "WIND_TYPE3",
+        "FC_TYPE",
+        "FC_TYPE2",
+        "JUYUAN_TYPE",
+        "JUYUAN_TYPE2",
+        "TRAN_CCT_PLC",
+        "AST_INSTITUTION",
+        "AST_INSTITUTION_NAME",
+        "CUSTOMER_NAME",
+        "CUSTOMER_ABBR",
+        "INDUSTRY_GB",
+        "INDUSTRY_GB2",
+        "INDUSTRY_ZJH",
+        "INDUSTRY_ZJH2",
+        "INDUSTRY_ZJH3",
+        "INDUSTRY_ZJH4",
+        "INDUSTRY_CH",
+        "INDUSTRY_CH2",
+        "INDUSTRY_SW",
+        "INDUSTRY_SW2",
+        "INDUSTRY_SW3",
+        "INDUSTRY_WIND",
+        "INDUSTRY_WIND2",
+        "INDUSTRY_WIND3",
+        "INDUSTRY_WIND4",
+        "PROVINCE",
+        "CITY",
+        "COUNTY",
+        "ORG_TYPE_FC",
+        "PUBLISH_DATE",
+        "CUR",
+        "COUNTRY",
+        "START_DATE",
+        "END_DATE",
+        "OPTION_AST_TYPE",
+        "OPTION_STRUCTURE",
+        "PERFORMANCE",
+        "INVEST_TYPE",
+        "BLN_AREA",
+        "STOCK_INVEST_TYPE",
+        "STOCT_INVEST_NATURE",
+        "INVEST_SIDE",
+        "REPO_DIRECTION",
+        "OPERATING_MODE",
+        "FUND_TYPE",
+        "INVESTMENT_AREA",
+        "IS_CLASS_BABY_FUND",
+        "FUND_STYLE",
+        "INVEST_RISK_TYPE",
+        "SFBB",
+        "FIRSTINVESTSTYLE",
+        "SFFJ",
+        "CREDIT_ENHANCEMENT_TYPE",
+        "GUARANT_MODE",
+        "INVEST_NATURE",
+        "BILL_MEDIUM",
+        "SETTLE_SPEED",
+        "UNDER_AST_CD",
+        "PAYMENTS",
+        "INTEREST_RATE",
+        "RATE_TYPE",
+        "RISK_RATING",
+        "RATE_RULE",
+        "CLAIMS_INVEST_TYPE",
+        "MORTGAGE_PLEDGE",
+        "IS_MODIFY",
+        "CJ_REPO_DAYS",
+        "INVEST_DEPT",
+        "IMGR_ID_NAME",
+        "IS_OUTSOURCING",
+        "COL_INFORMATION",
+        "GUARANTOR",
+        "COL_TYPE",
+        "COL_RATE",
+        "G6_TYPE1",
+        "G6_TYPE2",
+        "G6_TYPE3",
+        "G6_TYPE4",
+        "G6_TYPE5",
+        "INDUSTRY_GMJJ",
+        "INDUSTRY_GMJJ2",
+        "INDUSTRY_GMJJ3",
+        "INDUSTRY_GMJJ4",
+        "IS_JRJG",
+        "JRJG_TYPE",
+        "BANK_TYPE",
+        "CHENG_TOU_FALG",
+        "CHENG_TOU_ELVEL",
+        "IS_AST_BOND",
+        "PERP_BOND_FLAG",
+        "COMPANY_NATURE",
+        "CHL_ID",
+        "CHL_MANAGER",
+        "IS_AD_DRAW",
+        "DEFAULT_DATE",
+        "INT_INDU_TYPE",
+        "INT_FIRST_INDU",
+        "RATE",
+        "ASSET_BOT_TYPE",
+        "OPEN_FREQUENCY",
+        "INVEST_STRATEGY",
+        "APPRAISAL_BENCHMARK",
+        "LIQUIDATION_DAY",
+        "SPV_CLASSIFY",
+        "BX_DEFAULT_DATE",
+        "IS_TIER2_CAPITAL",
+        "ACTUALCONTROLLER_NAME",
+        "ISSUE_AMT",
+        "ISSUE_TYPE",
+        "FINANCIER_ID",
+        "FINANCIER_NAME",
+        "MANAGER_ID",
+        "MANAGER_NAME",
+        "CREDITOR_ID",
+        "CREDITOR_NAME",
+        "IS_RIGHT",
+        "IS_HKSC",
+        "DEPOSIT_TYPE",
+        "NOTICE_DEPOSIT_TYPE",
+        "RATE_PAY_TYPE",
+        "RGHT STIN DCPN",
+        "DJLL",
+        "SPV_MANAGER_MODE",
+        "BETA_RATE",
+        "CH_TYPE",
+        "CH_TYPE2",
+        "ISSUE_NUMBER",
+        "BASERATECODE",
+        "RIGHT_FLAG",
+        "IS_BANK_SUP_DEBT",
+        "IS_CONVERTIBLE",
+        "IS_EXCHANGEABLE",
+        "FUND_STYLE_INVEST",
+        "FUND_STYLE_YHFL",
+        "SETUPDATE",
+        "FUND_STYLE_WIND",
+        "FUND_INDEX",
+        "WARNING_LINE",
+        "STOP_LOSS_LINE",
+        "JRJG_TYPE2",
+        "COL_OWBER",
+        "INT_DEFAULT_DATE",
+        "IS_DEFAULT",
+        "IS_RISK_ASSETS",
+        "RISK_CLASS",
+        "EXTEN_START_DATE",
+        "CALL_DEPOSIT_TYPE",
+        "IS_CON_DRAW",
+        "LIST_STATUS",
+        "STOCK_STYLE",
+        "IS_ST",
+        "LIST_DATE",
+        "PUBLISH_PRIVATE",
+        "AUTO_TYPE",
+        "IS_EXTENSION",
+        "IS_CB_FUND",
+        "IS_HK_THEME_FUND",
+        "COP_ORG",
+        "MORTGAGE_PLEDGE_NATURE",
+        "IF_CUSODIAN",
+        "PRINCIPAL",
+        "COL_OWNER",
+        "INVEST_TEAMS",
+        "MANAGERS",
+        "CL_TYPE",
+        "MANAGECORP",
+        "IS_PIERCE",
+        "DEAL_DEPT",
+        "FUND_TYPE_WIND",
+        "NEXT_RAISE_START_DATE",
+        "PERP_DEBT_TYPE",
+        "RATE_SPREAD",
+        "WIND_CODE",
+        "PUT_DEFAULT_DATE",
+        "PI_DEFAULT_DATE",
+        "LISTING_DATE",
+        "ASSET_PLAN_TYPE1",
+        "ASSET_PLAN_TYPE2",
+        "ASSET_PLAN_TYPE3",
+        "ASSET_PLAN_TYPE4",
+        "ASSET_PLAN_TYPE5",
+        "BOND_TYPE",
+        "FNO_PROD_HLD_BTTM_LYR_AST_CVS_RMB_AMT",
+        "NC_PROD_HLD_BTTMLYR_AST_SHR",
+        "AST_CATEGORY_DCPN",
+        "DRCT_OR_IDC_IVTN",
+        "ECHFLR_PLN_NM",
+        "ECH_FLR_PLN_TYP",
+        "RMN_TRM",
+        "NON_STD_CLMAST_HLG",
+        "IN_WAY_FNDS_AMT",
+        "FNDS_USE_DSCR",
+        "AST_PNTRT_STTN",
+        "TMT_NUM_OF_LYRS",
+        "TMT_FLRAST_LBY_CD",
+        "AST_RISK_CLASS5_TYPE",
+        "PCLASS_TYPE1",
+        "PCLASS_TYPE2",
+        "PCLASS_TYPE3",
+        "STD_BUSS_TYPE",
+        "SUPP_GTR",
+        "IS_PREF_STK",
+        "STK_NATURE_ISS",
+        "MON_MAN_TYPE",
+        "FNDS_DPST_BANK",
+        "DPST_AMT",
+        "ITS_BSS",
+        "FNN_PSN",
+        "FNN_PRJCT"
+      ],
+      "matched": [
+        "AST_CD",
+        "AST_TYPE",
+        "ISSUE_AMT"
+      ],
+      "only_in_config": [
+        "AST_NM",
+        "AST_SUB_TYPE",
+        "BIZ_DT",
+        "BOND_TERM",
+        "CCY",
+        "COUPON_RATE",
+        "ISR_ID",
+        "LIST_DT",
+        "MARKET",
+        "MATURITY_DT"
+      ],
+      "only_in_mock": [
+        "ACTUALCONTROLLER_NAME",
+        "APPRAISAL_BENCHMARK",
+        "ASSET_BOT_TYPE",
+        "ASSET_PLAN_TYPE1",
+        "ASSET_PLAN_TYPE2",
+        "ASSET_PLAN_TYPE3",
+        "ASSET_PLAN_TYPE4",
+        "ASSET_PLAN_TYPE5",
+        "AST_ABBR",
+        "AST_CATEGORY_DCPN",
+        "AST_INSTITUTION",
+        "AST_INSTITUTION_NAME",
+        "AST_NAME",
+        "AST_PNTRT_STTN",
+        "AST_RISK_CLASS5_TYPE",
+        "AST_TYPE2",
+        "AST_TYPE3",
+        "AST_TYPE4",
+        "AST_TYPE5",
+        "AUTO_TYPE",
+        "BANK_TYPE",
+        "BASERATECODE",
+        "BETA_RATE",
+        "BILL_MEDIUM",
+        "BLN_AREA",
+        "BOARD",
+        "BOND_TYPE",
+        "BX_DEFAULT_DATE",
+        "CALL_DEPOSIT_TYPE",
+        "CHENG_TOU_ELVEL",
+        "CHENG_TOU_FALG",
+        "CHL_ID",
+        "CHL_MANAGER",
+        "CH_TYPE",
+        "CH_TYPE2",
+        "CITY",
+        "CJ_REPO_DAYS",
+        "CLAIMS_INVEST_TYPE",
+        "CL_TYPE",
+        "COL_INFORMATION",
+        "COL_OWBER",
+        "COL_OWNER",
+        "COL_RATE",
+        "COL_TYPE",
+        "COMPANY_NATURE",
+        "COP_ORG",
+        "COUNTRY",
+        "COUNTY",
+        "CREDITOR_ID",
+        "CREDITOR_NAME",
+        "CREDIT_ENHANCEMENT_TYPE",
+        "CUR",
+        "CUSTOMER_ABBR",
+        "CUSTOMER_ID",
+        "CUSTOMER_NAME",
+        "DEAL_DEPT",
+        "DEFAULT_DATE",
+        "DEPOSIT_TYPE",
+        "DJLL",
+        "DPST_AMT",
+        "DRCT_OR_IDC_IVTN",
+        "DTS_TYPE",
+        "ECHFLR_PLN_NM",
+        "ECH_FLR_PLN_TYP",
+        "END_DATE",
+        "EXTEN_START_DATE",
+        "EXT_CD",
+        "FC_TYPE",
+        "FC_TYPE2",
+        "FINANCIER_ID",
+        "FINANCIER_NAME",
+        "FIRSTINVESTSTYLE",
+        "FNDS_DPST_BANK",
+        "FNDS_USE_DSCR",
+        "FNN_PRJCT",
+        "FNN_PSN",
+        "FNO_PROD_HLD_BTTM_LYR_AST_CVS_RMB_AMT",
+        "FUND_INDEX",
+        "FUND_STYLE",
+        "FUND_STYLE_INVEST",
+        "FUND_STYLE_WIND",
+        "FUND_STYLE_YHFL",
+        "FUND_TYPE",
+        "FUND_TYPE_WIND",
+        "G6_TYPE1",
+        "G6_TYPE2",
+        "G6_TYPE3",
+        "G6_TYPE4",
+        "G6_TYPE5",
+        "GUARANTOR",
+        "GUARANT_MODE",
+        "IF_CUSODIAN",
+        "IMGR_ID_NAME",
+        "INDUSTRY_CH",
+        "INDUSTRY_CH2",
+        "INDUSTRY_GB",
+        "INDUSTRY_GB2",
+        "INDUSTRY_GMJJ",
+        "INDUSTRY_GMJJ2",
+        "INDUSTRY_GMJJ3",
+        "INDUSTRY_GMJJ4",
+        "INDUSTRY_SW",
+        "INDUSTRY_SW2",
+        "INDUSTRY_SW3",
+        "INDUSTRY_WIND",
+        "INDUSTRY_WIND2",
+        "INDUSTRY_WIND3",
+        "INDUSTRY_WIND4",
+        "INDUSTRY_ZJH",
+        "INDUSTRY_ZJH2",
+        "INDUSTRY_ZJH3",
+        "INDUSTRY_ZJH4",
+        "INTEREST_RATE",
+        "INT_DEFAULT_DATE",
+        "INT_FIRST_INDU",
+        "INT_INDU_TYPE",
+        "INVESTMENT_AREA",
+        "INVEST_DEPT",
+        "INVEST_NATURE",
+        "INVEST_RISK_TYPE",
+        "INVEST_SIDE",
+        "INVEST_STRATEGY",
+        "INVEST_TEAMS",
+        "INVEST_TYPE",
+        "IN_WAY_FNDS_AMT",
+        "ISSUE_NUMBER",
+        "ISSUE_TYPE",
+        "IS_AD_DRAW",
+        "IS_AST_BOND",
+        "IS_BANK_SUP_DEBT",
+        "IS_CB_FUND",
+        "IS_CLASS_BABY_FUND",
+        "IS_CONVERTIBLE",
+        "IS_CON_DRAW",
+        "IS_DEFAULT",
+        "IS_EXCHANGEABLE",
+        "IS_EXTENSION",
+        "IS_HKSC",
+        "IS_HK_THEME_FUND",
+        "IS_JRJG",
+        "IS_MODIFY",
+        "IS_OUTSOURCING",
+        "IS_PIERCE",
+        "IS_PREF_STK",
+        "IS_RIGHT",
+        "IS_RISK_ASSETS",
+        "IS_ST",
+        "IS_TIER2_CAPITAL",
+        "ITS_BSS",
+        "JRJG_TYPE",
+        "JRJG_TYPE2",
+        "JUYUAN_TYPE",
+        "JUYUAN_TYPE2",
+        "LIQUIDATION_DAY",
+        "LISTING_DATE",
+        "LIST_DATE",
+        "LIST_STATUS",
+        "MANAGECORP",
+        "MANAGERS",
+        "MANAGER_ID",
+        "MANAGER_NAME",
+        "MDATE",
+        "MKT_CD",
+        "MON_MAN_TYPE",
+        "MORTGAGE_PLEDGE",
+        "MORTGAGE_PLEDGE_NATURE",
+        "NC_PROD_HLD_BTTMLYR_AST_SHR",
+        "NEXT_RAISE_START_DATE",
+        "NON_STD_CLMAST_HLG",
+        "NOTICE_DEPOSIT_TYPE",
+        "OPEN_FREQUENCY",
+        "OPEN_TYPE",
+        "OPERATING_MODE",
+        "OPTION_AST_TYPE",
+        "OPTION_STRUCTURE",
+        "ORG_TYPE_FC",
+        "OUPON_SPECIES",
+        "PAYMENTS",
+        "PCLASS_TYPE1",
+        "PCLASS_TYPE2",
+        "PCLASS_TYPE3",
+        "PERFORMANCE",
+        "PERP_BOND_FLAG",
+        "PERP_DEBT_TYPE",
+        "PI_DEFAULT_DATE",
+        "PRINCIPAL",
+        "PROVINCE",
+        "PUBLISH_DATE",
+        "PUBLISH_PRIVATE",
+        "PUT_DEFAULT_DATE",
+        "RATE",
+        "RATE_PAY_TYPE",
+        "RATE_RULE",
+        "RATE_SPREAD",
+        "RATE_TYPE",
+        "REPO_DIRECTION",
+        "RGHT STIN DCPN",
+        "RIGHT_FLAG",
+        "RISK_CLASS",
+        "RISK_RATING",
+        "RMN_TRM",
+        "SETTLE_SPEED",
+        "SETUPDATE",
+        "SFBB",
+        "SFFJ",
+        "SPV_CLASSIFY",
+        "SPV_MANAGER_MODE",
+        "START_DATE",
+        "STD_BUSS_TYPE",
+        "STK_NATURE_ISS",
+        "STOCK_INVEST_TYPE",
+        "STOCK_STYLE",
+        "STOCT_INVEST_NATURE",
+        "STOP_LOSS_LINE",
+        "SUPP_GTR",
+        "TMT_FLRAST_LBY_CD",
+        "TMT_NUM_OF_LYRS",
+        "TRAN_CCT_PLC",
+        "UNDER_AST_CD",
+        "VDATE",
+        "WARNING_LINE",
+        "WIND_CODE",
+        "WIND_TYPE",
+        "WIND_TYPE2",
+        "WIND_TYPE3"
+      ],
+      "possible_rename": {
+        "LIST_DATE": "LIST_DT",
+        "AST_NAME": "AST_NM",
+        "MKT_CD": "MARKET",
+        "BOND_TYPE": "BOND_TERM",
+        "ASSET_BOT_TYPE": "AST_SUB_TYPE",
+        "COL_RATE": "COUPON_RATE",
+        "PUBLISH_DATE": "BIZ_DT",
+        "ISSUE_TYPE": "ISR_ID",
+        "START_DATE": "MATURITY_DT",
+        "COUNTY": "CCY"
+      },
+      "match_rate": "3/13"
+    },
+    "dwd_ast_party": {
+      "config_fields": [
+        "AST_CD",
+        "PARTY_ID",
+        "PARTY_NM",
+        "PARTY_ROLE",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "PARTY_TYPE",
+        "SEQ_NO",
+        "PARTY_ID",
+        "PARTY_NAME",
+        "PARTY_ABBR",
+        "CHAIRMAN",
+        "WEBSITE",
+        "CONTACT",
+        "PHONE",
+        "FAX",
+        "EMAIL",
+        "REMARK",
+        "ANN_DATE",
+        "IS_VAILD",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD",
+        "PARTY_ID"
+      ],
+      "only_in_config": [
+        "BIZ_DT",
+        "PARTY_NM",
+        "PARTY_ROLE"
+      ],
+      "only_in_mock": [
+        "ANN_DATE",
+        "CHAIRMAN",
+        "CONTACT",
+        "DATA_DT",
+        "EMAIL",
+        "FAX",
+        "IS_VAILD",
+        "PARTY_ABBR",
+        "PARTY_NAME",
+        "PARTY_TYPE",
+        "PHONE",
+        "REMARK",
+        "SEQ_NO",
+        "WEBSITE"
+      ],
+      "possible_rename": {
+        "PARTY_NAME": "PARTY_NM",
+        "PARTY_TYPE": "PARTY_ROLE",
+        "ANN_DATE": "BIZ_DT"
+      },
+      "match_rate": "2/5"
+    },
+    "dwd_ast_pledge": {
+      "config_fields": [
+        "AST_CD",
+        "BIZ_DT",
+        "PLEDGE_FLAG",
+        "PLEDGE_RATIO",
+        "PLEDGE_STD_BOND",
+        "PLEDGE_BOND_CD",
+        "PLEDGE_NOTE"
+      ],
+      "mock_fields": [
+        "PLEDGE_RATIO",
+        "PLEDGE_QUANTITY",
+        "PLEDGE_PAR",
+        "AST_CD",
+        "DATA_DT",
+        "PLEDGE_AST_CD",
+        "PLEDGE_AMT"
+      ],
+      "matched": [
+        "AST_CD",
+        "PLEDGE_RATIO"
+      ],
+      "only_in_config": [
+        "BIZ_DT",
+        "PLEDGE_BOND_CD",
+        "PLEDGE_FLAG",
+        "PLEDGE_NOTE",
+        "PLEDGE_STD_BOND"
+      ],
+      "only_in_mock": [
+        "DATA_DT",
+        "PLEDGE_AMT",
+        "PLEDGE_AST_CD",
+        "PLEDGE_PAR",
+        "PLEDGE_QUANTITY"
+      ],
+      "possible_rename": {
+        "PLEDGE_AST_CD": "PLEDGE_STD_BOND",
+        "PLEDGE_PAR": "PLEDGE_FLAG",
+        "PLEDGE_AMT": "PLEDGE_NOTE",
+        "DATA_DT": "BIZ_DT",
+        "PLEDGE_QUANTITY": "PLEDGE_BOND_CD"
+      },
+      "match_rate": "2/7"
+    },
+    "dwd_ast_yield_info": {
+      "config_fields": [
+        "AST_CD",
+        "BIZ_DT",
+        "YIELD_TM",
+        "YIELD_EX",
+        "DAILY_RTN",
+        "WEEK_RTN",
+        "MONTH_RTN",
+        "YTD_RTN",
+        "SETTLE_PRC"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "VALID_DATE",
+        "YIELD",
+        "REMARK",
+        "IS_MODIFY",
+        "CALC_TYPE",
+        "BASE_TYPE",
+        "BASE_DATE_TYPE",
+        "BASIS",
+        "IS_INITIAL",
+        "BRANCH",
+        "AFTER_TAX_YIELD",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "BIZ_DT",
+        "DAILY_RTN",
+        "MONTH_RTN",
+        "SETTLE_PRC",
+        "WEEK_RTN",
+        "YIELD_EX",
+        "YIELD_TM",
+        "YTD_RTN"
+      ],
+      "only_in_mock": [
+        "AFTER_TAX_YIELD",
+        "BASE_DATE_TYPE",
+        "BASE_TYPE",
+        "BASIS",
+        "BRANCH",
+        "CALC_TYPE",
+        "DATA_DT",
+        "IS_INITIAL",
+        "IS_MODIFY",
+        "REMARK",
+        "VALID_DATE",
+        "YIELD"
+      ],
+      "possible_rename": {
+        "YIELD": "YIELD_TM",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "1/9"
+    },
+    "dwd_crdt_agme_info": {
+      "config_fields": [
+        "AGME_NO",
+        "CNTP_ID",
+        "AGME_TYPE",
+        "EFF_DT",
+        "EXP_DT",
+        "LIMIT_AMT",
+        "USED_AMT",
+        "REMAIN_AMT",
+        "RISK_LVL",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "PROD_CD",
+        "SRL_NO",
+        "AGMT_NO",
+        "MAIN_NO",
+        "GROUP_NO",
+        "OPER_PERSON",
+        "MODIF_TIME",
+        "BAK_FIELD1",
+        "BAK_FIELD2",
+        "BAK_FIELD3",
+        "VALID_FLAG",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "AGME_NO",
+        "AGME_TYPE",
+        "BIZ_DT",
+        "CNTP_ID",
+        "EFF_DT",
+        "EXP_DT",
+        "LIMIT_AMT",
+        "REMAIN_AMT",
+        "RISK_LVL",
+        "USED_AMT"
+      ],
+      "only_in_mock": [
+        "AGMT_NO",
+        "BAK_FIELD1",
+        "BAK_FIELD2",
+        "BAK_FIELD3",
+        "DATA_DT",
+        "GROUP_NO",
+        "MAIN_NO",
+        "MODIF_TIME",
+        "OPER_PERSON",
+        "PROD_CD",
+        "SRL_NO",
+        "VALID_FLAG"
+      ],
+      "possible_rename": {
+        "AGMT_NO": "AGME_NO",
+        "MAIN_NO": "REMAIN_AMT",
+        "DATA_DT": "EXP_DT"
+      },
+      "match_rate": "0/10"
+    },
+    "dwd_crdt_main_rela_rela_info": {
+      "config_fields": [
+        "SRC_ISR_ID",
+        "TGT_ISR_ID",
+        "REL_TYPE",
+        "SHARE_RATIO",
+        "REMARK",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "ISSUER",
+        "AGMT_NO",
+        "PROD_SIZE",
+        "INVEST_MGER",
+        "CUSTD_PERSON",
+        "MGER",
+        "PROSP_YIELD",
+        "PROD_ISSUE_DATE",
+        "PROD_DURATION_TERM",
+        "PER_BIZ_INVEST_TERM",
+        "CRDT_ENH_MEASURE",
+        "PROD_INFO_CHNL",
+        "INVEST_FLOW_DESC",
+        "PROD_TYPE",
+        "REGRET_PERSON",
+        "RGST_DT",
+        "PROSP_YIELD_STR",
+        "PROD_DURATION_TERM_STR",
+        "PER_BIZ_INVEST_TERM_STR",
+        "TRANS_STRU",
+        "PRIOR_RATIO",
+        "AFTER_RATIO",
+        "STOCK_SUBJ_MATR",
+        "STOCK_CD",
+        "SHARE_PRICE",
+        "STOCK_TERM",
+        "CNT_PARTY",
+        "WARN_LINE",
+        "CLOSE_PSTN_LINE",
+        "IS_SINGLE_SUBJ_MATR",
+        "PUBLIC_OFFER_CD",
+        "IS_HAVE_ONE_BILL_OPTION",
+        "INVEST_START_DT",
+        "INVEST_END_DT",
+        "QUIT_START_DT",
+        "QUIT_END_DT",
+        "INDS_FUND_TYPE",
+        "IS_PARENT_FUND",
+        "SECU_TYPE",
+        "IS_HZBANK_INITV_MGMT",
+        "PRIOR",
+        "MIDDLE_LVL",
+        "SUB",
+        "INIT_RIGHTS_INTERESTS_PERSON",
+        "LEGAL_DUE_DT",
+        "NUMSHR",
+        "START_TIME",
+        "END_TIME",
+        "BAK_FIELD1",
+        "SAVE_TYPE_RANGE",
+        "LISTED_SITE",
+        "BAK_FIELD4",
+        "BAK_FIELD5",
+        "ISSUER_NAME",
+        "STOCK_SUBJ_MATR_NAME",
+        "MGER_NAME",
+        "JUDGE_RECORD_IS_SAVE",
+        "AFTER_INVSTR",
+        "ITEM_PARTNER",
+        "LISTED_COMPANY_LEVEL",
+        "RISK_LEVEL",
+        "VALUATION_TYPE",
+        "UNDER_LYING_TYPE",
+        "MANAGER_TYPE",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "BIZ_DT",
+        "REL_TYPE",
+        "REMARK",
+        "SHARE_RATIO",
+        "SRC_ISR_ID",
+        "TGT_ISR_ID"
+      ],
+      "only_in_mock": [
+        "AFTER_INVSTR",
+        "AFTER_RATIO",
+        "AGMT_NO",
+        "BAK_FIELD1",
+        "BAK_FIELD4",
+        "BAK_FIELD5",
+        "CLOSE_PSTN_LINE",
+        "CNT_PARTY",
+        "CRDT_ENH_MEASURE",
+        "CUSTD_PERSON",
+        "DATA_DT",
+        "END_TIME",
+        "INDS_FUND_TYPE",
+        "INIT_RIGHTS_INTERESTS_PERSON",
+        "INVEST_END_DT",
+        "INVEST_FLOW_DESC",
+        "INVEST_MGER",
+        "INVEST_START_DT",
+        "ISSUER",
+        "ISSUER_NAME",
+        "IS_HAVE_ONE_BILL_OPTION",
+        "IS_HZBANK_INITV_MGMT",
+        "IS_PARENT_FUND",
+        "IS_SINGLE_SUBJ_MATR",
+        "ITEM_PARTNER",
+        "JUDGE_RECORD_IS_SAVE",
+        "LEGAL_DUE_DT",
+        "LISTED_COMPANY_LEVEL",
+        "LISTED_SITE",
+        "MANAGER_TYPE",
+        "MGER",
+        "MGER_NAME",
+        "MIDDLE_LVL",
+        "NUMSHR",
+        "PER_BIZ_INVEST_TERM",
+        "PER_BIZ_INVEST_TERM_STR",
+        "PRIOR",
+        "PRIOR_RATIO",
+        "PROD_DURATION_TERM",
+        "PROD_DURATION_TERM_STR",
+        "PROD_INFO_CHNL",
+        "PROD_ISSUE_DATE",
+        "PROD_SIZE",
+        "PROD_TYPE",
+        "PROSP_YIELD",
+        "PROSP_YIELD_STR",
+        "PUBLIC_OFFER_CD",
+        "QUIT_END_DT",
+        "QUIT_START_DT",
+        "REGRET_PERSON",
+        "RGST_DT",
+        "RISK_LEVEL",
+        "SAVE_TYPE_RANGE",
+        "SECU_TYPE",
+        "SHARE_PRICE",
+        "START_TIME",
+        "STOCK_CD",
+        "STOCK_SUBJ_MATR",
+        "STOCK_SUBJ_MATR_NAME",
+        "STOCK_TERM",
+        "SUB",
+        "TRANS_STRU",
+        "UNDER_LYING_TYPE",
+        "VALUATION_TYPE",
+        "WARN_LINE"
+      ],
+      "possible_rename": {
+        "SHARE_PRICE": "SHARE_RATIO",
+        "SECU_TYPE": "REL_TYPE",
+        "PROD_ISSUE_DATE": "SRC_ISR_ID",
+        "ISSUER": "TGT_ISR_ID",
+        "RGST_DT": "BIZ_DT"
+      },
+      "match_rate": "0/6"
+    },
+    "dwd_cust_info": {
+      "config_fields": [
+        "CUSTOMER_ID",
+        "CUST_NM",
+        "CUST_TYPE",
+        "GENDER",
+        "BIRTH_DT",
+        "ID_TYPE",
+        "ID_NO",
+        "PHONE",
+        "EMAIL",
+        "ADDR",
+        "RISK_LVL",
+        "OPEN_DT",
+        "CHANNEL",
+        "SELLER_ID",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "BIZ_LINE",
+        "MOBL_NO",
+        "CERT_NO",
+        "SRC_SYS",
+        "CITY",
+        "CUST_RISK_RATING",
+        "ZIP_CD",
+        "CUST_CD",
+        "SEX",
+        "BELG_DEPT",
+        "ADDR",
+        "CUST_TYPE",
+        "CRDT_LIMIT_FLAG_S1",
+        "INDU_CLASS_S1",
+        "RGST_TYPE_S1",
+        "PROV",
+        "DATA_DT",
+        "TEL_NO",
+        "CERT_VALID_DT",
+        "CUST_HOLD_AMT_RMB",
+        "BIZ_LINE_S5",
+        "NATION",
+        "VOCATION",
+        "EMAIL_NO",
+        "UPDATE_TIME",
+        "INDV_CORP_FLAG",
+        "CERT_TYPE",
+        "BIRTHDAY",
+        "OPEN_ACCT_BANK",
+        "CUST_NAME"
+      ],
+      "matched": [
+        "ADDR",
+        "CUST_TYPE"
+      ],
+      "only_in_config": [
+        "BIRTH_DT",
+        "BIZ_DT",
+        "CHANNEL",
+        "CUSTOMER_ID",
+        "CUST_NM",
+        "EMAIL",
+        "GENDER",
+        "ID_NO",
+        "ID_TYPE",
+        "OPEN_DT",
+        "PHONE",
+        "RISK_LVL",
+        "SELLER_ID"
+      ],
+      "only_in_mock": [
+        "BELG_DEPT",
+        "BIRTHDAY",
+        "BIZ_LINE",
+        "BIZ_LINE_S5",
+        "CERT_NO",
+        "CERT_TYPE",
+        "CERT_VALID_DT",
+        "CITY",
+        "CRDT_LIMIT_FLAG_S1",
+        "CUST_CD",
+        "CUST_HOLD_AMT_RMB",
+        "CUST_NAME",
+        "CUST_RISK_RATING",
+        "DATA_DT",
+        "EMAIL_NO",
+        "INDU_CLASS_S1",
+        "INDV_CORP_FLAG",
+        "MOBL_NO",
+        "NATION",
+        "OPEN_ACCT_BANK",
+        "PROV",
+        "RGST_TYPE_S1",
+        "SEX",
+        "SRC_SYS",
+        "TEL_NO",
+        "UPDATE_TIME",
+        "VOCATION",
+        "ZIP_CD"
+      ],
+      "possible_rename": {
+        "CUST_NAME": "CUST_NM",
+        "BIRTHDAY": "BIRTH_DT",
+        "EMAIL_NO": "EMAIL",
+        "CUST_CD": "CUSTOMER_ID",
+        "TEL_NO": "ID_NO",
+        "CERT_TYPE": "ID_TYPE",
+        "BIZ_LINE": "BIZ_DT",
+        "OPEN_ACCT_BANK": "OPEN_DT"
+      },
+      "match_rate": "2/15"
+    },
+    "dwd_cust_make_pstn_info": {
+      "config_fields": [
+        "CUSTOMER_ID",
+        "PORT_ID",
+        "BIZ_DT",
+        "HLD_SHR",
+        "HLD_AMT",
+        "COST_AMT",
+        "UNREAL_PNL",
+        "AVAIL_SHR",
+        "FROZEN_SHR",
+        "FIRST_BUY_DT"
+      ],
+      "mock_fields": [
+        "CUST_CD",
+        "PROD_CD",
+        "PARENT_PROD_CD",
+        "CURY",
+        "SELLER_CD",
+        "CHERRM_ACCT_NO",
+        "TRANS_BRC",
+        "CUST_MAKE_PSTN_QUT",
+        "CUST_MAKE_PSTN_AMT_TA",
+        "CUST_MAKE_PSTN_AMT_FA6",
+        "CUST_AGGRE_INCOME",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "AVAIL_SHR",
+        "BIZ_DT",
+        "COST_AMT",
+        "CUSTOMER_ID",
+        "FIRST_BUY_DT",
+        "FROZEN_SHR",
+        "HLD_AMT",
+        "HLD_SHR",
+        "PORT_ID",
+        "UNREAL_PNL"
+      ],
+      "only_in_mock": [
+        "CHERRM_ACCT_NO",
+        "CURY",
+        "CUST_AGGRE_INCOME",
+        "CUST_CD",
+        "CUST_MAKE_PSTN_AMT_FA6",
+        "CUST_MAKE_PSTN_AMT_TA",
+        "CUST_MAKE_PSTN_QUT",
+        "DATA_DT",
+        "PARENT_PROD_CD",
+        "PROD_CD",
+        "SELLER_CD",
+        "TRANS_BRC"
+      ],
+      "possible_rename": {
+        "CUST_CD": "CUSTOMER_ID",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "0/10"
+    },
+    "dwd_cust_trans_acct_info": {
+      "config_fields": [
+        "CUSTOMER_ID",
+        "ACCT_NO",
+        "ACCT_TYPE",
+        "BANK",
+        "BR_NM",
+        "CCY",
+        "OPEN_DT",
+        "STATUS",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "FINAL_MODIF_DT",
+        "SELLER_CD",
+        "BELG_BANK",
+        "CORE_CUST_NO",
+        "SITE_REGION",
+        "RELA_CURNT_DPST_ACCT_NO_OPEN_ACCT_BANK_NAME",
+        "RELA_ACCT_OPEN_ACCT_SITE",
+        "DATA_DT",
+        "RELA_CURNT_DPST_ACCT_NO",
+        "RELA_CURNT_DPST_ACCT_NO_OPEN_ACCT_BANK_CD",
+        "TA_TRANS_ACCT_NO"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "ACCT_NO",
+        "ACCT_TYPE",
+        "BANK",
+        "BIZ_DT",
+        "BR_NM",
+        "CCY",
+        "CUSTOMER_ID",
+        "OPEN_DT",
+        "STATUS"
+      ],
+      "only_in_mock": [
+        "BELG_BANK",
+        "CORE_CUST_NO",
+        "DATA_DT",
+        "FINAL_MODIF_DT",
+        "RELA_ACCT_OPEN_ACCT_SITE",
+        "RELA_CURNT_DPST_ACCT_NO",
+        "RELA_CURNT_DPST_ACCT_NO_OPEN_ACCT_BANK_CD",
+        "RELA_CURNT_DPST_ACCT_NO_OPEN_ACCT_BANK_NAME",
+        "SELLER_CD",
+        "SITE_REGION",
+        "TA_TRANS_ACCT_NO"
+      ],
+      "possible_rename": {
+        "TA_TRANS_ACCT_NO": "ACCT_NO",
+        "CORE_CUST_NO": "CUSTOMER_ID",
+        "BELG_BANK": "BANK",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "0/9"
+    },
+    "dwd_cust_trans_cfm_info": {
+      "config_fields": [
+        "CFM_NO",
+        "APPLY_NO",
+        "CUSTOMER_ID",
+        "PORT_ID",
+        "CFM_DT",
+        "TRD_TYPE",
+        "CFM_AMT",
+        "CFM_SHR",
+        "CFM_NAV",
+        "FEE",
+        "NET_AMT",
+        "STATUS"
+      ],
+      "mock_fields": [
+        "CUST_CD",
+        "PROD_CD",
+        "PROD_TRANS_SRL_NO",
+        "CUST_TYPE",
+        "CONFIRM_NO",
+        "TA_PROD_CD",
+        "BIZ_CD",
+        "SELLER_CD",
+        "TRANS_BRC",
+        "CHERRM_ACCT_NO",
+        "TRANS_ACCT_NO",
+        "CONFIRM_DT",
+        "CONFIRM_AMT",
+        "CONFIRM_QUT",
+        "RAPID_AFTER_CLOSE",
+        "STATUS",
+        "TRANSFER_CAUSE",
+        "DATA_DT"
+      ],
+      "matched": [
+        "STATUS"
+      ],
+      "only_in_config": [
+        "APPLY_NO",
+        "CFM_AMT",
+        "CFM_DT",
+        "CFM_NAV",
+        "CFM_NO",
+        "CFM_SHR",
+        "CUSTOMER_ID",
+        "FEE",
+        "NET_AMT",
+        "PORT_ID",
+        "TRD_TYPE"
+      ],
+      "only_in_mock": [
+        "BIZ_CD",
+        "CHERRM_ACCT_NO",
+        "CONFIRM_AMT",
+        "CONFIRM_DT",
+        "CONFIRM_NO",
+        "CONFIRM_QUT",
+        "CUST_CD",
+        "CUST_TYPE",
+        "DATA_DT",
+        "PROD_CD",
+        "PROD_TRANS_SRL_NO",
+        "RAPID_AFTER_CLOSE",
+        "SELLER_CD",
+        "TA_PROD_CD",
+        "TRANSFER_CAUSE",
+        "TRANS_ACCT_NO",
+        "TRANS_BRC"
+      ],
+      "possible_rename": {
+        "CONFIRM_NO": "CFM_NO",
+        "CONFIRM_AMT": "CFM_AMT",
+        "CONFIRM_DT": "CFM_DT",
+        "CUST_CD": "CUSTOMER_ID",
+        "CUST_TYPE": "TRD_TYPE"
+      },
+      "match_rate": "1/12"
+    },
+    "dwd_cust_trans_divd_info": {
+      "config_fields": [
+        "CUSTOMER_ID",
+        "PORT_ID",
+        "DIV_DT",
+        "EX_DIV_DT",
+        "PAY_DT",
+        "DIV_PER_SHR",
+        "HLD_SHR",
+        "DIV_AMT",
+        "DIV_TYPE",
+        "TAX",
+        "NET_DIV_AMT"
+      ],
+      "mock_fields": [
+        "CUST_CD",
+        "PROD_CD",
+        "CUST_TYPE",
+        "CONFIRM_NO",
+        "TA_PROD_CD",
+        "BIZ_CD",
+        "SELLER_CD",
+        "TRANS_BRC",
+        "CHERRM_ACCT_NO",
+        "TRANS_ACCT_NO",
+        "CONFIRM_DT",
+        "CONFIRM_AMT",
+        "CONFIRM_QUT",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "CUSTOMER_ID",
+        "DIV_AMT",
+        "DIV_DT",
+        "DIV_PER_SHR",
+        "DIV_TYPE",
+        "EX_DIV_DT",
+        "HLD_SHR",
+        "NET_DIV_AMT",
+        "PAY_DT",
+        "PORT_ID",
+        "TAX"
+      ],
+      "only_in_mock": [
+        "BIZ_CD",
+        "CHERRM_ACCT_NO",
+        "CONFIRM_AMT",
+        "CONFIRM_DT",
+        "CONFIRM_NO",
+        "CONFIRM_QUT",
+        "CUST_CD",
+        "CUST_TYPE",
+        "DATA_DT",
+        "PROD_CD",
+        "SELLER_CD",
+        "TA_PROD_CD",
+        "TRANS_ACCT_NO",
+        "TRANS_BRC"
+      ],
+      "possible_rename": {
+        "CUST_CD": "CUSTOMER_ID",
+        "DATA_DT": "PAY_DT",
+        "CONFIRM_AMT": "DIV_AMT",
+        "CONFIRM_DT": "DIV_DT",
+        "CUST_TYPE": "DIV_TYPE"
+      },
+      "match_rate": "0/11"
+    },
+    "dwd_cust_trans_srl_info": {
+      "config_fields": [
+        "SRL_NO",
+        "CUSTOMER_ID",
+        "PORT_ID",
+        "REL_NO",
+        "BIZ_DT",
+        "BIZ_TYPE",
+        "AMT",
+        "BAL_BEFORE",
+        "BAL_AFTER",
+        "CCY",
+        "REMARK"
+      ],
+      "mock_fields": [
+        "CUST_CD",
+        "PROD_CD",
+        "PARENT_PROD_CD",
+        "PROD_TRANS_SRL_NO",
+        "CUST_TYPE",
+        "CONFIRM_NO",
+        "TA_PROD_CD",
+        "BIZ_CD",
+        "SELLER_CD",
+        "TRANS_BRC",
+        "CHERRM_ACCT_NO",
+        "TRANS_ACCT_NO",
+        "CONFIRM_DT",
+        "CONFIRM_AMT",
+        "CONFIRM_QUT",
+        "UPDATE_TIME",
+        "CUR",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "AMT",
+        "BAL_AFTER",
+        "BAL_BEFORE",
+        "BIZ_DT",
+        "BIZ_TYPE",
+        "CCY",
+        "CUSTOMER_ID",
+        "PORT_ID",
+        "REL_NO",
+        "REMARK",
+        "SRL_NO"
+      ],
+      "only_in_mock": [
+        "BIZ_CD",
+        "CHERRM_ACCT_NO",
+        "CONFIRM_AMT",
+        "CONFIRM_DT",
+        "CONFIRM_NO",
+        "CONFIRM_QUT",
+        "CUR",
+        "CUST_CD",
+        "CUST_TYPE",
+        "DATA_DT",
+        "PARENT_PROD_CD",
+        "PROD_CD",
+        "PROD_TRANS_SRL_NO",
+        "SELLER_CD",
+        "TA_PROD_CD",
+        "TRANS_ACCT_NO",
+        "TRANS_BRC",
+        "UPDATE_TIME"
+      ],
+      "possible_rename": {
+        "BIZ_CD": "BIZ_DT",
+        "CUST_CD": "CUSTOMER_ID",
+        "CONFIRM_NO": "SRL_NO",
+        "CONFIRM_AMT": "AMT",
+        "CUST_TYPE": "BIZ_TYPE",
+        "PROD_TRANS_SRL_NO": "REL_NO"
+      },
+      "match_rate": "0/11"
+    },
+    "dwd_isr_institution": {
+      "config_fields": [
+        "ISR_ID",
+        "ISR_NM",
+        "ISR_SHORT_NM",
+        "ISR_TYPE",
+        "CREDIT_CD",
+        "INDUSTRY_CD",
+        "REG_PROV",
+        "LIST_FLAG",
+        "REG_CAP_AMT",
+        "EST_DT",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "CUSTOMER_ID",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "CUSTOMER_NAME",
+        "CUSTOMER_ABBR",
+        "CUSTOMER_TYPE",
+        "INDUSTRY_GB",
+        "INDUSTRY_GB2",
+        "INDUSTRY_ZJH",
+        "INDUSTRY_ZJH2",
+        "INDUSTRY_CH",
+        "INDUSTRY_CH2",
+        "INDUSTRY_SW",
+        "INDUSTRY_SW2",
+        "INDUSTRY_WIND",
+        "INDUSTRY_WIND2",
+        "CBRC_BANKINGTYPE",
+        "CBRC_BANKINGTYPE2",
+        "CBRC_BANKINGTYPE3",
+        "INT_INDU_TYPE",
+        "INT_FIRST_INDU",
+        "PROVINCE",
+        "CITY",
+        "COUNTY",
+        "ADDRESS",
+        "FIRST_OWNER",
+        "INSITITUTE_CODE",
+        "ORG_TYPE_FC",
+        "IS_LISTED_COMPANY",
+        "COMPANY_NATURE",
+        "EFFECTFLAG",
+        "REMARK",
+        "PARTY_TYPE3",
+        "PARTY_TYPE1",
+        "IS_JRJG",
+        "ECIF_CODE",
+        "INDUSTRY_GMJJ",
+        "INDUSTRY_GMJJ2",
+        "INDUSTRY_GMJJ3",
+        "INDUSTRY_GMJJ4",
+        "MEMBER_GROUP",
+        "INDUSTRY_ZJH3",
+        "INDUSTRY_ZJH4",
+        "INDUSTRY_SW3",
+        "INDUSTRY_WIND3",
+        "INDUSTRY_WIND4",
+        "IS_MODIFY",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "BIZ_DT",
+        "CREDIT_CD",
+        "EST_DT",
+        "INDUSTRY_CD",
+        "ISR_ID",
+        "ISR_NM",
+        "ISR_SHORT_NM",
+        "ISR_TYPE",
+        "LIST_FLAG",
+        "REG_CAP_AMT",
+        "REG_PROV"
+      ],
+      "only_in_mock": [
+        "ADDRESS",
+        "CBRC_BANKINGTYPE",
+        "CBRC_BANKINGTYPE2",
+        "CBRC_BANKINGTYPE3",
+        "CITY",
+        "COMPANY_NATURE",
+        "COUNTY",
+        "CUSTOMER_ABBR",
+        "CUSTOMER_ID",
+        "CUSTOMER_NAME",
+        "CUSTOMER_TYPE",
+        "DATA_DT",
+        "ECIF_CODE",
+        "EFFECTFLAG",
+        "FIRST_OWNER",
+        "INDUSTRY_CH",
+        "INDUSTRY_CH2",
+        "INDUSTRY_GB",
+        "INDUSTRY_GB2",
+        "INDUSTRY_GMJJ",
+        "INDUSTRY_GMJJ2",
+        "INDUSTRY_GMJJ3",
+        "INDUSTRY_GMJJ4",
+        "INDUSTRY_SW",
+        "INDUSTRY_SW2",
+        "INDUSTRY_SW3",
+        "INDUSTRY_WIND",
+        "INDUSTRY_WIND2",
+        "INDUSTRY_WIND3",
+        "INDUSTRY_WIND4",
+        "INDUSTRY_ZJH",
+        "INDUSTRY_ZJH2",
+        "INDUSTRY_ZJH3",
+        "INDUSTRY_ZJH4",
+        "INSITITUTE_CODE",
+        "INT_FIRST_INDU",
+        "INT_INDU_TYPE",
+        "INVALID_DATE",
+        "IS_JRJG",
+        "IS_LISTED_COMPANY",
+        "IS_MODIFY",
+        "MEMBER_GROUP",
+        "ORG_TYPE_FC",
+        "PARTY_TYPE1",
+        "PARTY_TYPE3",
+        "PROVINCE",
+        "REMARK",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "INDUSTRY_CH": "INDUSTRY_CD",
+        "DATA_DT": "EST_DT",
+        "CUSTOMER_TYPE": "ISR_TYPE",
+        "CUSTOMER_NAME": "ISR_SHORT_NM",
+        "CUSTOMER_ID": "ISR_ID",
+        "ECIF_CODE": "CREDIT_CD"
+      },
+      "match_rate": "0/11"
+    },
+    "dwd_isr_institution_finance": {
+      "config_fields": [
+        "ISR_ID",
+        "RPT_DT",
+        "RPT_TYPE",
+        "TOT_AST",
+        "TOT_LIA",
+        "EQUITY",
+        "REVENUE",
+        "NET_PRFT",
+        "ROE",
+        "ROA",
+        "DEBT_RATIO"
+      ],
+      "mock_fields": [
+        "CUSTOMER_ID",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "STATEMENT_TYPE",
+        "CCY",
+        "TOTAL_ASSET",
+        "TOTAL_LIAB",
+        "ASSET_LIAB_RATE",
+        "NET_PROFIT",
+        "TOTAL_CASH",
+        "CASH_INFLOWS_OPER",
+        "CASH_OUTFLOWS_OPER",
+        "NETCASH_FLOWS_OPER",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "DEBT_RATIO",
+        "EQUITY",
+        "ISR_ID",
+        "NET_PRFT",
+        "REVENUE",
+        "ROA",
+        "ROE",
+        "RPT_DT",
+        "RPT_TYPE",
+        "TOT_AST",
+        "TOT_LIA"
+      ],
+      "only_in_mock": [
+        "ASSET_LIAB_RATE",
+        "CASH_INFLOWS_OPER",
+        "CASH_OUTFLOWS_OPER",
+        "CCY",
+        "CUSTOMER_ID",
+        "DATA_DT",
+        "INVALID_DATE",
+        "NETCASH_FLOWS_OPER",
+        "NET_PROFIT",
+        "STATEMENT_TYPE",
+        "TOTAL_ASSET",
+        "TOTAL_CASH",
+        "TOTAL_LIAB",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "NET_PROFIT": "NET_PRFT",
+        "TOTAL_LIAB": "TOT_LIA",
+        "TOTAL_ASSET": "TOT_AST",
+        "DATA_DT": "RPT_DT",
+        "CUSTOMER_ID": "ISR_ID"
+      },
+      "match_rate": "0/11"
+    },
+    "dwd_isr_trd_cntp": {
+      "config_fields": [
+        "CNTP_ID",
+        "CNTP_NM",
+        "LINKED_ISR_ID",
+        "CNTP_TYPE",
+        "MARKET",
+        "RATING",
+        "WHITELIST",
+        "SETT_BANK",
+        "SETT_ACCT",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "VC_CTPA_CD",
+        "C_CTPA_TIME",
+        "DATA_DT",
+        "VC_CTPA_INCD",
+        "C_CTPA_TYPE",
+        "VC_BELT_MKT_INS_ID",
+        "VC_CTPA_NAME"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "BIZ_DT",
+        "CNTP_ID",
+        "CNTP_NM",
+        "CNTP_TYPE",
+        "LINKED_ISR_ID",
+        "MARKET",
+        "RATING",
+        "SETT_ACCT",
+        "SETT_BANK",
+        "WHITELIST"
+      ],
+      "only_in_mock": [
+        "C_CTPA_TIME",
+        "C_CTPA_TYPE",
+        "DATA_DT",
+        "VC_BELT_MKT_INS_ID",
+        "VC_CTPA_CD",
+        "VC_CTPA_INCD",
+        "VC_CTPA_NAME"
+      ],
+      "possible_rename": {
+        "C_CTPA_TYPE": "CNTP_TYPE",
+        "VC_CTPA_NAME": "CNTP_NM",
+        "VC_CTPA_INCD": "CNTP_ID",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "0/10"
+    },
+    "dwd_mkt_bond": {
+      "config_fields": [
+        "AST_CD",
+        "BIZ_DT",
+        "OPEN_PRC",
+        "HIGH_PRC",
+        "LOW_PRC",
+        "CLOSE_PRC",
+        "VOL",
+        "AMT",
+        "YTM",
+        "CHG_BP"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "SEQ_NO",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "CPRICE",
+        "FPRICE",
+        "FPRICE_IFEXE",
+        "CPRICE_IFEXE",
+        "YIELD_IFEXE",
+        "M_DURATION_IFEXE",
+        "CONVEXITY_IFEXE",
+        "RECOMMENDED",
+        "ACCR_INT",
+        "TERMTOMATURITY",
+        "YIELD",
+        "YCCODE",
+        "YCNAME",
+        "DURATION",
+        "M_DURATION",
+        "CONVEXITY",
+        "SPREAD",
+        "SPREAD_DURATION",
+        "RATE_CONVEXITY",
+        "SPREAD_CONVEXITY",
+        "BPVALUE",
+        "TRADABLEAMOUNT",
+        "RATE_DURATION",
+        "FPRICE_DAY",
+        "ACCR_INT_DAY",
+        "REMAININGPRINC",
+        "SPREADYIELD",
+        "DATASOURCE_TYPE",
+        "ECRATE",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "AMT",
+        "BIZ_DT",
+        "CHG_BP",
+        "CLOSE_PRC",
+        "HIGH_PRC",
+        "LOW_PRC",
+        "OPEN_PRC",
+        "VOL",
+        "YTM"
+      ],
+      "only_in_mock": [
+        "ACCR_INT",
+        "ACCR_INT_DAY",
+        "BPVALUE",
+        "CONVEXITY",
+        "CONVEXITY_IFEXE",
+        "CPRICE",
+        "CPRICE_IFEXE",
+        "DATASOURCE_TYPE",
+        "DATA_DT",
+        "DURATION",
+        "ECRATE",
+        "FPRICE",
+        "FPRICE_DAY",
+        "FPRICE_IFEXE",
+        "INVALID_DATE",
+        "M_DURATION",
+        "M_DURATION_IFEXE",
+        "RATE_CONVEXITY",
+        "RATE_DURATION",
+        "RECOMMENDED",
+        "REMAININGPRINC",
+        "SEQ_NO",
+        "SPREAD",
+        "SPREADYIELD",
+        "SPREAD_CONVEXITY",
+        "SPREAD_DURATION",
+        "TERMTOMATURITY",
+        "TRADABLEAMOUNT",
+        "VALID_DATE",
+        "YCCODE",
+        "YCNAME",
+        "YIELD",
+        "YIELD_IFEXE"
+      ],
+      "possible_rename": {
+        "CPRICE": "CLOSE_PRC",
+        "FPRICE": "LOW_PRC",
+        "TRADABLEAMOUNT": "AMT",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "1/10"
+    },
+    "dwd_mkt_bond_amount": {
+      "config_fields": [
+        "AST_CD",
+        "BIZ_DT",
+        "ISSUE_AMT",
+        "OUTSTANDING_AMT",
+        "REPAID_AMT"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "B_INFO_CHANGEREASON",
+        "B_INFO_OUTSTANDINGBALANCE",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "BIZ_DT",
+        "ISSUE_AMT",
+        "OUTSTANDING_AMT",
+        "REPAID_AMT"
+      ],
+      "only_in_mock": [
+        "B_INFO_CHANGEREASON",
+        "B_INFO_OUTSTANDINGBALANCE",
+        "DATA_DT",
+        "INVALID_DATE",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "VALID_DATE": "REPAID_AMT",
+        "B_INFO_OUTSTANDINGBALANCE": "OUTSTANDING_AMT",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "1/5"
+    },
+    "dwd_mkt_bond_creditrating": {
+      "config_fields": [
+        "AST_CD",
+        "RATING_DT",
+        "AGENCY",
+        "BOND_RATING",
+        "ISSUER_RATING",
+        "OUTLOOK"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "CREDITRATING",
+        "CURVE_ID",
+        "CURVE_NAME",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "AGENCY",
+        "BOND_RATING",
+        "ISSUER_RATING",
+        "OUTLOOK",
+        "RATING_DT"
+      ],
+      "only_in_mock": [
+        "CREDITRATING",
+        "CURVE_ID",
+        "CURVE_NAME",
+        "DATA_DT",
+        "INVALID_DATE",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "DATA_DT": "RATING_DT",
+        "CREDITRATING": "BOND_RATING"
+      },
+      "match_rate": "1/6"
+    },
+    "dwd_mkt_bond_duration": {
+      "config_fields": [
+        "AST_CD",
+        "BIZ_DT",
+        "MOD_DURATION",
+        "MAC_DURATION",
+        "CONVEXITY",
+        "KEY_RATE_1Y",
+        "KEY_RATE_3Y",
+        "KEY_RATE_5Y",
+        "KEY_RATE_10Y"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "TERMTOMATURITY",
+        "DURATION",
+        "DURATION1M",
+        "DURATION2M",
+        "DURATION3M",
+        "DURATION6M",
+        "DURATION9M",
+        "DURATION1Y",
+        "DURATION2Y",
+        "DURATION3Y",
+        "DURATION4Y",
+        "DURATION5Y",
+        "DURATION6Y",
+        "DURATION7Y",
+        "DURATION8Y",
+        "DURATION9Y",
+        "DURATION15Y"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "BIZ_DT",
+        "CONVEXITY",
+        "KEY_RATE_10Y",
+        "KEY_RATE_1Y",
+        "KEY_RATE_3Y",
+        "KEY_RATE_5Y",
+        "MAC_DURATION",
+        "MOD_DURATION"
+      ],
+      "only_in_mock": [
+        "DURATION",
+        "DURATION15Y",
+        "DURATION1M",
+        "DURATION1Y",
+        "DURATION2M",
+        "DURATION2Y",
+        "DURATION3M",
+        "DURATION3Y",
+        "DURATION4Y",
+        "DURATION5Y",
+        "DURATION6M",
+        "DURATION6Y",
+        "DURATION7Y",
+        "DURATION8Y",
+        "DURATION9M",
+        "DURATION9Y",
+        "INVALID_DATE",
+        "TERMTOMATURITY",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "DURATION": "MOD_DURATION",
+        "DURATION9Y": "MAC_DURATION"
+      },
+      "match_rate": "1/9"
+    },
+    "dwd_mkt_bond_ecl": {
+      "config_fields": [
+        "AST_CD",
+        "BIZ_DT",
+        "STAGE",
+        "PD_12M",
+        "PD_LIFE",
+        "LGD",
+        "EAD",
+        "ECL_AMT"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "ANAL_PTMYEAR",
+        "INITIAL_STARTDATE",
+        "INITIAL_DEADLINE",
+        "ECL_STAGE",
+        "ECL_PD",
+        "ECL_LGD",
+        "ECL_RATE",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "BIZ_DT",
+        "EAD",
+        "ECL_AMT",
+        "LGD",
+        "PD_12M",
+        "PD_LIFE",
+        "STAGE"
+      ],
+      "only_in_mock": [
+        "ANAL_PTMYEAR",
+        "DATA_DT",
+        "ECL_LGD",
+        "ECL_PD",
+        "ECL_RATE",
+        "ECL_STAGE",
+        "INITIAL_DEADLINE",
+        "INITIAL_STARTDATE",
+        "INVALID_DATE",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "ECL_RATE": "ECL_AMT",
+        "ECL_STAGE": "STAGE",
+        "ECL_LGD": "LGD",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "1/8"
+    },
+    "dwd_mkt_bond_market": {
+      "config_fields": [
+        "AST_CD",
+        "BIZ_DT",
+        "VOL",
+        "AMT",
+        "AVG_PRC",
+        "AVG_YTM",
+        "TRADE_CNT"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "CLOSE_PRICE",
+        "MIN_PRICE",
+        "AVERAGE_PRICE",
+        "MAX_PRICE",
+        "BUY_ONE_PRICE",
+        "SELL_ONE_PRICE",
+        "CLOSE_PRICE_FULL",
+        "AVERAGE_PRICE_FULL",
+        "MAX_PRICE_FULL",
+        "MIN_PRICE_FULL",
+        "BUY_ONE_PRICE_FULL",
+        "SELL_ONE_PRICE_FULL",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "AMT",
+        "AVG_PRC",
+        "AVG_YTM",
+        "BIZ_DT",
+        "TRADE_CNT",
+        "VOL"
+      ],
+      "only_in_mock": [
+        "AVERAGE_PRICE",
+        "AVERAGE_PRICE_FULL",
+        "BUY_ONE_PRICE",
+        "BUY_ONE_PRICE_FULL",
+        "CLOSE_PRICE",
+        "CLOSE_PRICE_FULL",
+        "DATA_DT",
+        "INVALID_DATE",
+        "MAX_PRICE",
+        "MAX_PRICE_FULL",
+        "MIN_PRICE",
+        "MIN_PRICE_FULL",
+        "SELL_ONE_PRICE",
+        "SELL_ONE_PRICE_FULL",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "AVERAGE_PRICE": "AVG_PRC",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "1/7"
+    },
+    "dwd_mkt_calendar": {
+      "config_fields": [
+        "CAL_DT",
+        "CAL_TYPE",
+        "IS_TRADE",
+        "WEEK_DAY"
+      ],
+      "mock_fields": [
+        "TRAN_DATE",
+        "SEQ_NO",
+        "CALENDAR_ID",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "CAL_DT",
+        "CAL_TYPE",
+        "IS_TRADE",
+        "WEEK_DAY"
+      ],
+      "only_in_mock": [
+        "CALENDAR_ID",
+        "DATA_DT",
+        "SEQ_NO",
+        "TRAN_DATE"
+      ],
+      "possible_rename": {
+        "TRAN_DATE": "CAL_DT"
+      },
+      "match_rate": "0/4"
+    },
+    "dwd_mkt_curve": {
+      "config_fields": [
+        "CURVE_ID",
+        "CURVE_NM",
+        "CCY",
+        "SOURCE",
+        "CURVE_TYPE"
+      ],
+      "mock_fields": [
+        "EFFECTFLAG",
+        "CURVE_VARIETY",
+        "DATA_DT",
+        "REMARK",
+        "CURVE_ID",
+        "CURVE_NAME"
+      ],
+      "matched": [
+        "CURVE_ID"
+      ],
+      "only_in_config": [
+        "CCY",
+        "CURVE_NM",
+        "CURVE_TYPE",
+        "SOURCE"
+      ],
+      "only_in_mock": [
+        "CURVE_NAME",
+        "CURVE_VARIETY",
+        "DATA_DT",
+        "EFFECTFLAG",
+        "REMARK"
+      ],
+      "possible_rename": {
+        "CURVE_NAME": "CURVE_NM",
+        "CURVE_VARIETY": "CURVE_TYPE"
+      },
+      "match_rate": "1/5"
+    },
+    "dwd_mkt_curve_quote": {
+      "config_fields": [
+        "CURVE_ID",
+        "BIZ_DT",
+        "TENOR",
+        "YIELD",
+        "CHG_BP"
+      ],
+      "mock_fields": [
+        "CURVE_ID",
+        "K_POINT",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "YIELD",
+        "N_POINT",
+        "EFFECTFLAG",
+        "REMARK",
+        "DATASOURCE_TYPE",
+        "INT_CURVE_TYPE",
+        "DATA_DT"
+      ],
+      "matched": [
+        "CURVE_ID",
+        "YIELD"
+      ],
+      "only_in_config": [
+        "BIZ_DT",
+        "CHG_BP",
+        "TENOR"
+      ],
+      "only_in_mock": [
+        "DATASOURCE_TYPE",
+        "DATA_DT",
+        "EFFECTFLAG",
+        "INT_CURVE_TYPE",
+        "INVALID_DATE",
+        "K_POINT",
+        "N_POINT",
+        "REMARK",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "2/5"
+    },
+    "dwd_mkt_date": {
+      "config_fields": [
+        "DT",
+        "YEAR",
+        "QUARTER",
+        "MONTH",
+        "DAY",
+        "WEEK_OF_YEAR",
+        "IS_MONTH_END",
+        "IS_QUARTER_END",
+        "IS_YEAR_END"
+      ],
+      "mock_fields": [
+        "TRAN_DATE",
+        "SEQ_NO",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "DAY",
+        "DT",
+        "IS_MONTH_END",
+        "IS_QUARTER_END",
+        "IS_YEAR_END",
+        "MONTH",
+        "QUARTER",
+        "WEEK_OF_YEAR",
+        "YEAR"
+      ],
+      "only_in_mock": [
+        "DATA_DT",
+        "SEQ_NO",
+        "TRAN_DATE"
+      ],
+      "possible_rename": {
+        "TRAN_DATE": "DT"
+      },
+      "match_rate": "0/9"
+    },
+    "dwd_mkt_exrate": {
+      "config_fields": [
+        "CCY_PAIR",
+        "BIZ_DT",
+        "MID",
+        "BID",
+        "ASK",
+        "SRC"
+      ],
+      "mock_fields": [
+        "SEQ_NO",
+        "EXCHANGE_CODE",
+        "EXCHANGE_TYPE",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "DATASOURCE_TYPE",
+        "MID_PRICE",
+        "XCMRJG",
+        "XCMCJG",
+        "XHMRJG",
+        "XHMCJG",
+        "BASE_CCY",
+        "QUOT_CCY",
+        "EFFECTFLAG",
+        "REMARK",
+        "OPEN_PRICE",
+        "CLOSE_PRICE",
+        "HIGH_PRICE",
+        "LOW_PRICE",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "ASK",
+        "BID",
+        "BIZ_DT",
+        "CCY_PAIR",
+        "MID",
+        "SRC"
+      ],
+      "only_in_mock": [
+        "BASE_CCY",
+        "CLOSE_PRICE",
+        "DATASOURCE_TYPE",
+        "DATA_DT",
+        "EFFECTFLAG",
+        "EXCHANGE_CODE",
+        "EXCHANGE_TYPE",
+        "HIGH_PRICE",
+        "INVALID_DATE",
+        "LOW_PRICE",
+        "MID_PRICE",
+        "OPEN_PRICE",
+        "QUOT_CCY",
+        "REMARK",
+        "SEQ_NO",
+        "VALID_DATE",
+        "XCMCJG",
+        "XCMRJG",
+        "XHMCJG",
+        "XHMRJG"
+      ],
+      "possible_rename": {
+        "QUOT_CCY": "CCY_PAIR",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "0/6"
+    },
+    "dwd_mkt_fund": {
+      "config_fields": [
+        "AST_CD",
+        "FUND_NM",
+        "FUND_TYPE",
+        "MGR_INST",
+        "CUSTODY_BANK",
+        "ESTAB_DT",
+        "BENCHMARK",
+        "AUM",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "NAV",
+        "SUM_NAV",
+        "ADJ_NAV",
+        "ADJ_FACTOR",
+        "WFSY",
+        "DWFH",
+        "QRNHSY",
+        "CCY",
+        "EQUITY",
+        "PUBLISH_DATE",
+        "VALUE_SOURCE",
+        "SHARE_AMT_UNIT",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "AUM",
+        "BENCHMARK",
+        "BIZ_DT",
+        "CUSTODY_BANK",
+        "ESTAB_DT",
+        "FUND_NM",
+        "FUND_TYPE",
+        "MGR_INST"
+      ],
+      "only_in_mock": [
+        "ADJ_FACTOR",
+        "ADJ_NAV",
+        "CCY",
+        "DATA_DT",
+        "DWFH",
+        "EQUITY",
+        "INVALID_DATE",
+        "NAV",
+        "PUBLISH_DATE",
+        "QRNHSY",
+        "SHARE_AMT_UNIT",
+        "SUM_NAV",
+        "VALID_DATE",
+        "VALUE_SOURCE",
+        "WFSY"
+      ],
+      "possible_rename": {
+        "DATA_DT": "ESTAB_DT",
+        "PUBLISH_DATE": "BIZ_DT"
+      },
+      "match_rate": "1/9"
+    },
+    "dwd_mkt_fund_allocation": {
+      "config_fields": [
+        "AST_CD",
+        "RPT_DT",
+        "AST_CLASS",
+        "MKT_VAL",
+        "RATIO"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "OBJECT_ID",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "ANN_DATE",
+        "CNY",
+        "F_TOTAL_ASSET",
+        "F_NET_ASSET",
+        "STOCK_VALUE",
+        "STOCK_NAV",
+        "STOCK_TOT",
+        "PASVSTK_VALUE",
+        "PASVSTK_NAV",
+        "POSVSTK_VALUE",
+        "POSVSTK_NAV",
+        "HKSTOCK_VALUE",
+        "HKSTOCK_NAV",
+        "BOND_VALUE",
+        "BOND_NAV",
+        "BOND_TOT",
+        "CTR_BOND_VALUE",
+        "CTR_BOND_NAV",
+        "GOV_BOND_VALUE",
+        "GOV_BOND_NAV",
+        "NGOV_BOND_VALUE",
+        "NGOV_BOND_NAV",
+        "FIN_BOND_VALUE",
+        "FIN_BOND_NAV",
+        "COV_BOND_VALUE",
+        "COV_BOND_NAV",
+        "COV_BOND_TOT",
+        "COR_BOND_VALUE",
+        "COR_BOND_NAV",
+        "ABS_BOND_VALUE",
+        "ABS_BOND_NAV",
+        "POL_BOND_VALUE",
+        "POL_BOND_NAV",
+        "CP_BOND_VALUE",
+        "MTN_BOND_VALUE",
+        "CDS_BOND_VALUE",
+        "OTH_BOND_VALUE",
+        "CASH_VALUE",
+        "CASH_NAV",
+        "CASH_TOT",
+        "GOV_CASH_VALUE",
+        "GOV_CASH_NAV",
+        "WARRANT_VALUE",
+        "WARRANT_NAV",
+        "WARRANT_TOT",
+        "FUND_VALUE",
+        "FUND_NAV",
+        "FUND_TOT",
+        "NETASSET_PCT",
+        "MM_VALUE",
+        "MM_NAV",
+        "MM_TOT",
+        "REV_REPO_VALUE",
+        "REV_REPO_TOT",
+        "REV_REPO_NAV",
+        "REPO_VALUE",
+        "MAKTVLE_VALUE",
+        "MAKTVLE_NAV",
+        "OTHER_VALUE",
+        "OTHER_NAV",
+        "OTHER_TOT",
+        "DR_BALANCE",
+        "AVGPTM",
+        "STOCK_NAV_CHG",
+        "BOND_NAV_CHG",
+        "CASH_NAV_CHG",
+        "OTHER_NAV_CHG",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "AST_CLASS",
+        "MKT_VAL",
+        "RATIO",
+        "RPT_DT"
+      ],
+      "only_in_mock": [
+        "ABS_BOND_NAV",
+        "ABS_BOND_VALUE",
+        "ANN_DATE",
+        "AVGPTM",
+        "BOND_NAV",
+        "BOND_NAV_CHG",
+        "BOND_TOT",
+        "BOND_VALUE",
+        "CASH_NAV",
+        "CASH_NAV_CHG",
+        "CASH_TOT",
+        "CASH_VALUE",
+        "CDS_BOND_VALUE",
+        "CNY",
+        "COR_BOND_NAV",
+        "COR_BOND_VALUE",
+        "COV_BOND_NAV",
+        "COV_BOND_TOT",
+        "COV_BOND_VALUE",
+        "CP_BOND_VALUE",
+        "CTR_BOND_NAV",
+        "CTR_BOND_VALUE",
+        "DATA_DT",
+        "DR_BALANCE",
+        "FIN_BOND_NAV",
+        "FIN_BOND_VALUE",
+        "FUND_NAV",
+        "FUND_TOT",
+        "FUND_VALUE",
+        "F_NET_ASSET",
+        "F_TOTAL_ASSET",
+        "GOV_BOND_NAV",
+        "GOV_BOND_VALUE",
+        "GOV_CASH_NAV",
+        "GOV_CASH_VALUE",
+        "HKSTOCK_NAV",
+        "HKSTOCK_VALUE",
+        "INVALID_DATE",
+        "MAKTVLE_NAV",
+        "MAKTVLE_VALUE",
+        "MM_NAV",
+        "MM_TOT",
+        "MM_VALUE",
+        "MTN_BOND_VALUE",
+        "NETASSET_PCT",
+        "NGOV_BOND_NAV",
+        "NGOV_BOND_VALUE",
+        "OBJECT_ID",
+        "OTHER_NAV",
+        "OTHER_NAV_CHG",
+        "OTHER_TOT",
+        "OTHER_VALUE",
+        "OTH_BOND_VALUE",
+        "PASVSTK_NAV",
+        "PASVSTK_VALUE",
+        "POL_BOND_NAV",
+        "POL_BOND_VALUE",
+        "POSVSTK_NAV",
+        "POSVSTK_VALUE",
+        "REPO_VALUE",
+        "REV_REPO_NAV",
+        "REV_REPO_TOT",
+        "REV_REPO_VALUE",
+        "STOCK_NAV",
+        "STOCK_NAV_CHG",
+        "STOCK_TOT",
+        "STOCK_VALUE",
+        "VALID_DATE",
+        "WARRANT_NAV",
+        "WARRANT_TOT",
+        "WARRANT_VALUE"
+      ],
+      "possible_rename": {
+        "MAKTVLE_VALUE": "MKT_VAL",
+        "DATA_DT": "RPT_DT"
+      },
+      "match_rate": "1/5"
+    },
+    "dwd_mkt_fund_market": {
+      "config_fields": [
+        "AST_CD",
+        "BIZ_DT",
+        "UNIT_NAV",
+        "ACC_NAV",
+        "DAILY_RTN",
+        "VOL",
+        "AMT"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "CLOSE_PRICE",
+        "AVERAGE_PRICE",
+        "MAX_PRICE",
+        "MIN_PRICE",
+        "BUY_ONE_PRICE",
+        "SELL_ONE_PRICE",
+        "PRE_CLOSE_PRICE_ADJ",
+        "OPEN_PRICE_ADJ",
+        "HIGH_PRICE_ADJ",
+        "CLOSE_PRICE_ADJ",
+        "FACTOR_ADJ",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "ACC_NAV",
+        "AMT",
+        "BIZ_DT",
+        "DAILY_RTN",
+        "UNIT_NAV",
+        "VOL"
+      ],
+      "only_in_mock": [
+        "AVERAGE_PRICE",
+        "BUY_ONE_PRICE",
+        "CLOSE_PRICE",
+        "CLOSE_PRICE_ADJ",
+        "DATA_DT",
+        "FACTOR_ADJ",
+        "HIGH_PRICE_ADJ",
+        "INVALID_DATE",
+        "MAX_PRICE",
+        "MIN_PRICE",
+        "OPEN_PRICE_ADJ",
+        "PRE_CLOSE_PRICE_ADJ",
+        "SELL_ONE_PRICE",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "1/7"
+    },
+    "dwd_mkt_fund_structure": {
+      "config_fields": [
+        "AST_CD",
+        "RPT_DT",
+        "HOLDER_TYPE",
+        "TOT_SHR",
+        "RATIO"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "ANN_DATE",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "GBBDYY",
+        "C_SHARES",
+        "W_SHARES",
+        "L_SHARES",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "HOLDER_TYPE",
+        "RATIO",
+        "RPT_DT",
+        "TOT_SHR"
+      ],
+      "only_in_mock": [
+        "ANN_DATE",
+        "C_SHARES",
+        "DATA_DT",
+        "GBBDYY",
+        "INVALID_DATE",
+        "L_SHARES",
+        "VALID_DATE",
+        "W_SHARES"
+      ],
+      "possible_rename": {
+        "DATA_DT": "RPT_DT"
+      },
+      "match_rate": "1/5"
+    },
+    "dwd_mkt_fund_suspension": {
+      "config_fields": [
+        "AST_CD",
+        "SUS_DT",
+        "RES_DT",
+        "SUS_TYPE",
+        "REASON"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "S_DQ_RESUMPDATE",
+        "DATA_DT",
+        "MARKET_ID",
+        "S_DQ_SUSPENDTYPE",
+        "S_DQ_SUSPENDDATE",
+        "S_DQ_SUSPENDTIME",
+        "S_DQ_CHANGEREASON"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "REASON",
+        "RES_DT",
+        "SUS_DT",
+        "SUS_TYPE"
+      ],
+      "only_in_mock": [
+        "DATA_DT",
+        "MARKET_ID",
+        "S_DQ_CHANGEREASON",
+        "S_DQ_RESUMPDATE",
+        "S_DQ_SUSPENDDATE",
+        "S_DQ_SUSPENDTIME",
+        "S_DQ_SUSPENDTYPE"
+      ],
+      "possible_rename": {
+        "S_DQ_RESUMPDATE": "RES_DT",
+        "DATA_DT": "SUS_DT",
+        "S_DQ_SUSPENDTYPE": "SUS_TYPE"
+      },
+      "match_rate": "1/5"
+    },
+    "dwd_mkt_index": {
+      "config_fields": [
+        "INDEX_CD",
+        "INDEX_NM",
+        "PUBLISHER",
+        "BASE_DT",
+        "BASE_VAL",
+        "INDEX_TYPE",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "WEIGHTING_PATTERN",
+        "EFFECTFLAG",
+        "INDEX_CODE",
+        "BENCHMARK_DATE",
+        "BENCHMARK_POINTS",
+        "DATA_DT",
+        "CCY",
+        "CUSTOM_INDEX_TYPE",
+        "INDEX_KIND",
+        "REMARK",
+        "INDEX_NAME"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "BASE_DT",
+        "BASE_VAL",
+        "BIZ_DT",
+        "INDEX_CD",
+        "INDEX_NM",
+        "INDEX_TYPE",
+        "PUBLISHER"
+      ],
+      "only_in_mock": [
+        "BENCHMARK_DATE",
+        "BENCHMARK_POINTS",
+        "CCY",
+        "CUSTOM_INDEX_TYPE",
+        "DATA_DT",
+        "EFFECTFLAG",
+        "INDEX_CODE",
+        "INDEX_KIND",
+        "INDEX_NAME",
+        "REMARK",
+        "WEIGHTING_PATTERN"
+      ],
+      "possible_rename": {
+        "INDEX_NAME": "INDEX_NM",
+        "INDEX_CODE": "INDEX_CD",
+        "INDEX_KIND": "INDEX_TYPE",
+        "DATA_DT": "BASE_DT"
+      },
+      "match_rate": "0/7"
+    },
+    "dwd_mkt_index_member": {
+      "config_fields": [
+        "INDEX_CD",
+        "AST_CD",
+        "BIZ_DT",
+        "WEIGHT",
+        "IN_DT",
+        "OUT_DT"
+      ],
+      "mock_fields": [
+        "SEQ_NO",
+        "INDEX_CODE",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "CFQDM",
+        "CFQMC",
+        "WEIGHT",
+        "CFQTYPE",
+        "DATA_DT"
+      ],
+      "matched": [
+        "WEIGHT"
+      ],
+      "only_in_config": [
+        "AST_CD",
+        "BIZ_DT",
+        "INDEX_CD",
+        "IN_DT",
+        "OUT_DT"
+      ],
+      "only_in_mock": [
+        "CFQDM",
+        "CFQMC",
+        "CFQTYPE",
+        "DATA_DT",
+        "INDEX_CODE",
+        "INVALID_DATE",
+        "SEQ_NO",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "INDEX_CODE": "INDEX_CD",
+        "DATA_DT": "OUT_DT",
+        "VALID_DATE": "IN_DT"
+      },
+      "match_rate": "1/6"
+    },
+    "dwd_mkt_index_quote": {
+      "config_fields": [
+        "INDEX_CD",
+        "BIZ_DT",
+        "OPEN_VAL",
+        "HIGH_VAL",
+        "LOW_VAL",
+        "CLOSE_VAL",
+        "VOL",
+        "AMT",
+        "DAILY_RTN",
+        "YTD_RTN"
+      ],
+      "mock_fields": [
+        "INDEX_CODE",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "CRNCY_CODE",
+        "S_DQ_OPEN",
+        "S_DQ_HIGH",
+        "S_DQ_LOW",
+        "S_DQ_CLOSE",
+        "S_DQ_CHANGE",
+        "S_DQ_PCTCHANGE",
+        "PCT_CHG_RECENT1M",
+        "PCT_CHG_RECENT3M",
+        "PCT_CHG_RECENT6M",
+        "PCT_CHG_RECENT1Y",
+        "PCT_CHG_RECENT2Y",
+        "PCT_CHG_RECENT3Y",
+        "PCT_CHG_RECENT4Y",
+        "PCT_CHG_RECENT5Y",
+        "PCT_CHG_RECENT6Y",
+        "PCT_CHG_THISWEEK",
+        "PCT_CHG_THISMONTH",
+        "PCT_CHG_THISQUARTER",
+        "PCT_CHG_THISYEAR",
+        "SI_PCT_CHG",
+        "ANNUALYEILD",
+        "STD_DEV_6M",
+        "STD_DEV_1Y",
+        "STD_DEV_2Y",
+        "STD_DEV_3Y",
+        "SHARPRATIO_6M",
+        "SHARPRATIO_1Y",
+        "SHARPRATIO_2Y",
+        "SHARPRATIO_3Y",
+        "PRANGE",
+        "YIDRETURN",
+        "W1RETURN",
+        "W4RETURN",
+        "W13RETURN",
+        "W26RETURN",
+        "W52RETURN",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "AMT",
+        "BIZ_DT",
+        "CLOSE_VAL",
+        "DAILY_RTN",
+        "HIGH_VAL",
+        "INDEX_CD",
+        "LOW_VAL",
+        "OPEN_VAL",
+        "VOL",
+        "YTD_RTN"
+      ],
+      "only_in_mock": [
+        "ANNUALYEILD",
+        "CRNCY_CODE",
+        "DATA_DT",
+        "INDEX_CODE",
+        "INVALID_DATE",
+        "PCT_CHG_RECENT1M",
+        "PCT_CHG_RECENT1Y",
+        "PCT_CHG_RECENT2Y",
+        "PCT_CHG_RECENT3M",
+        "PCT_CHG_RECENT3Y",
+        "PCT_CHG_RECENT4Y",
+        "PCT_CHG_RECENT5Y",
+        "PCT_CHG_RECENT6M",
+        "PCT_CHG_RECENT6Y",
+        "PCT_CHG_THISMONTH",
+        "PCT_CHG_THISQUARTER",
+        "PCT_CHG_THISWEEK",
+        "PCT_CHG_THISYEAR",
+        "PRANGE",
+        "SHARPRATIO_1Y",
+        "SHARPRATIO_2Y",
+        "SHARPRATIO_3Y",
+        "SHARPRATIO_6M",
+        "SI_PCT_CHG",
+        "STD_DEV_1Y",
+        "STD_DEV_2Y",
+        "STD_DEV_3Y",
+        "STD_DEV_6M",
+        "S_DQ_CHANGE",
+        "S_DQ_CLOSE",
+        "S_DQ_HIGH",
+        "S_DQ_LOW",
+        "S_DQ_OPEN",
+        "S_DQ_PCTCHANGE",
+        "VALID_DATE",
+        "W13RETURN",
+        "W1RETURN",
+        "W26RETURN",
+        "W4RETURN",
+        "W52RETURN",
+        "YIDRETURN"
+      ],
+      "possible_rename": {
+        "INDEX_CODE": "INDEX_CD",
+        "YIDRETURN": "YTD_RTN",
+        "INVALID_DATE": "OPEN_VAL",
+        "VALID_DATE": "LOW_VAL",
+        "W4RETURN": "DAILY_RTN",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "0/10"
+    },
+    "dwd_mkt_rate": {
+      "config_fields": [
+        "RATE_CD",
+        "RATE_NM",
+        "SOURCE",
+        "CCY",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "PUB_DATE",
+        "EFFECTFLAG",
+        "REPO_DAYS_END",
+        "INT_RATE_TYPE",
+        "INT_RATE_ID",
+        "CCY",
+        "DATA_DT",
+        "INT_RATE_NAME",
+        "REPO_DAYS_START",
+        "REMARK"
+      ],
+      "matched": [
+        "CCY"
+      ],
+      "only_in_config": [
+        "BIZ_DT",
+        "RATE_CD",
+        "RATE_NM",
+        "SOURCE"
+      ],
+      "only_in_mock": [
+        "DATA_DT",
+        "EFFECTFLAG",
+        "INT_RATE_ID",
+        "INT_RATE_NAME",
+        "INT_RATE_TYPE",
+        "PUB_DATE",
+        "REMARK",
+        "REPO_DAYS_END",
+        "REPO_DAYS_START"
+      ],
+      "possible_rename": {
+        "INT_RATE_NAME": "RATE_NM",
+        "PUB_DATE": "BIZ_DT",
+        "INT_RATE_ID": "RATE_CD"
+      },
+      "match_rate": "1/5"
+    },
+    "dwd_mkt_rate_quote": {
+      "config_fields": [
+        "RATE_CD",
+        "BIZ_DT",
+        "RATE_VAL",
+        "CHG_BP"
+      ],
+      "mock_fields": [
+        "INT_RATE_ID",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "INT_RATE",
+        "EFFECTFLAG",
+        "REMARK",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "BIZ_DT",
+        "CHG_BP",
+        "RATE_CD",
+        "RATE_VAL"
+      ],
+      "only_in_mock": [
+        "DATA_DT",
+        "EFFECTFLAG",
+        "INT_RATE",
+        "INT_RATE_ID",
+        "INVALID_DATE",
+        "REMARK",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "INT_RATE_ID": "RATE_CD",
+        "INT_RATE": "BIZ_DT",
+        "VALID_DATE": "RATE_VAL"
+      },
+      "match_rate": "0/4"
+    },
+    "dwd_mkt_rating": {
+      "config_fields": [
+        "ISR_ID",
+        "RATING_DT",
+        "AGENCY",
+        "RATING",
+        "PREV_RATING",
+        "ACTION",
+        "OUTLOOK",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "OBJECT_ID",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "GRADE_TYPE",
+        "GRADE_ORG_ID",
+        "GRADE_RESULT",
+        "GRADE_EXPECTATION",
+        "DIRECTION_CHANGE",
+        "O_GRADE_RESULT",
+        "EFFECTFLAG",
+        "IR_OR_ER",
+        "CREDIT_GRADE_TYPE",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "ACTION",
+        "AGENCY",
+        "BIZ_DT",
+        "ISR_ID",
+        "OUTLOOK",
+        "PREV_RATING",
+        "RATING",
+        "RATING_DT"
+      ],
+      "only_in_mock": [
+        "CREDIT_GRADE_TYPE",
+        "DATA_DT",
+        "DIRECTION_CHANGE",
+        "EFFECTFLAG",
+        "GRADE_EXPECTATION",
+        "GRADE_ORG_ID",
+        "GRADE_RESULT",
+        "GRADE_TYPE",
+        "INVALID_DATE",
+        "IR_OR_ER",
+        "OBJECT_ID",
+        "O_GRADE_RESULT",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "DATA_DT": "RATING_DT"
+      },
+      "match_rate": "0/8"
+    },
+    "dwd_mkt_stock": {
+      "config_fields": [
+        "AST_CD",
+        "STOCK_NM",
+        "EXCH",
+        "INDUSTRY_CD",
+        "INDUSTRY_NM",
+        "LIST_DT",
+        "TOT_CAP",
+        "FREE_CAP",
+        "ISR_ID",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "PRE_CLOSE_PRICE",
+        "OPEN_PRICE",
+        "HIGH_PRICE",
+        "LOW_PRICE",
+        "CLOSE_PRICE",
+        "CHANGE",
+        "CHANGE_PERCENT",
+        "DEAL_VALUME",
+        "DEAL_AMOUNT",
+        "AVG_PRICE",
+        "TRADE_STATUS",
+        "L_STOP_DATE",
+        "L_OPEN_DATE",
+        "LIST_DAYS",
+        "INDUSTRY_RETURN",
+        "IF_INDEX_MEM",
+        "DIVDEND",
+        "SG_RATIO",
+        "PG_PRICE",
+        "PG_RATIO",
+        "EPS",
+        "BPS",
+        "PE",
+        "PE_TTM",
+        "PE_LYR",
+        "PB",
+        "CAP_IN_CIRC",
+        "CAP_STOCK",
+        "INVEST_STYLE",
+        "P_TO_S",
+        "PRE_CLOSE_PRICE_ADJ",
+        "OPEN_PRICE_ADJ",
+        "HIGH_PRICE_ADJ",
+        "LOW_PRICE_ADJ",
+        "CLOSE_PRICE_ADJ",
+        "FACTOR_ADJ",
+        "TRRATE",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "BIZ_DT",
+        "EXCH",
+        "FREE_CAP",
+        "INDUSTRY_CD",
+        "INDUSTRY_NM",
+        "ISR_ID",
+        "LIST_DT",
+        "STOCK_NM",
+        "TOT_CAP"
+      ],
+      "only_in_mock": [
+        "AVG_PRICE",
+        "BPS",
+        "CAP_IN_CIRC",
+        "CAP_STOCK",
+        "CHANGE",
+        "CHANGE_PERCENT",
+        "CLOSE_PRICE",
+        "CLOSE_PRICE_ADJ",
+        "DATA_DT",
+        "DEAL_AMOUNT",
+        "DEAL_VALUME",
+        "DIVDEND",
+        "EPS",
+        "FACTOR_ADJ",
+        "HIGH_PRICE",
+        "HIGH_PRICE_ADJ",
+        "IF_INDEX_MEM",
+        "INDUSTRY_RETURN",
+        "INVALID_DATE",
+        "INVEST_STYLE",
+        "LIST_DAYS",
+        "LOW_PRICE",
+        "LOW_PRICE_ADJ",
+        "L_OPEN_DATE",
+        "L_STOP_DATE",
+        "OPEN_PRICE",
+        "OPEN_PRICE_ADJ",
+        "PB",
+        "PE",
+        "PE_LYR",
+        "PE_TTM",
+        "PG_PRICE",
+        "PG_RATIO",
+        "PRE_CLOSE_PRICE",
+        "PRE_CLOSE_PRICE_ADJ",
+        "P_TO_S",
+        "SG_RATIO",
+        "TRADE_STATUS",
+        "TRRATE",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "CHANGE": "EXCH",
+        "L_STOP_DATE": "LIST_DT",
+        "INDUSTRY_RETURN": "INDUSTRY_NM",
+        "DATA_DT": "BIZ_DT",
+        "CAP_STOCK": "STOCK_NM"
+      },
+      "match_rate": "1/10"
+    },
+    "dwd_mkt_stock_yield": {
+      "config_fields": [
+        "AST_CD",
+        "BIZ_DT",
+        "OPEN_PRC",
+        "HIGH_PRC",
+        "LOW_PRC",
+        "CLOSE_PRC",
+        "VOL",
+        "AMT",
+        "DAILY_RTN",
+        "WEEK_RTN",
+        "MONTH_RTN",
+        "YTD_RTN",
+        "TURNOVER",
+        "PE_TTM",
+        "PB_LF"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "DEAL_DATE",
+        "WEEK_SD_1W",
+        "WEEK_VARIANCE_1W",
+        "MONTH_SD_24M",
+        "MONTH_VARIANCE_24M",
+        "MONTH_SD_6M",
+        "MONTH_VARIANCE_6M",
+        "DAY_BETA_1Y",
+        "DAY_ALPHA_1Y",
+        "DAY_BETA_2Y",
+        "DAY_ALPHA_2Y",
+        "WEEK_BETA_1W",
+        "WEEK_ALPHA_1W",
+        "MONTH_BETA_24M",
+        "MONTH_ALPHA_24M",
+        "MONTH_BETA_6M",
+        "MONTH_ALPHA_6M",
+        "DAY_CHG",
+        "WEEK_CHG",
+        "MONTH_CHG",
+        "DAY_DEAL_NUM",
+        "MONTH_DEAL_NUM",
+        "DAY_DEAL_AMT",
+        "MONTH_DEAL_AMT",
+        "DAY_TRRATE",
+        "DAY_TRRATE_F",
+        "WEEK_TRRATE",
+        "WEEK_TRRATE_F",
+        "WEEK_AVG_TRRATE",
+        "WEEK_AVG_TRRATE_F",
+        "MONTH_TRRATE",
+        "MONTH_TRRATE_F",
+        "MONTH_AVG_TRRATE",
+        "MONTH_AVG_TRRATE_F",
+        "WEEK_AVG_CHG_1W",
+        "MONTH_AVG_CHG_6M",
+        "MONTH_AVG_CHG_24M",
+        "BETA",
+        "EQVAR",
+        "EQRSQUA",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "AMT",
+        "BIZ_DT",
+        "CLOSE_PRC",
+        "DAILY_RTN",
+        "HIGH_PRC",
+        "LOW_PRC",
+        "MONTH_RTN",
+        "OPEN_PRC",
+        "PB_LF",
+        "PE_TTM",
+        "TURNOVER",
+        "VOL",
+        "WEEK_RTN",
+        "YTD_RTN"
+      ],
+      "only_in_mock": [
+        "BETA",
+        "DATA_DT",
+        "DAY_ALPHA_1Y",
+        "DAY_ALPHA_2Y",
+        "DAY_BETA_1Y",
+        "DAY_BETA_2Y",
+        "DAY_CHG",
+        "DAY_DEAL_AMT",
+        "DAY_DEAL_NUM",
+        "DAY_TRRATE",
+        "DAY_TRRATE_F",
+        "DEAL_DATE",
+        "EQRSQUA",
+        "EQVAR",
+        "MONTH_ALPHA_24M",
+        "MONTH_ALPHA_6M",
+        "MONTH_AVG_CHG_24M",
+        "MONTH_AVG_CHG_6M",
+        "MONTH_AVG_TRRATE",
+        "MONTH_AVG_TRRATE_F",
+        "MONTH_BETA_24M",
+        "MONTH_BETA_6M",
+        "MONTH_CHG",
+        "MONTH_DEAL_AMT",
+        "MONTH_DEAL_NUM",
+        "MONTH_SD_24M",
+        "MONTH_SD_6M",
+        "MONTH_TRRATE",
+        "MONTH_TRRATE_F",
+        "MONTH_VARIANCE_24M",
+        "MONTH_VARIANCE_6M",
+        "WEEK_ALPHA_1W",
+        "WEEK_AVG_CHG_1W",
+        "WEEK_AVG_TRRATE",
+        "WEEK_AVG_TRRATE_F",
+        "WEEK_BETA_1W",
+        "WEEK_CHG",
+        "WEEK_SD_1W",
+        "WEEK_TRRATE",
+        "WEEK_TRRATE_F",
+        "WEEK_VARIANCE_1W"
+      ],
+      "possible_rename": {
+        "MONTH_TRRATE": "MONTH_RTN",
+        "WEEK_TRRATE": "WEEK_RTN",
+        "DEAL_DATE": "BIZ_DT",
+        "DAY_DEAL_AMT": "AMT"
+      },
+      "match_rate": "1/15"
+    },
+    "dwd_ptl_acc": {
+      "config_fields": [
+        "PORT_ID",
+        "ACCT_NO",
+        "ACCT_TYPE",
+        "ACCT_NM",
+        "BANK_BR",
+        "CCY"
+      ],
+      "mock_fields": [
+        "CUR",
+        "ACCT_OPEN_CODE",
+        "SWIFT_CODE",
+        "LARGE_PAYNO",
+        "ACCT_NO",
+        "REMARK",
+        "ACCT_NAME",
+        "ACCT_TYPE",
+        "CORR_NO",
+        "IS_OVERDRAW",
+        "IN_OUT_BANK",
+        "IS_ABROAD",
+        "DATA_DT",
+        "PRD_CD",
+        "ACCT_NATURE",
+        "BUSI_ACCT_NO",
+        "BELONG_SALE_DEPARTMENT",
+        "BANK_DEP",
+        "BLN_AREA"
+      ],
+      "matched": [
+        "ACCT_NO",
+        "ACCT_TYPE"
+      ],
+      "only_in_config": [
+        "ACCT_NM",
+        "BANK_BR",
+        "CCY",
+        "PORT_ID"
+      ],
+      "only_in_mock": [
+        "ACCT_NAME",
+        "ACCT_NATURE",
+        "ACCT_OPEN_CODE",
+        "BANK_DEP",
+        "BELONG_SALE_DEPARTMENT",
+        "BLN_AREA",
+        "BUSI_ACCT_NO",
+        "CORR_NO",
+        "CUR",
+        "DATA_DT",
+        "IN_OUT_BANK",
+        "IS_ABROAD",
+        "IS_OVERDRAW",
+        "LARGE_PAYNO",
+        "PRD_CD",
+        "REMARK",
+        "SWIFT_CODE"
+      ],
+      "possible_rename": {
+        "ACCT_NAME": "ACCT_NM",
+        "BANK_DEP": "BANK_BR"
+      },
+      "match_rate": "2/6"
+    },
+    "dwd_ptl_acct_bal": {
+      "config_fields": [
+        "PORT_ID",
+        "BIZ_DT",
+        "BAL_TYPE",
+        "AMT",
+        "CCY"
+      ],
+      "mock_fields": [
+        "PRD_CD",
+        "VALID_DATE",
+        "ACC_CLASS",
+        "ACCT_ID",
+        "ACCT_NAME",
+        "BALANCE_AMT",
+        "DAY_HAPPEN_AMT",
+        "REPO_UNDUE_IB",
+        "REPO_UNDUE_EX",
+        "INITIAL_CASH_FLOW_T",
+        "BROKER_ID",
+        "BROKER_NAME",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "AMT",
+        "BAL_TYPE",
+        "BIZ_DT",
+        "CCY",
+        "PORT_ID"
+      ],
+      "only_in_mock": [
+        "ACCT_ID",
+        "ACCT_NAME",
+        "ACC_CLASS",
+        "BALANCE_AMT",
+        "BROKER_ID",
+        "BROKER_NAME",
+        "DATA_DT",
+        "DAY_HAPPEN_AMT",
+        "INITIAL_CASH_FLOW_T",
+        "PRD_CD",
+        "REPO_UNDUE_EX",
+        "REPO_UNDUE_IB",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "ACCT_ID": "AMT",
+        "DATA_DT": "BIZ_DT",
+        "VALID_DATE": "BAL_TYPE"
+      },
+      "match_rate": "0/5"
+    },
+    "dwd_ptl_asset_config_info": {
+      "config_fields": [
+        "PORT_ID",
+        "AST_CLASS",
+        "TGT_RATIO",
+        "MIN_RATIO",
+        "MAX_RATIO"
+      ],
+      "mock_fields": [
+        "ASSET_THD_CLASS_CD",
+        "ASSET_CD",
+        "FV_CHANGE",
+        "ACTG_CLASS",
+        "ESTMTN_VAL_ADDED",
+        "PROD_CD",
+        "ASSET_QUT",
+        "ORGNL_CURY",
+        "ASSET_NAME",
+        "MARKET_CD",
+        "ASSET_FST_CLASS_CD",
+        "DATA_DT",
+        "ASSET_COST",
+        "ASSET_SCD_CLASS_CD",
+        "INTER_ASSET_CD",
+        "MARKET_VAL"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "AST_CLASS",
+        "MAX_RATIO",
+        "MIN_RATIO",
+        "PORT_ID",
+        "TGT_RATIO"
+      ],
+      "only_in_mock": [
+        "ACTG_CLASS",
+        "ASSET_CD",
+        "ASSET_COST",
+        "ASSET_FST_CLASS_CD",
+        "ASSET_NAME",
+        "ASSET_QUT",
+        "ASSET_SCD_CLASS_CD",
+        "ASSET_THD_CLASS_CD",
+        "DATA_DT",
+        "ESTMTN_VAL_ADDED",
+        "FV_CHANGE",
+        "INTER_ASSET_CD",
+        "MARKET_CD",
+        "MARKET_VAL",
+        "ORGNL_CURY",
+        "PROD_CD"
+      ],
+      "possible_rename": {
+        "ACTG_CLASS": "AST_CLASS",
+        "MARKET_VAL": "MAX_RATIO"
+      },
+      "match_rate": "0/5"
+    },
+    "dwd_ptl_ast_hld": {
+      "config_fields": [
+        "PORT_ID",
+        "AST_CD",
+        "BIZ_DT",
+        "HLD_QTY",
+        "COST_PRC",
+        "MKT_PRC",
+        "COST_AMT",
+        "MKT_VAL",
+        "ACI_AMT",
+        "WEIGHT",
+        "ACCT_NO"
+      ],
+      "mock_fields": [
+        "FUNDID",
+        "PRD_CD",
+        "AST_CD",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "STKCODE",
+        "STKQTY",
+        "TAVL",
+        "TORDERAVL",
+        "PRESALEQTY",
+        "MAYIMPAWQTY",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "ACCT_NO",
+        "ACI_AMT",
+        "BIZ_DT",
+        "COST_AMT",
+        "COST_PRC",
+        "HLD_QTY",
+        "MKT_PRC",
+        "MKT_VAL",
+        "PORT_ID",
+        "WEIGHT"
+      ],
+      "only_in_mock": [
+        "DATA_DT",
+        "FUNDID",
+        "INVALID_DATE",
+        "MAYIMPAWQTY",
+        "PRD_CD",
+        "PRESALEQTY",
+        "STKCODE",
+        "STKQTY",
+        "TAVL",
+        "TORDERAVL",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "STKQTY": "HLD_QTY",
+        "VALID_DATE": "ACI_AMT",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "1/11"
+    },
+    "dwd_ptl_cedetail": {
+      "config_fields": [
+        "PORT_ID",
+        "TRADE_DT",
+        "CE_TYPE",
+        "AMT",
+        "CCY",
+        "SUMMARY"
+      ],
+      "mock_fields": [
+        "PROD_CD",
+        "SEQ_NO",
+        "VALID_DATE",
+        "LEV",
+        "BENCHMARK_ID",
+        "COEFFICIENT",
+        "SPREAD_RATE",
+        "CHARGE_RATIO",
+        "SALE_RATIO",
+        "LEV_REMARK",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "AMT",
+        "CCY",
+        "CE_TYPE",
+        "PORT_ID",
+        "SUMMARY",
+        "TRADE_DT"
+      ],
+      "only_in_mock": [
+        "BENCHMARK_ID",
+        "CHARGE_RATIO",
+        "COEFFICIENT",
+        "DATA_DT",
+        "LEV",
+        "LEV_REMARK",
+        "PROD_CD",
+        "SALE_RATIO",
+        "SEQ_NO",
+        "SPREAD_RATE",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "SPREAD_RATE": "TRADE_DT"
+      },
+      "match_rate": "0/6"
+    },
+    "dwd_ptl_fee": {
+      "config_fields": [
+        "PORT_ID",
+        "FEE_TYPE",
+        "FEE_RATE",
+        "FEE_BASE",
+        "EFF_DT",
+        "EXP_DT"
+      ],
+      "mock_fields": [
+        "PROD_CD",
+        "DATA_DT",
+        "FEE_RATE",
+        "FEE_TYPE",
+        "VALID_DATE",
+        "FEE_AMT",
+        "IS_MODIFY",
+        "INVALID_DATE"
+      ],
+      "matched": [
+        "FEE_RATE",
+        "FEE_TYPE"
+      ],
+      "only_in_config": [
+        "EFF_DT",
+        "EXP_DT",
+        "FEE_BASE",
+        "PORT_ID"
+      ],
+      "only_in_mock": [
+        "DATA_DT",
+        "FEE_AMT",
+        "INVALID_DATE",
+        "IS_MODIFY",
+        "PROD_CD",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "FEE_AMT": "FEE_BASE",
+        "DATA_DT": "EXP_DT"
+      },
+      "match_rate": "2/6"
+    },
+    "dwd_ptl_holder_summary": {
+      "config_fields": [
+        "PORT_ID",
+        "BIZ_DT",
+        "HOLDER_TYPE",
+        "HOLDER_CNT",
+        "TOT_SHR",
+        "TOT_AMT",
+        "RATIO"
+      ],
+      "mock_fields": [
+        "P_RED_SHARE",
+        "C_AMOUNT",
+        "C_SUB_SHARE",
+        "TOP1_AMOUNT",
+        "TOP1_SHARE",
+        "PORT_ID",
+        "C_SHARE",
+        "DATA_DT",
+        "P_SUB_SHARE",
+        "P_AMOUNT",
+        "P_SHARE",
+        "C_RED_SHARE",
+        "VALID_DATE",
+        "INVALID_DATE"
+      ],
+      "matched": [
+        "PORT_ID"
+      ],
+      "only_in_config": [
+        "BIZ_DT",
+        "HOLDER_CNT",
+        "HOLDER_TYPE",
+        "RATIO",
+        "TOT_AMT",
+        "TOT_SHR"
+      ],
+      "only_in_mock": [
+        "C_AMOUNT",
+        "C_RED_SHARE",
+        "C_SHARE",
+        "C_SUB_SHARE",
+        "DATA_DT",
+        "INVALID_DATE",
+        "P_AMOUNT",
+        "P_RED_SHARE",
+        "P_SHARE",
+        "P_SUB_SHARE",
+        "TOP1_AMOUNT",
+        "TOP1_SHARE",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "TOP1_AMOUNT": "TOT_AMT",
+        "TOP1_SHARE": "TOT_SHR",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "1/7"
+    },
+    "dwd_ptl_info": {
+      "config_fields": [
+        "PORT_ID",
+        "PORT_NM",
+        "PORT_SHORT_NM",
+        "PORT_TYPE",
+        "RISK_LVL",
+        "ESTAB_DT",
+        "CCY",
+        "BENCHMARK",
+        "SHR_NAV",
+        "AUM",
+        "MGR_INST",
+        "CUSTODY_BANK",
+        "STATUS"
+      ],
+      "mock_fields": [
+        "PROD_CD",
+        "PARENT_PROD_CD",
+        "PROD_ABBR",
+        "PROD_NAME",
+        "START_DATE",
+        "END_DATE",
+        "CURR",
+        "VALUATION_METHOD",
+        "PORT_NATURE",
+        "PORT_TYPE",
+        "PORT_MODEL",
+        "DEAL_DEPT",
+        "DEAL_DEPT2",
+        "MANAGECORP",
+        "CUSTODIAN",
+        "MANAGERS",
+        "PROD_RS_WAY",
+        "PROD_RSK_GRD",
+        "PROFIT_TYPE",
+        "VDATE",
+        "MDATE",
+        "CALENDAR_ID",
+        "CL_TYPE",
+        "MKT_BENCHMARK",
+        "CON_BENCHMARK",
+        "CON_BENCHMARK_UP",
+        "CON_BENCHMARK_DOWN",
+        "CON_BENCHMARK_AVG",
+        "INT_BENCHMARK",
+        "MKT_BENCHMARK_DESC",
+        "CON_BENCHMARK_DESC",
+        "INT_BENCHMARK_DESC",
+        "HOLDING_DAYS",
+        "CAPITAL_SOURCE",
+        "OPEN_TYPE",
+        "KBJJC",
+        "IS_MODIFY",
+        "HOLDING_DATE",
+        "HOLDING_DATE_UNIT",
+        "EFFECTIVE_STATUS",
+        "OPEN_FREQUENCY",
+        "PORT_SERIES",
+        "OUT_ASSET_ID",
+        "RAISE_START_DATE",
+        "SRN_PNT_SL_AMT",
+        "CSNN_ORG_CD",
+        "CSNN_ORG_NM",
+        "CSNN_ORG_OWN_SRS_ORG",
+        "PROD_SLRGN",
+        "VTN_AST_TYP_AND_RTO",
+        "VAL_FREQUENCY",
+        "RUN_MODE",
+        "CUS_TYPE",
+        "SPV_TYPE",
+        "SPV_IN_RATEGY",
+        "SPV_KH_BENCHMARK",
+        "PORT_SERIES_XF",
+        "LIQUIDATION_DATE",
+        "ASSIST_MANAGERS",
+        "FIRST_OPEN_DATE",
+        "SHORT_TERM",
+        "SPV_MANAGER_MODE",
+        "AGENCY",
+        "SALEAREA",
+        "PORT_TERM_TYPE",
+        "CON_BENCHMARK_UP_DESC",
+        "CON_BENCHMARK_DOWN_DESC",
+        "CON_BENCHMARK_AVG_DESC",
+        "DIVID_MECHANISM",
+        "EXCESS_RETURN",
+        "INVEST_TEAMS",
+        "ASSIST_INVEST_TEAMS",
+        "IS_PPEN_DAILY",
+        "INVEST_NATURE",
+        "IS_OVER_HALF",
+        "IS_SINGLE_INVESTOR",
+        "PRODUCT_TYPE",
+        "AUXILIARY_INVESTMENT_TEAM",
+        "IS_OPEN_DAILY",
+        "PROD_TRM",
+        "MULT_SHR_ID",
+        "FIRST_NAV_C",
+        "PORT_STAT",
+        "FUND_MANAGERS_CODE",
+        "INVEST_TREM_DAYS",
+        "FNDS_ACCTL_INVST",
+        "SNGL_HGHST_SSRT_AMT",
+        "PROD_NSP_PRPR_NM",
+        "PROD_NSP_PRPR_CD",
+        "PROD_BRND",
+        "PROD_STRT_DT",
+        "PROD_DSGN_PSN_ID_NO",
+        "PROD_DSGN_PSN_NM",
+        "PROD_APV_PSN_ID_NO",
+        "PROD_APV_PSN_NM",
+        "PROD_SPCL_ATBS",
+        "PROD_TMT_DT",
+        "CSN_NTTL_SUM",
+        "GRDNG_RTO",
+        "OPEN_BUSS_DCPN",
+        "RS_SHR",
+        "AVG_OPEN_DAYS",
+        "RGN_RS_AMT",
+        "SSRT_CUR",
+        "SSRT_AMT",
+        "IF_FNC_PR_ECS",
+        "IF_CSH_MGT_TYP",
+        "IF_HV_OTHR_ORG_CSNN",
+        "FRST_OPN_WK_FRM_STRT_DAY",
+        "NO_OPN_DCPN",
+        "NEW_OLD_PROD_FLG",
+        "BUSs_CNTCT_PRSN_TLPHN",
+        "BUSS_CNTCT_PRSN_NM",
+        "BUSS_CNTCT_PRSN_MLBX",
+        "BUSS_CNTCT_PRSN_MCHN",
+        "FNDS_CSTDY_ACCT_ID",
+        "FNDS_CSTDY_ACCT",
+        "CPRTN_CRG_NM",
+        "ISSD_ORGADVNC_TML_PWR_FLG",
+        "PROD_INCRS_TRST_HLG",
+        "PROD_INCRS_TRST_ORG_TYP",
+        "PROD_INCRS_TRST_FRM",
+        "FNDS_INVST_RGON",
+        "PROD_IVTN_CNTRY_OR_RGON",
+        "FNC_PROD_BUSS_SVC_MD",
+        "PROD_MGT_MD",
+        "PROD_PRC_WAY",
+        "VTN_TYP",
+        "SRTL_PROD_HK_UP_SBJCT",
+        "VTN_AST_RTO",
+        "VTN_AST_TYP",
+        "IF_HV_EXPCT_RT_OF_RTRN",
+        "EPT_CUST_HGHST_YR_RT_OF_RTRN",
+        "EPT_CUST_MNMM_YR_RT_OF_RTRN",
+        "IF_HV_RT_OF_RTRN_ESTMT_INACDC_WTH",
+        "IVT_RSK_PFN",
+        "PROD_IVTN_NTR",
+        "IVTN_MGT_FEE_RT",
+        "DCR_EPT_CUST_HGHST_YR_RT_OF_RTRN",
+        "DCLR_EPT_CUST_MNMMYR_RT_OF_RTRN",
+        "ISS_PROD_EPT_CUST_HGHST_YR_RT_OF_RTRN",
+        "ISS_PROD_EPT_CUST_MNMM_YR_RT_OF_RTRN",
+        "ISS_PROD_EPT_AVG_RT_OF_RTRN",
+        "PLN_RS_AMT_CNY",
+        "PROD_STTS_DAY_STTS",
+        "IVTN_PNP_TOACCT_DAY",
+        "IVTN_INCMTOACCT_DAY",
+        "SL_HDN_FEE_RT",
+        "DMSTC_CSTDY_ORG_NM",
+        "DMSTC_CSTDY_ORG_CD",
+        "ABRD_CSTDY_ORG_CNTRY",
+        "ABRD_CSTDY_ORG_NM",
+        "CSTDY_FEE_RT",
+        "IVTN_MNGR_ID_NO",
+        "IVTN_MNGR_NM",
+        "PROD_AST_CFRN_WAY",
+        "RPRT_RSRN_DATE",
+        "SSD_RSRN_DATE",
+        "RS_RSRN_DATE",
+        "BANK_FND_ACTL_INCM",
+        "TMT_RSRN_DATE",
+        "IF_FOR_SRTD(GRDNG)_PRD",
+        "LVL_CATEGORY",
+        "RT_OF_RTRN_BNNNG_DCPN",
+        "OPN_BUSS_TYP",
+        "CUST_RDM_PWR_FLG",
+        "PROD_STTS",
+        "PROD_MAX_BALA",
+        "IVTN_MD",
+        "PROD_PRTNR_NM",
+        "IVTN_RGN",
+        "ISSD_ORG_ITN_PROD_CD",
+        "PROD_CHNG_DT",
+        "TRST_ORG_MGT_DTS",
+        "INCM_PWR_TNF_PROD_FLG",
+        "CRSS_BRDR_FNC_PROD_THRGH",
+        "BSC_INFO_PBLC_FLG",
+        "PROD_ETS_FLG",
+        "IF_AT_LQDTN_IN",
+        "FNL_PROD_PROD_AMT",
+        "NL_PROD_PROD_SHR",
+        "PROD_FNL_PROD_TBL_NOW",
+        "CRRNI_MNTH_ANZ_RT_OF_RTRN",
+        "BUSS_STRT_DATE",
+        "BUSS_END_DATE",
+        "PROD_ACTL_ANZ_RT_OF_RTRN",
+        "TOT_PRCHS_SHR",
+        "TOT_RDM_SHR",
+        "RMT_CUST_INCM_CNY",
+        "RMT_CUST_TTL_SUM_CNY",
+        "RMT_TTL_SHARES",
+        "LGL_PRSN_IVT_TOT",
+        "LLGL_PSN_IVT_TO",
+        "TOT_RMT_AMT_CNY",
+        "TOT_RMT_INCM_AMT_CNY",
+        "TOT_SUB_AMT_CNY",
+        "PSN_IVT_TOT",
+        "CORP_ACTL_ACHV_INCVC(YN)",
+        "CVS_RMB_AMT",
+        "PROD_SSTG_BAL",
+        "ACHV_RT_OF RTRN",
+        "NWST_EXPCTRT_OF_RTRN",
+        "CORP_ACHV_INCM",
+        "OPN_PRDD_ESY_RLZ_AST_FNL_PROD_PSTN_OCCPY_RTO",
+        "CLSD_PROD_CLM_TYP_AST_AVG_TRM_MMC_RTO",
+        "NON_SNR_CIMAST_DSTN_RTO",
+        "FNC_PROD_FNDS_CSTDY_ACCT_ID",
+        "FNC_PROD_FNDS_CSTDY_ACCT_NM",
+        "DATA_DT",
+        "PROD_RSRN_CD",
+        "ISSUER_NAME",
+        "IS_SET_SHORT_TERM",
+        "IS_REDEMP_AFTER_SHORT_TERM",
+        "PAY_PRINCIPAL_CUR",
+        "PAY_INCOME_CUR",
+        "RISK_LVL",
+        "PROD_ID",
+        "RAISE_END_DATE",
+        "REG_OPEN_CYC",
+        "OTHER_REG_OPEN_CYC",
+        "IS_HOLIDAY_OPEN",
+        "ACT_RAISE_AMOUNT",
+        "ACT_PROD_END_DATE",
+        "UT_PROD_REG_CODE",
+        "BANK_INT_ID",
+        "PROD_STATUS",
+        "SALES_FEE",
+        "FIXED_MANAGE_FEE",
+        "CUSTODY_FEE",
+        "INV_NATURE_SUBTYPE",
+        "CASH_MIN",
+        "CASH_MAX",
+        "FI_INCOME_MIN",
+        "FI_INCOME_MAX",
+        "STD_DEBT_MIN",
+        "STD_DEBT_MAX",
+        "NON_STD_DEBT_MIN",
+        "NON_STD_DEBT_MAX",
+        "EQUITY_MIN",
+        "EQUITY_MAX",
+        "CMD_DERIV_MIN",
+        "CMD_DERIV_MAX",
+        "OTHER_ASSET_MIN",
+        "OTHER_ASSET_MAX",
+        "INV_SCOPE",
+        "IS_EARLY_TERM",
+        "EARLY_TERM_DATE",
+        "PERF_BM_FORM",
+        "INV_STRATEGY",
+        "PROD_TYPE",
+        "INV_PERIOD_START_DATE",
+        "INV_PERIOD_END_DATE"
+      ],
+      "matched": [
+        "PORT_TYPE",
+        "RISK_LVL"
+      ],
+      "only_in_config": [
+        "AUM",
+        "BENCHMARK",
+        "CCY",
+        "CUSTODY_BANK",
+        "ESTAB_DT",
+        "MGR_INST",
+        "PORT_ID",
+        "PORT_NM",
+        "PORT_SHORT_NM",
+        "SHR_NAV",
+        "STATUS"
+      ],
+      "only_in_mock": [
+        "ABRD_CSTDY_ORG_CNTRY",
+        "ABRD_CSTDY_ORG_NM",
+        "ACHV_RT_OF RTRN",
+        "ACT_PROD_END_DATE",
+        "ACT_RAISE_AMOUNT",
+        "AGENCY",
+        "ASSIST_INVEST_TEAMS",
+        "ASSIST_MANAGERS",
+        "AUXILIARY_INVESTMENT_TEAM",
+        "AVG_OPEN_DAYS",
+        "BANK_FND_ACTL_INCM",
+        "BANK_INT_ID",
+        "BSC_INFO_PBLC_FLG",
+        "BUSS_CNTCT_PRSN_MCHN",
+        "BUSS_CNTCT_PRSN_MLBX",
+        "BUSS_CNTCT_PRSN_NM",
+        "BUSS_END_DATE",
+        "BUSS_STRT_DATE",
+        "BUSs_CNTCT_PRSN_TLPHN",
+        "CALENDAR_ID",
+        "CAPITAL_SOURCE",
+        "CASH_MAX",
+        "CASH_MIN",
+        "CLSD_PROD_CLM_TYP_AST_AVG_TRM_MMC_RTO",
+        "CL_TYPE",
+        "CMD_DERIV_MAX",
+        "CMD_DERIV_MIN",
+        "CON_BENCHMARK",
+        "CON_BENCHMARK_AVG",
+        "CON_BENCHMARK_AVG_DESC",
+        "CON_BENCHMARK_DESC",
+        "CON_BENCHMARK_DOWN",
+        "CON_BENCHMARK_DOWN_DESC",
+        "CON_BENCHMARK_UP",
+        "CON_BENCHMARK_UP_DESC",
+        "CORP_ACHV_INCM",
+        "CORP_ACTL_ACHV_INCVC(YN)",
+        "CPRTN_CRG_NM",
+        "CRRNI_MNTH_ANZ_RT_OF_RTRN",
+        "CRSS_BRDR_FNC_PROD_THRGH",
+        "CSNN_ORG_CD",
+        "CSNN_ORG_NM",
+        "CSNN_ORG_OWN_SRS_ORG",
+        "CSN_NTTL_SUM",
+        "CSTDY_FEE_RT",
+        "CURR",
+        "CUSTODIAN",
+        "CUSTODY_FEE",
+        "CUST_RDM_PWR_FLG",
+        "CUS_TYPE",
+        "CVS_RMB_AMT",
+        "DATA_DT",
+        "DCLR_EPT_CUST_MNMMYR_RT_OF_RTRN",
+        "DCR_EPT_CUST_HGHST_YR_RT_OF_RTRN",
+        "DEAL_DEPT",
+        "DEAL_DEPT2",
+        "DIVID_MECHANISM",
+        "DMSTC_CSTDY_ORG_CD",
+        "DMSTC_CSTDY_ORG_NM",
+        "EARLY_TERM_DATE",
+        "EFFECTIVE_STATUS",
+        "END_DATE",
+        "EPT_CUST_HGHST_YR_RT_OF_RTRN",
+        "EPT_CUST_MNMM_YR_RT_OF_RTRN",
+        "EQUITY_MAX",
+        "EQUITY_MIN",
+        "EXCESS_RETURN",
+        "FIRST_NAV_C",
+        "FIRST_OPEN_DATE",
+        "FIXED_MANAGE_FEE",
+        "FI_INCOME_MAX",
+        "FI_INCOME_MIN",
+        "FNC_PROD_BUSS_SVC_MD",
+        "FNC_PROD_FNDS_CSTDY_ACCT_ID",
+        "FNC_PROD_FNDS_CSTDY_ACCT_NM",
+        "FNDS_ACCTL_INVST",
+        "FNDS_CSTDY_ACCT",
+        "FNDS_CSTDY_ACCT_ID",
+        "FNDS_INVST_RGON",
+        "FNL_PROD_PROD_AMT",
+        "FRST_OPN_WK_FRM_STRT_DAY",
+        "FUND_MANAGERS_CODE",
+        "GRDNG_RTO",
+        "HOLDING_DATE",
+        "HOLDING_DATE_UNIT",
+        "HOLDING_DAYS",
+        "IF_AT_LQDTN_IN",
+        "IF_CSH_MGT_TYP",
+        "IF_FNC_PR_ECS",
+        "IF_FOR_SRTD(GRDNG)_PRD",
+        "IF_HV_EXPCT_RT_OF_RTRN",
+        "IF_HV_OTHR_ORG_CSNN",
+        "IF_HV_RT_OF_RTRN_ESTMT_INACDC_WTH",
+        "INCM_PWR_TNF_PROD_FLG",
+        "INT_BENCHMARK",
+        "INT_BENCHMARK_DESC",
+        "INVEST_NATURE",
+        "INVEST_TEAMS",
+        "INVEST_TREM_DAYS",
+        "INV_NATURE_SUBTYPE",
+        "INV_PERIOD_END_DATE",
+        "INV_PERIOD_START_DATE",
+        "INV_SCOPE",
+        "INV_STRATEGY",
+        "ISSD_ORGADVNC_TML_PWR_FLG",
+        "ISSD_ORG_ITN_PROD_CD",
+        "ISSUER_NAME",
+        "ISS_PROD_EPT_AVG_RT_OF_RTRN",
+        "ISS_PROD_EPT_CUST_HGHST_YR_RT_OF_RTRN",
+        "ISS_PROD_EPT_CUST_MNMM_YR_RT_OF_RTRN",
+        "IS_EARLY_TERM",
+        "IS_HOLIDAY_OPEN",
+        "IS_MODIFY",
+        "IS_OPEN_DAILY",
+        "IS_OVER_HALF",
+        "IS_PPEN_DAILY",
+        "IS_REDEMP_AFTER_SHORT_TERM",
+        "IS_SET_SHORT_TERM",
+        "IS_SINGLE_INVESTOR",
+        "IVTN_INCMTOACCT_DAY",
+        "IVTN_MD",
+        "IVTN_MGT_FEE_RT",
+        "IVTN_MNGR_ID_NO",
+        "IVTN_MNGR_NM",
+        "IVTN_PNP_TOACCT_DAY",
+        "IVTN_RGN",
+        "IVT_RSK_PFN",
+        "KBJJC",
+        "LGL_PRSN_IVT_TOT",
+        "LIQUIDATION_DATE",
+        "LLGL_PSN_IVT_TO",
+        "LVL_CATEGORY",
+        "MANAGECORP",
+        "MANAGERS",
+        "MDATE",
+        "MKT_BENCHMARK",
+        "MKT_BENCHMARK_DESC",
+        "MULT_SHR_ID",
+        "NEW_OLD_PROD_FLG",
+        "NL_PROD_PROD_SHR",
+        "NON_SNR_CIMAST_DSTN_RTO",
+        "NON_STD_DEBT_MAX",
+        "NON_STD_DEBT_MIN",
+        "NO_OPN_DCPN",
+        "NWST_EXPCTRT_OF_RTRN",
+        "OPEN_BUSS_DCPN",
+        "OPEN_FREQUENCY",
+        "OPEN_TYPE",
+        "OPN_BUSS_TYP",
+        "OPN_PRDD_ESY_RLZ_AST_FNL_PROD_PSTN_OCCPY_RTO",
+        "OTHER_ASSET_MAX",
+        "OTHER_ASSET_MIN",
+        "OTHER_REG_OPEN_CYC",
+        "OUT_ASSET_ID",
+        "PARENT_PROD_CD",
+        "PAY_INCOME_CUR",
+        "PAY_PRINCIPAL_CUR",
+        "PERF_BM_FORM",
+        "PLN_RS_AMT_CNY",
+        "PORT_MODEL",
+        "PORT_NATURE",
+        "PORT_SERIES",
+        "PORT_SERIES_XF",
+        "PORT_STAT",
+        "PORT_TERM_TYPE",
+        "PRODUCT_TYPE",
+        "PROD_ABBR",
+        "PROD_ACTL_ANZ_RT_OF_RTRN",
+        "PROD_APV_PSN_ID_NO",
+        "PROD_APV_PSN_NM",
+        "PROD_AST_CFRN_WAY",
+        "PROD_BRND",
+        "PROD_CD",
+        "PROD_CHNG_DT",
+        "PROD_DSGN_PSN_ID_NO",
+        "PROD_DSGN_PSN_NM",
+        "PROD_ETS_FLG",
+        "PROD_FNL_PROD_TBL_NOW",
+        "PROD_ID",
+        "PROD_INCRS_TRST_FRM",
+        "PROD_INCRS_TRST_HLG",
+        "PROD_INCRS_TRST_ORG_TYP",
+        "PROD_IVTN_CNTRY_OR_RGON",
+        "PROD_IVTN_NTR",
+        "PROD_MAX_BALA",
+        "PROD_MGT_MD",
+        "PROD_NAME",
+        "PROD_NSP_PRPR_CD",
+        "PROD_NSP_PRPR_NM",
+        "PROD_PRC_WAY",
+        "PROD_PRTNR_NM",
+        "PROD_RSK_GRD",
+        "PROD_RSRN_CD",
+        "PROD_RS_WAY",
+        "PROD_SLRGN",
+        "PROD_SPCL_ATBS",
+        "PROD_SSTG_BAL",
+        "PROD_STATUS",
+        "PROD_STRT_DT",
+        "PROD_STTS",
+        "PROD_STTS_DAY_STTS",
+        "PROD_TMT_DT",
+        "PROD_TRM",
+        "PROD_TYPE",
+        "PROFIT_TYPE",
+        "PSN_IVT_TOT",
+        "RAISE_END_DATE",
+        "RAISE_START_DATE",
+        "REG_OPEN_CYC",
+        "RGN_RS_AMT",
+        "RMT_CUST_INCM_CNY",
+        "RMT_CUST_TTL_SUM_CNY",
+        "RMT_TTL_SHARES",
+        "RPRT_RSRN_DATE",
+        "RS_RSRN_DATE",
+        "RS_SHR",
+        "RT_OF_RTRN_BNNNG_DCPN",
+        "RUN_MODE",
+        "SALEAREA",
+        "SALES_FEE",
+        "SHORT_TERM",
+        "SL_HDN_FEE_RT",
+        "SNGL_HGHST_SSRT_AMT",
+        "SPV_IN_RATEGY",
+        "SPV_KH_BENCHMARK",
+        "SPV_MANAGER_MODE",
+        "SPV_TYPE",
+        "SRN_PNT_SL_AMT",
+        "SRTL_PROD_HK_UP_SBJCT",
+        "SSD_RSRN_DATE",
+        "SSRT_AMT",
+        "SSRT_CUR",
+        "START_DATE",
+        "STD_DEBT_MAX",
+        "STD_DEBT_MIN",
+        "TMT_RSRN_DATE",
+        "TOT_PRCHS_SHR",
+        "TOT_RDM_SHR",
+        "TOT_RMT_AMT_CNY",
+        "TOT_RMT_INCM_AMT_CNY",
+        "TOT_SUB_AMT_CNY",
+        "TRST_ORG_MGT_DTS",
+        "UT_PROD_REG_CODE",
+        "VALUATION_METHOD",
+        "VAL_FREQUENCY",
+        "VDATE",
+        "VTN_AST_RTO",
+        "VTN_AST_TYP",
+        "VTN_AST_TYP_AND_RTO",
+        "VTN_TYP"
+      ],
+      "possible_rename": {
+        "PORT_NATURE": "PORT_NM",
+        "CUSTODIAN": "CUSTODY_BANK",
+        "MKT_BENCHMARK": "BENCHMARK",
+        "PORT_MODEL": "PORT_ID",
+        "START_DATE": "ESTAB_DT",
+        "PORT_STAT": "PORT_SHORT_NM",
+        "PROD_STATUS": "STATUS",
+        "CURR": "CCY",
+        "MANAGERS": "MGR_INST",
+        "ISSUER_NAME": "SHR_NAV"
+      },
+      "match_rate": "2/13"
+    },
+    "dwd_ptl_managers": {
+      "config_fields": [
+        "PORT_ID",
+        "MANAGER_ID",
+        "MANAGER_NM",
+        "ROLE",
+        "START_DT",
+        "END_DT"
+      ],
+      "mock_fields": [
+        "DEAL_DEPT",
+        "PROD_CD",
+        "DATA_DT",
+        "MANAGERS",
+        "VALID_DATE",
+        "INVALID_DATE"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "END_DT",
+        "MANAGER_ID",
+        "MANAGER_NM",
+        "PORT_ID",
+        "ROLE",
+        "START_DT"
+      ],
+      "only_in_mock": [
+        "DATA_DT",
+        "DEAL_DEPT",
+        "INVALID_DATE",
+        "MANAGERS",
+        "PROD_CD",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "MANAGERS": "MANAGER_NM",
+        "DATA_DT": "START_DT",
+        "VALID_DATE": "END_DT"
+      },
+      "match_rate": "0/6"
+    },
+    "dwd_ptl_open_plan": {
+      "config_fields": [
+        "PORT_ID",
+        "OPEN_DT",
+        "OPEN_TYPE",
+        "CLOSE_DT",
+        "QUOTA_AMT"
+      ],
+      "mock_fields": [
+        "SEQ_NO",
+        "RAISE_END_DATE",
+        "RAISE_START_DATE",
+        "PROD_CD",
+        "DATA_DT",
+        "VDATE",
+        "OPEN_TYPE"
+      ],
+      "matched": [
+        "OPEN_TYPE"
+      ],
+      "only_in_config": [
+        "CLOSE_DT",
+        "OPEN_DT",
+        "PORT_ID",
+        "QUOTA_AMT"
+      ],
+      "only_in_mock": [
+        "DATA_DT",
+        "PROD_CD",
+        "RAISE_END_DATE",
+        "RAISE_START_DATE",
+        "SEQ_NO",
+        "VDATE"
+      ],
+      "possible_rename": {
+        "RAISE_END_DATE": "OPEN_DT"
+      },
+      "match_rate": "1/5"
+    },
+    "dwd_rsk_credit": {
+      "config_fields": [
+        "ISR_ID",
+        "BIZ_DT",
+        "INTERNAL_RATING",
+        "EXT_RATING",
+        "PD_1Y",
+        "LGD",
+        "EAD",
+        "EXPECTED_LOSS",
+        "WATCH_FLAG",
+        "LAST_RATING_DT"
+      ],
+      "mock_fields": [
+        "OBJECT_ID",
+        "GRADE_TYPE",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "LC_LIMIT",
+        "ZT_LIMIT",
+        "OCCUPY_VALUE",
+        "ACTUAL_VALUE",
+        "PREOCCUPY_VALUE",
+        "AVAIL_VALUE",
+        "BIDDOCCUPY_VALUE",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "BIZ_DT",
+        "EAD",
+        "EXPECTED_LOSS",
+        "EXT_RATING",
+        "INTERNAL_RATING",
+        "ISR_ID",
+        "LAST_RATING_DT",
+        "LGD",
+        "PD_1Y",
+        "WATCH_FLAG"
+      ],
+      "only_in_mock": [
+        "ACTUAL_VALUE",
+        "AVAIL_VALUE",
+        "BIDDOCCUPY_VALUE",
+        "DATA_DT",
+        "GRADE_TYPE",
+        "INVALID_DATE",
+        "LC_LIMIT",
+        "OBJECT_ID",
+        "OCCUPY_VALUE",
+        "PREOCCUPY_VALUE",
+        "VALID_DATE",
+        "ZT_LIMIT"
+      ],
+      "possible_rename": {
+        "VALID_DATE": "LAST_RATING_DT",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "0/10"
+    },
+    "dwd_rsk_sentiment": {
+      "config_fields": [
+        "SENT_ID",
+        "TARGET_TYPE",
+        "TARGET_CD",
+        "PUB_DT",
+        "PUB_TM",
+        "SOURCE",
+        "TITLE",
+        "SENT_TYPE",
+        "SCORE",
+        "SUMMARY"
+      ],
+      "mock_fields": [
+        "SEQ_NO",
+        "HAPPEN_TIME",
+        "SENTIMENT_TITLE",
+        "INS_CODE",
+        "IMPORTANCE",
+        "SENTIMENT_TYPE",
+        "SENTIMENT_SOURCE",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "PUB_DT",
+        "PUB_TM",
+        "SCORE",
+        "SENT_ID",
+        "SENT_TYPE",
+        "SOURCE",
+        "SUMMARY",
+        "TARGET_CD",
+        "TARGET_TYPE",
+        "TITLE"
+      ],
+      "only_in_mock": [
+        "DATA_DT",
+        "HAPPEN_TIME",
+        "IMPORTANCE",
+        "INS_CODE",
+        "SENTIMENT_SOURCE",
+        "SENTIMENT_TITLE",
+        "SENTIMENT_TYPE",
+        "SEQ_NO"
+      ],
+      "possible_rename": {
+        "SENTIMENT_TYPE": "SENT_TYPE",
+        "INS_CODE": "SCORE",
+        "DATA_DT": "PUB_DT"
+      },
+      "match_rate": "0/10"
+    },
+    "dwd_seller_info": {
+      "config_fields": [
+        "SELLER_ID",
+        "SELLER_NM",
+        "SELLER_TYPE",
+        "CHANNEL_TYPE",
+        "ORG",
+        "CERT_NO",
+        "CERT_TYPE",
+        "PHONE",
+        "EMAIL",
+        "ENTRY_DT",
+        "STATUS",
+        "BIZ_DT"
+      ],
+      "mock_fields": [
+        "CURY",
+        "SELLER_AMT",
+        "PARENT_PROD_CD",
+        "PROD_CD",
+        "SELLER_ORG_FULL_NAME",
+        "SELLER_ORG_SHORT_NAME",
+        "SELLER_ORG_CD",
+        "DATA_DT",
+        "ORG_CD",
+        "PROD_NAME",
+        "SELLER_QUT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "BIZ_DT",
+        "CERT_NO",
+        "CERT_TYPE",
+        "CHANNEL_TYPE",
+        "EMAIL",
+        "ENTRY_DT",
+        "ORG",
+        "PHONE",
+        "SELLER_ID",
+        "SELLER_NM",
+        "SELLER_TYPE",
+        "STATUS"
+      ],
+      "only_in_mock": [
+        "CURY",
+        "DATA_DT",
+        "ORG_CD",
+        "PARENT_PROD_CD",
+        "PROD_CD",
+        "PROD_NAME",
+        "SELLER_AMT",
+        "SELLER_ORG_CD",
+        "SELLER_ORG_FULL_NAME",
+        "SELLER_ORG_SHORT_NAME",
+        "SELLER_QUT"
+      ],
+      "possible_rename": {
+        "SELLER_AMT": "SELLER_NM",
+        "SELLER_QUT": "SELLER_TYPE",
+        "SELLER_ORG_CD": "SELLER_ID",
+        "ORG_CD": "ORG",
+        "DATA_DT": "ENTRY_DT",
+        "PROD_NAME": "PHONE"
+      },
+      "match_rate": "0/12"
+    },
+    "dwd_trn_trade_ast": {
+      "config_fields": [
+        "TRADE_ID",
+        "AST_CD",
+        "TRADE_DT",
+        "SETT_DT",
+        "BS_DIR",
+        "QTY",
+        "PRC",
+        "AMT",
+        "CCY",
+        "CNTP_ID",
+        "MARKET",
+        "TRADER",
+        "STATUS"
+      ],
+      "mock_fields": [
+        "PRD_CD",
+        "AST_CD",
+        "INT_AST_CD",
+        "TRAN_DATE",
+        "AST_TRANS_SRL_NO",
+        "TRADE_ID",
+        "DEAL_DEP",
+        "SETTLE_DATE",
+        "TRADE_MARKET",
+        "TRAN_SIDE",
+        "EXER_SIDE",
+        "NET_PRICE",
+        "FULL_PRICE",
+        "PRICE_YIELD",
+        "COUNTER_PARTY",
+        "ENT_INT_FLAG",
+        "LONG_CURRENCY",
+        "LONG_QUANTITY",
+        "LONG_PRINCIPAL",
+        "LONG_INTEREST",
+        "LONG_AMOUNT",
+        "LONG_TRAN_FEE",
+        "TRAN_COMMISION",
+        "TRADER_NAME",
+        "IMGR_ID_NAME",
+        "TRAN_STATUS",
+        "CPRICE_DATE",
+        "IS_CANCEL",
+        "COUNTER_TRADER",
+        "REGIST_ORG",
+        "REMARK",
+        "SETTLE_SPEED",
+        "PAR_VALUE",
+        "CPRICE_AMT",
+        "FPRICE_AMT",
+        "INV_AIM",
+        "CASH_PS_PAYMENT",
+        "BOND_PS_PAYMENT",
+        "F_YHS",
+        "F_JSF",
+        "F_GHF",
+        "F_ZGF",
+        "F_JSFWF",
+        "F_JSFXJ",
+        "F_HHF",
+        "F_RGF",
+        "F_SGF",
+        "F_SHF",
+        "INT_RATE",
+        "SUB_PRD_CD",
+        "DEPT_ID",
+        "IS_REAL_TRADE",
+        "PARENT_TRANS_NO",
+        "ORGNL_TRANS_NO",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD",
+        "TRADE_ID"
+      ],
+      "only_in_config": [
+        "AMT",
+        "BS_DIR",
+        "CCY",
+        "CNTP_ID",
+        "MARKET",
+        "PRC",
+        "QTY",
+        "SETT_DT",
+        "STATUS",
+        "TRADER",
+        "TRADE_DT"
+      ],
+      "only_in_mock": [
+        "AST_TRANS_SRL_NO",
+        "BOND_PS_PAYMENT",
+        "CASH_PS_PAYMENT",
+        "COUNTER_PARTY",
+        "COUNTER_TRADER",
+        "CPRICE_AMT",
+        "CPRICE_DATE",
+        "DATA_DT",
+        "DEAL_DEP",
+        "DEPT_ID",
+        "ENT_INT_FLAG",
+        "EXER_SIDE",
+        "FPRICE_AMT",
+        "FULL_PRICE",
+        "F_GHF",
+        "F_HHF",
+        "F_JSF",
+        "F_JSFWF",
+        "F_JSFXJ",
+        "F_RGF",
+        "F_SGF",
+        "F_SHF",
+        "F_YHS",
+        "F_ZGF",
+        "IMGR_ID_NAME",
+        "INT_AST_CD",
+        "INT_RATE",
+        "INV_AIM",
+        "IS_CANCEL",
+        "IS_REAL_TRADE",
+        "LONG_AMOUNT",
+        "LONG_CURRENCY",
+        "LONG_INTEREST",
+        "LONG_PRINCIPAL",
+        "LONG_QUANTITY",
+        "LONG_TRAN_FEE",
+        "NET_PRICE",
+        "ORGNL_TRANS_NO",
+        "PARENT_TRANS_NO",
+        "PAR_VALUE",
+        "PRD_CD",
+        "PRICE_YIELD",
+        "REGIST_ORG",
+        "REMARK",
+        "SETTLE_DATE",
+        "SETTLE_SPEED",
+        "SUB_PRD_CD",
+        "TRADER_NAME",
+        "TRADE_MARKET",
+        "TRAN_COMMISION",
+        "TRAN_DATE",
+        "TRAN_SIDE",
+        "TRAN_STATUS"
+      ],
+      "possible_rename": {
+        "SETTLE_DATE": "SETT_DT",
+        "TRAN_DATE": "TRADE_DT",
+        "COUNTER_PARTY": "CNTP_ID",
+        "LONG_QUANTITY": "QTY",
+        "LONG_CURRENCY": "CCY",
+        "NET_PRICE": "PRC",
+        "TRAN_STATUS": "STATUS",
+        "TRADER_NAME": "TRADER",
+        "LONG_AMOUNT": "AMT",
+        "TRADE_MARKET": "MARKET"
+      },
+      "match_rate": "2/13"
+    },
+    "dwd_trn_trade_ptl": {
+      "config_fields": [
+        "TRADE_ID",
+        "PORT_ID",
+        "AST_CD",
+        "TRADE_DT",
+        "SETT_DT",
+        "BS_DIR",
+        "QTY",
+        "PRC",
+        "AMT",
+        "FEE",
+        "CCY"
+      ],
+      "mock_fields": [
+        "PRD_CD",
+        "VALID_DATE",
+        "NAV",
+        "SELLER_CD",
+        "P_SUB_SHARE",
+        "P_RED_SHARE",
+        "C_SUB_SHARE",
+        "C_RED_SHARE",
+        "P_SUB_AMOUNT",
+        "C_SUB_AMOUNT",
+        "P_RED_AMOUNT",
+        "C_RED_AMOUNT",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "AMT",
+        "AST_CD",
+        "BS_DIR",
+        "CCY",
+        "FEE",
+        "PORT_ID",
+        "PRC",
+        "QTY",
+        "SETT_DT",
+        "TRADE_DT",
+        "TRADE_ID"
+      ],
+      "only_in_mock": [
+        "C_RED_AMOUNT",
+        "C_RED_SHARE",
+        "C_SUB_AMOUNT",
+        "C_SUB_SHARE",
+        "DATA_DT",
+        "NAV",
+        "PRD_CD",
+        "P_RED_AMOUNT",
+        "P_RED_SHARE",
+        "P_SUB_AMOUNT",
+        "P_SUB_SHARE",
+        "SELLER_CD",
+        "VALID_DATE"
+      ],
+      "possible_rename": {
+        "P_SUB_AMOUNT": "AMT",
+        "PRD_CD": "PRC",
+        "DATA_DT": "SETT_DT",
+        "VALID_DATE": "TRADE_DT"
+      },
+      "match_rate": "0/11"
+    },
+    "dwd_val_acc": {
+      "config_fields": [
+        "ACC_CD",
+        "ACC_NM",
+        "PARENT_CD",
+        "ACC_LVL",
+        "DIRECTION"
+      ],
+      "mock_fields": [
+        "STACID",
+        "ITEMCD",
+        "SPRRCD",
+        "ITEMNA",
+        "ITEMLV",
+        "CUTRNA",
+        "ITEMTP",
+        "ITEMPR",
+        "DETLTG",
+        "ITEMDN",
+        "USEDTP",
+        "MEASUT",
+        "CONFIN",
+        "POMDTG",
+        "MNTYTG",
+        "INACTP",
+        "BRCHTG",
+        "PRCDTG",
+        "BULNTG",
+        "CUSTTG",
+        "EMLYTG",
+        "ACCTTG",
+        "ITEMCL",
+        "IOFLAG",
+        "HDOPMD",
+        "SENDTP"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "ACC_CD",
+        "ACC_LVL",
+        "ACC_NM",
+        "DIRECTION",
+        "PARENT_CD"
+      ],
+      "only_in_mock": [
+        "ACCTTG",
+        "BRCHTG",
+        "BULNTG",
+        "CONFIN",
+        "CUSTTG",
+        "CUTRNA",
+        "DETLTG",
+        "EMLYTG",
+        "HDOPMD",
+        "INACTP",
+        "IOFLAG",
+        "ITEMCD",
+        "ITEMCL",
+        "ITEMDN",
+        "ITEMLV",
+        "ITEMNA",
+        "ITEMPR",
+        "ITEMTP",
+        "MEASUT",
+        "MNTYTG",
+        "POMDTG",
+        "PRCDTG",
+        "SENDTP",
+        "SPRRCD",
+        "STACID",
+        "USEDTP"
+      ],
+      "possible_rename": {},
+      "match_rate": "0/5"
+    },
+    "dwd_val_bal": {
+      "config_fields": [
+        "PORT_ID",
+        "BIZ_DT",
+        "ACC_CD",
+        "ACC_NM",
+        "DR_BAL",
+        "CR_BAL",
+        "BAL",
+        "CCY"
+      ],
+      "mock_fields": [
+        "PROD_CD",
+        "AST_CD",
+        "VALID_DATE",
+        "PROD_CD_IN",
+        "PROD_CD_CIFD",
+        "AST_CD_IN",
+        "AST_NAME",
+        "VC_LBL_CD",
+        "VC_ORIG_CRSE_CD",
+        "VC_ORIG_CRSE_NAME",
+        "VC_DATA_TYPE",
+        "C_ACCT_TYPE",
+        "C_VAR_TYPE",
+        "C_VAR_CATG",
+        "C_VAR_DTL_CLAS",
+        "VC_CASH_ACC_TYPE",
+        "VC_CASH_ACC",
+        "VC_TRD_MKT",
+        "C_TRD_PURP",
+        "C_ISS_MODE",
+        "C_AST_TYPE",
+        "C_TRD_ATTR",
+        "C_SALE_MODE",
+        "VC_INSC",
+        "C_TRD_CRRC",
+        "C_RVEX_CD",
+        "F_HLDP_VOL",
+        "EN_LCY_HLDP_AMT",
+        "EN_ORCY_HLDP_AMT",
+        "F_LDR_OCC_VOL",
+        "F_DBIT_OCC_VOL",
+        "EN_LDR_LCY_TDY_AMT",
+        "EN_LDR_ORCY_TDY_AMT",
+        "EN_DBIT_LCY_TDY_AMT",
+        "EN_DBIT_ORCY_TDY_AMT",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "ACC_CD",
+        "ACC_NM",
+        "BAL",
+        "BIZ_DT",
+        "CCY",
+        "CR_BAL",
+        "DR_BAL",
+        "PORT_ID"
+      ],
+      "only_in_mock": [
+        "AST_CD",
+        "AST_CD_IN",
+        "AST_NAME",
+        "C_ACCT_TYPE",
+        "C_AST_TYPE",
+        "C_ISS_MODE",
+        "C_RVEX_CD",
+        "C_SALE_MODE",
+        "C_TRD_ATTR",
+        "C_TRD_CRRC",
+        "C_TRD_PURP",
+        "C_VAR_CATG",
+        "C_VAR_DTL_CLAS",
+        "C_VAR_TYPE",
+        "DATA_DT",
+        "EN_DBIT_LCY_TDY_AMT",
+        "EN_DBIT_ORCY_TDY_AMT",
+        "EN_LCY_HLDP_AMT",
+        "EN_LDR_LCY_TDY_AMT",
+        "EN_LDR_ORCY_TDY_AMT",
+        "EN_ORCY_HLDP_AMT",
+        "F_DBIT_OCC_VOL",
+        "F_HLDP_VOL",
+        "F_LDR_OCC_VOL",
+        "PROD_CD",
+        "PROD_CD_CIFD",
+        "PROD_CD_IN",
+        "VALID_DATE",
+        "VC_CASH_ACC",
+        "VC_CASH_ACC_TYPE",
+        "VC_DATA_TYPE",
+        "VC_INSC",
+        "VC_LBL_CD",
+        "VC_ORIG_CRSE_CD",
+        "VC_ORIG_CRSE_NAME",
+        "VC_TRD_MKT"
+      ],
+      "possible_rename": {
+        "AST_NAME": "ACC_NM",
+        "AST_CD": "ACC_CD",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "0/8"
+    },
+    "dwd_val_detail": {
+      "config_fields": [
+        "PORT_ID",
+        "AST_CD",
+        "BIZ_DT",
+        "HLD_QTY",
+        "COST_PRC",
+        "MKT_PRC",
+        "COST_AMT",
+        "MKT_VAL",
+        "ACI_AMT",
+        "UNREAL_PNL",
+        "REAL_PNL",
+        "DAILY_PNL",
+        "AMORT_AMT"
+      ],
+      "mock_fields": [
+        "AST_CD",
+        "PROD_CD",
+        "SUB_PROD_CD",
+        "DEPT_ID",
+        "VALID_DATE",
+        "INVALID_DATE",
+        "AST_NAME",
+        "ACCOUNT_CLASS_TYPE",
+        "HOLDING_SIDE",
+        "HOLDING_AMOUNT",
+        "SHADOW_MV",
+        "SHADOW_DELTA",
+        "PRINFXRATE",
+        "CURRENCY",
+        "ZYJ",
+        "FULL_MV",
+        "NET_MV",
+        "FULL_COST",
+        "NET_COST",
+        "FULL_PRICE",
+        "NET_PRICE",
+        "INTEREST",
+        "GAINLOSS",
+        "INCOME_GL",
+        "INTEREST_GL",
+        "EXPENSE",
+        "INVEST_GL",
+        "R_GL",
+        "GAINLOSS_GL",
+        "AMOR_GL",
+        "EX_GL",
+        "TOTAL_GL",
+        "ASSET_LOSS",
+        "L_CURRENCY",
+        "L_ASSET_LOSS",
+        "L_ZYJ",
+        "L_MV",
+        "L_SHADOW_MV",
+        "L_SHADOW_DELTA",
+        "L_NET_MV",
+        "L_NET_COST",
+        "L_FULL_PRICE",
+        "L_NET_PRICE",
+        "L_INTEREST",
+        "L_DIVIDEND",
+        "L_GAINLOSS",
+        "L_INCOME_GL",
+        "L_INTEREST_GL",
+        "L_EXPENSE",
+        "L_INVEST_GL",
+        "L_R_GL",
+        "L_GAINLOSS_GL",
+        "L_AMOR_GL",
+        "L_TOTAL_GL",
+        "L_FULL_COST",
+        "IS_LT_BOUNDED",
+        "FULL_MV_LOSS",
+        "NET_MV_LOSS",
+        "L_MV_LOSS",
+        "L_NET_MV_LOSS",
+        "DATA_DT"
+      ],
+      "matched": [
+        "AST_CD"
+      ],
+      "only_in_config": [
+        "ACI_AMT",
+        "AMORT_AMT",
+        "BIZ_DT",
+        "COST_AMT",
+        "COST_PRC",
+        "DAILY_PNL",
+        "HLD_QTY",
+        "MKT_PRC",
+        "MKT_VAL",
+        "PORT_ID",
+        "REAL_PNL",
+        "UNREAL_PNL"
+      ],
+      "only_in_mock": [
+        "ACCOUNT_CLASS_TYPE",
+        "AMOR_GL",
+        "ASSET_LOSS",
+        "AST_NAME",
+        "CURRENCY",
+        "DATA_DT",
+        "DEPT_ID",
+        "EXPENSE",
+        "EX_GL",
+        "FULL_COST",
+        "FULL_MV",
+        "FULL_MV_LOSS",
+        "FULL_PRICE",
+        "GAINLOSS",
+        "GAINLOSS_GL",
+        "HOLDING_AMOUNT",
+        "HOLDING_SIDE",
+        "INCOME_GL",
+        "INTEREST",
+        "INTEREST_GL",
+        "INVALID_DATE",
+        "INVEST_GL",
+        "IS_LT_BOUNDED",
+        "L_AMOR_GL",
+        "L_ASSET_LOSS",
+        "L_CURRENCY",
+        "L_DIVIDEND",
+        "L_EXPENSE",
+        "L_FULL_COST",
+        "L_FULL_PRICE",
+        "L_GAINLOSS",
+        "L_GAINLOSS_GL",
+        "L_INCOME_GL",
+        "L_INTEREST",
+        "L_INTEREST_GL",
+        "L_INVEST_GL",
+        "L_MV",
+        "L_MV_LOSS",
+        "L_NET_COST",
+        "L_NET_MV",
+        "L_NET_MV_LOSS",
+        "L_NET_PRICE",
+        "L_R_GL",
+        "L_SHADOW_DELTA",
+        "L_SHADOW_MV",
+        "L_TOTAL_GL",
+        "L_ZYJ",
+        "NET_COST",
+        "NET_MV",
+        "NET_MV_LOSS",
+        "NET_PRICE",
+        "PRINFXRATE",
+        "PROD_CD",
+        "R_GL",
+        "SHADOW_DELTA",
+        "SHADOW_MV",
+        "SUB_PROD_CD",
+        "TOTAL_GL",
+        "VALID_DATE",
+        "ZYJ"
+      ],
+      "possible_rename": {
+        "NET_PRICE": "MKT_PRC",
+        "DEPT_ID": "PORT_ID",
+        "L_NET_PRICE": "COST_PRC",
+        "HOLDING_AMOUNT": "ACI_AMT",
+        "AST_NAME": "COST_AMT",
+        "AMOR_GL": "AMORT_AMT",
+        "DATA_DT": "BIZ_DT",
+        "VALID_DATE": "MKT_VAL"
+      },
+      "match_rate": "1/13"
+    },
+    "dwd_val_notice": {
+      "config_fields": [
+        "PORT_ID",
+        "BIZ_DT",
+        "NOTICE_TYPE",
+        "TITLE",
+        "CONTENT",
+        "PUB_DT"
+      ],
+      "mock_fields": [
+        "PROD_CD",
+        "PORT_NAME",
+        "VALID_DATE",
+        "VAL_BAL_FLAG",
+        "SHARES",
+        "ASSET_VALUE",
+        "TOTAL_NET_VALUE",
+        "QRNHSY",
+        "PAY_PROFIT",
+        "NAV",
+        "CHECK_STATUS",
+        "CHECK_RESULT",
+        "CONFIRM_STATUS",
+        "NOTICE_STATUS",
+        "BRNHSYL",
+        "PUB_DATE",
+        "IS_PUBLISH",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "BIZ_DT",
+        "CONTENT",
+        "NOTICE_TYPE",
+        "PORT_ID",
+        "PUB_DT",
+        "TITLE"
+      ],
+      "only_in_mock": [
+        "ASSET_VALUE",
+        "BRNHSYL",
+        "CHECK_RESULT",
+        "CHECK_STATUS",
+        "CONFIRM_STATUS",
+        "DATA_DT",
+        "IS_PUBLISH",
+        "NAV",
+        "NOTICE_STATUS",
+        "PAY_PROFIT",
+        "PORT_NAME",
+        "PROD_CD",
+        "PUB_DATE",
+        "QRNHSY",
+        "SHARES",
+        "TOTAL_NET_VALUE",
+        "VALID_DATE",
+        "VAL_BAL_FLAG"
+      ],
+      "possible_rename": {
+        "PUB_DATE": "PUB_DT",
+        "PORT_NAME": "PORT_ID",
+        "NOTICE_STATUS": "NOTICE_TYPE",
+        "DATA_DT": "BIZ_DT"
+      },
+      "match_rate": "0/6"
+    },
+    "dwd_val_summary": {
+      "config_fields": [
+        "PORT_ID",
+        "BIZ_DT",
+        "AST_CLASS",
+        "MKT_VAL",
+        "WEIGHT",
+        "ACI_AMT"
+      ],
+      "mock_fields": [
+        "PROD_CD",
+        "VALID_DATE",
+        "SHARES",
+        "NET_ASSET",
+        "TOTAL_ASSET",
+        "NAV",
+        "DIVIDEND",
+        "LJ_NAV",
+        "WFSY",
+        "BRNHSYL",
+        "QRNHSY",
+        "BNLJWFSY",
+        "CCLYLLJWFSY",
+        "LEVER_RATIO",
+        "PLJE",
+        "YZ_NAV",
+        "GZPLD",
+        "SYPZJ_YSX",
+        "SYPZJ_WSX",
+        "DRKHSY",
+        "LIABILITY",
+        "AVG_REMAIN_MATURITY",
+        "AVG_REMAIN_DURAION",
+        "NET_ASSET_COST",
+        "TOTAL_ASSET_COST",
+        "TOTAL_LOSS",
+        "DATA_DT"
+      ],
+      "matched": [],
+      "only_in_config": [
+        "ACI_AMT",
+        "AST_CLASS",
+        "BIZ_DT",
+        "MKT_VAL",
+        "PORT_ID",
+        "WEIGHT"
+      ],
+      "only_in_mock": [
+        "AVG_REMAIN_DURAION",
+        "AVG_REMAIN_MATURITY",
+        "BNLJWFSY",
+        "BRNHSYL",
+        "CCLYLLJWFSY",
+        "DATA_DT",
+        "DIVIDEND",
+        "DRKHSY",
+        "GZPLD",
+        "LEVER_RATIO",
+        "LIABILITY",
+        "LJ_NAV",
+        "NAV",
+        "NET_ASSET",
+        "NET_ASSET_COST",
+        "PLJE",
+        "PROD_CD",
+        "QRNHSY",
+        "SHARES",
+        "SYPZJ_WSX",
+        "SYPZJ_YSX",
+        "TOTAL_ASSET",
+        "TOTAL_ASSET_COST",
+        "TOTAL_LOSS",
+        "VALID_DATE",
+        "WFSY",
+        "YZ_NAV"
+      ],
+      "possible_rename": {
+        "VALID_DATE": "ACI_AMT",
+        "DATA_DT": "BIZ_DT",
+        "NET_ASSET": "AST_CLASS"
+      },
+      "match_rate": "0/6"
+    }
+  }
+}

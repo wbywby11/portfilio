@@ -1,0 +1,310 @@
+[
+  {
+    "code": "CBA00101.CS",
+    "name": "中债-新综合财富(总值)指数",
+    "asset_type": "指数",
+    "exchange": "中证指数",
+    "description": "中债综合财富指数，反映债券市场整体表现",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "000300.SH",
+    "name": "沪深300",
+    "asset_type": "指数",
+    "exchange": "上交所",
+    "description": "沪深300指数，A股核心宽基指数",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "CCFI.WI",
+    "name": "Wind商品综合",
+    "asset_type": "指数",
+    "exchange": "Wind",
+    "description": "Wind商品综合指数，大宗商品综合表现",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "NMFI.WI",
+    "name": "Wind贵金属",
+    "asset_type": "指数",
+    "exchange": "Wind",
+    "description": "Wind贵金属指数",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "NFFI.WI",
+    "name": "Wind有色",
+    "asset_type": "指数",
+    "exchange": "Wind",
+    "description": "Wind有色金属指数",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "CIFI.WI",
+    "name": "Wind化工",
+    "asset_type": "指数",
+    "exchange": "Wind",
+    "description": "Wind化工指数",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "JJRI.WI",
+    "name": "Wind煤焦钢矿",
+    "asset_type": "指数",
+    "exchange": "Wind",
+    "description": "Wind煤焦钢矿指数",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "OOFI.WI",
+    "name": "Wind油脂油料",
+    "asset_type": "指数",
+    "exchange": "Wind",
+    "description": "Wind油脂油料指数",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "SOFI.WI",
+    "name": "Wind软商品",
+    "asset_type": "指数",
+    "exchange": "Wind",
+    "description": "Wind软商品指数",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "ENFI.WI",
+    "name": "Wind能源",
+    "asset_type": "指数",
+    "exchange": "Wind",
+    "description": "Wind能源指数",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "APFI.WI",
+    "name": "Wind农副产品",
+    "asset_type": "指数",
+    "exchange": "Wind",
+    "description": "Wind农副产品指数",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "NMBM.WI",
+    "name": "Wind非金属建材",
+    "asset_type": "指数",
+    "exchange": "Wind",
+    "description": "Wind非金属建材指数",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "CRFI.WI",
+    "name": "Wind谷物",
+    "asset_type": "指数",
+    "exchange": "Wind",
+    "description": "Wind谷物指数",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "518880.SH",
+    "name": "黄金ETF华安",
+    "asset_type": "基金",
+    "exchange": "上交所",
+    "description": "华安黄金ETF，跟踪黄金现货价格",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "159980.SZ",
+    "name": "有色ETF大成",
+    "asset_type": "基金",
+    "exchange": "深交所",
+    "description": "大成有色金属ETF",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "159981.SZ",
+    "name": "能源化工ETF建信",
+    "asset_type": "基金",
+    "exchange": "深交所",
+    "description": "建信能源化工ETF",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "159985.SZ",
+    "name": "豆粕ETF华夏",
+    "asset_type": "基金",
+    "exchange": "深交所",
+    "description": "华夏豆粕ETF",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "501018.SH",
+    "name": "南方原油LOF",
+    "asset_type": "基金",
+    "exchange": "上交所",
+    "description": "南方原油LOF，QDII跟踪原油期货",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "160216.SZ",
+    "name": "国泰商品LOF",
+    "asset_type": "基金",
+    "exchange": "深交所",
+    "description": "国泰大宗商品LOF",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "164701.SZ",
+    "name": "黄金LOF",
+    "asset_type": "基金",
+    "exchange": "深交所",
+    "description": "前海开源黄金LOF",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "161226.SZ",
+    "name": "国投白银LOF",
+    "asset_type": "基金",
+    "exchange": "深交所",
+    "description": "国投瑞银白银LOF",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  },
+  {
+    "code": "DR007.IB",
+    "name": "银存间质押7日",
+    "asset_type": "指数",
+    "exchange": "银行间",
+    "description": "银行间7天质押回购利率DR007",
+    "is_active": true,
+    "created_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    },
+    "updated_at": {
+      "$date": "2026-05-21T15:42:31.000Z"
+    }
+  }
+]

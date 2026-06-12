@@ -105,11 +105,16 @@
   text-decoration: underline;
 }
 
-/* 表格导出包装器 */
+/* 表格导出包装器：限高缩略预览、内部滚动，导出按钮 sticky 在顶部，
+   导出时仍能拿到完整表格 DOM */
 .table-wrapper {
   position: relative;
   margin: 12px 0;
-  overflow-x: auto;
+  overflow: auto;
+  max-height: 360px;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  background: #fff;
 }
 
 .table-wrapper .md-table {
@@ -117,9 +122,15 @@
 }
 
 .table-actions {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 4px;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(2px);
+  border-bottom: 1px solid #ebeef5;
 }
 
 .table-export-btn {
@@ -142,4 +153,192 @@
 
 .table-export-btn i {
   font-size: 12px;
+}
+
+/* ===== 表名中文徽章 ===== */
+.markdown-body code.table-ref-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  background: linear-gradient(135deg, #e8f4fd 0%, #f0f7ff 100%);
+  color: #1a73e8;
+  border: 1px solid #bdd7f5;
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-size: 12.5px;
+  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  cursor: help;
+  transition: all 0.15s;
+}
+.markdown-body code.table-ref-badge:hover {
+  background: linear-gradient(135deg, #d0e8fb 0%, #e3f0ff 100%);
+  box-shadow: 0 1px 4px rgba(26, 115, 232, 0.18);
+}
+.markdown-body code.table-ref-badge .tbl-en {
+  font-size: 10.5px;
+  color: #7bafd4;
+  font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+}
+
+/* ===== 关键字段高亮 ===== */
+.markdown-body code.key-field,
+.markdown-body strong.key-field {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 12.5px;
+  cursor: help;
+  transition: all 0.15s;
+  position: relative;
+}
+/* 主键 PK */
+.markdown-body code.field-pk,
+.markdown-body strong.field-pk {
+  background: #fff3e0;
+  color: #e65100;
+  border: 1px solid #ffcc80;
+  font-weight: 600;
+}
+.markdown-body code.field-pk::before,
+.markdown-body strong.field-pk::before {
+  content: '🔑';
+  font-size: 10px;
+  margin-right: 3px;
+}
+.markdown-body code.field-pk:hover,
+.markdown-body strong.field-pk:hover {
+  background: #ffe0b2;
+  box-shadow: 0 1px 3px rgba(230, 81, 0, 0.15);
+}
+/* 外键 FK */
+.markdown-body code.field-fk,
+.markdown-body strong.field-fk {
+  background: #e8f5e9;
+  color: #1b5e20;
+  border: 1px solid #a5d6a7;
+}
+.markdown-body code.field-fk::before,
+.markdown-body strong.field-fk::before {
+  content: '🔗';
+  font-size: 10px;
+  margin-right: 3px;
+}
+.markdown-body code.field-fk:hover,
+.markdown-body strong.field-fk:hover {
+  background: #c8e6c9;
+}
+/* 关联键 LINK */
+.markdown-body code.field-link,
+.markdown-body strong.field-link {
+  background: #fce4ec;
+  color: #880e4f;
+  border: 1px solid #f48fb1;
+}
+.markdown-body code.field-link::before,
+.markdown-body strong.field-link::before {
+  content: '🔗';
+  font-size: 10px;
+  margin-right: 3px;
+}
+.markdown-body code.field-link:hover,
+.markdown-body strong.field-link:hover {
+  background: #f8bbd0;
+}
+/* 业务关键字段 BIZ */
+.markdown-body code.field-biz,
+.markdown-body strong.field-biz {
+  background: #f3e5f5;
+  color: #4a148c;
+  border: 1px solid #ce93d8;
+}
+.markdown-body code.field-biz:hover,
+.markdown-body strong.field-biz:hover {
+  background: #e1bee7;
+}
+
+/* ===== 数据来源头 ===== */
+.markdown-body .data-source-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  margin: 8px 0 4px;
+  background: linear-gradient(90deg, #e3f2fd 0%, #f5f9ff 100%);
+  border-left: 3px solid #1976d2;
+  border-radius: 0 4px 4px 0;
+  font-size: 12.5px;
+  color: #1565c0;
+  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+.markdown-body .data-source-header .src-icon {
+  font-style: normal;
+  font-size: 14px;
+}
+
+/* ===== 激活视图头 ===== */
+.markdown-body .active-view-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  margin: 4px 0 8px;
+  background: linear-gradient(90deg, #f3e5f5 0%, #faf5ff 100%);
+  border-left: 3px solid #7b1fa2;
+  border-radius: 0 4px 4px 0;
+  font-size: 12.5px;
+  color: #6a1b9a;
+  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+.markdown-body .active-view-header .view-icon {
+  font-style: normal;
+  font-size: 14px;
+}
+
+/* ===== 关联路径箭头 ===== */
+.markdown-body .join-arrow {
+  display: inline-block;
+  color: #ff6f00;
+  font-weight: 700;
+  padding: 0 4px;
+  cursor: help;
+}
+
+/* ===== 贡献度内联徽章（用于 LLM 回答中的表贡献标注） ===== */
+.markdown-body .contrib-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 500;
+  vertical-align: middle;
+  margin-left: 4px;
+  line-height: 16px;
+}
+.markdown-body .contrib-badge.contrib-primary {
+  background: #f0f9eb;
+  color: #67C23A;
+  border: 1px solid #c2e7b0;
+}
+.markdown-body .contrib-badge.contrib-secondary {
+  background: #f4f4f5;
+  color: #909399;
+  border: 1px solid #d3d4d6;
+}
+.markdown-body .contrib-badge.contrib-candidate {
+  background: #fafafa;
+  color: #c0c4cc;
+  border: 1px solid #e4e7ed;
+}
+
+/* ===== 核心表高亮边框（用于 LLM 回答中的核心数据表） ===== */
+.markdown-body table.core-table {
+  border: 2px solid #67C23A;
+  box-shadow: 0 1px 4px rgba(103, 194, 58, 0.15);
+}
+.markdown-body table.core-table th {
+  background: #f0f9eb;
+}
+.markdown-body table.aux-table {
+  border: 1px solid #dcdfe6;
+  opacity: 0.85;
 }

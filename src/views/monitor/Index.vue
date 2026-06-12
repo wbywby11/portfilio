@@ -163,7 +163,7 @@
           <el-card shadow="hover" class="metric-card">
             <div class="metric-label">年化收益率</div>
             <div class="metric-value" :style="{ color: getReturnColor(performance && performance.annual_return) }">
-              {{ formatPercent(performance && performance.annual_return) }}
+              {{ formatPercentPoints(performance && performance.annual_return) }}
             </div>
             <div class="metric-sub">历史年化</div>
           </el-card>
@@ -171,7 +171,7 @@
         <el-col :span="4">
           <el-card shadow="hover" class="metric-card">
             <div class="metric-label">年化波动率</div>
-            <div class="metric-value">{{ formatPercent(performance && performance.annual_volatility) }}</div>
+            <div class="metric-value">{{ formatPercentPoints(performance && performance.annual_volatility) }}</div>
             <div class="metric-sub">历史波动</div>
           </el-card>
         </el-col>
@@ -186,7 +186,7 @@
           <el-card shadow="hover" class="metric-card">
             <div class="metric-label">最大回撤</div>
             <div class="metric-value" style="color: #67C23A;">
-              {{ formatPercent(performance && performance.max_drawdown) }}
+              {{ formatPercentPoints(performance && performance.max_drawdown) }}
             </div>
             <div class="metric-sub">历史最大</div>
           </el-card>
@@ -220,7 +220,7 @@
           <el-card shadow="hover" class="metric-card">
             <div class="metric-label">当前回撤</div>
             <div class="metric-value" style="color: #67C23A;">
-              {{ formatPercent(currentDrawdown) }}
+              {{ formatPercentPoints(currentDrawdown) }}
             </div>
             <div class="metric-sub">距离高点</div>
           </el-card>
@@ -372,7 +372,7 @@ export default {
       }
       return null;
     },
-    // 当前回撤
+    // 当前回撤（百分点形式：负数表示回撤，如 -5 表示 -5%）
     currentDrawdown() {
       if (!this.navHistory || this.navHistory.length < 2) return null;
       const navValues = this.navHistory.map(h => h.nav);
@@ -381,7 +381,7 @@ export default {
       for (const nav of navValues) {
         if (nav > peak) peak = nav;
       }
-      return (currentNav / peak) - 1;  // 负数表示回撤
+      return ((currentNav / peak) - 1) * 100;  // 转为百分点，与 formatPercentPoints 输入口径一致
     },
     // 持仓资产数（小数权重，|w|>0.01 视为有效持仓，约 1% 以上）
     positionCount() {
@@ -478,9 +478,10 @@ export default {
       if (num === null || num === undefined) return '-';
       return num.toFixed(decimals);
     },
-    formatPercent(num) {
-      if (num === null || num === undefined) return '-';
-      return num.toFixed(2) + '%';
+    /** 后端绩效接口已是「百分比数值」（如 4.74 表示 4.74%），勿再乘以 100 */
+    formatPercentPoints(num) {
+      if (num === null || num === undefined || Number.isNaN(Number(num))) return '-';
+      return Number(num).toFixed(2) + '%';
     },
     formatSignedPercent(num) {
       if (num === null || num === undefined) return '-';

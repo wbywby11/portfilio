@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "portfilio-end",
+			"path": "."
+		},
+		{
+			"name": "portfilio",
+			"path": "../portfilio"
+		}
+	],
+	"settings": {}
+}

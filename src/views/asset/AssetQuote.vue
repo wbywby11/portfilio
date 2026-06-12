@@ -241,12 +241,90 @@
       </el-form>
     </el-card>
 
+    <!-- 快捷删除某日行情 -->
+    <el-card v-if="selectedAsset" class="manual-delete-card" shadow="never">
+      <div class="delete-card-header">
+        <div class="delete-card-title">
+          <i class="el-icon-delete"></i>
+          <span>删除某日 K 线行情</span>
+          <span class="delete-card-hint">选择一个日期，删除该日该资产的单条行情记录</span>
+        </div>
+      </div>
+      <div class="delete-card-body">
+        <el-date-picker
+          v-model="deletePriceDate"
+          type="date"
+          placeholder="选择需删除的日期"
+          value-format="yyyy-MM-dd"
+          class="delete-date-picker"
+          :picker-options="deletePricePickerOptions"
+          clearable
+        />
+        <el-button
+          type="danger"
+          icon="el-icon-delete"
+          plain
+          :loading="singleDeletingPrice"
+          :disabled="!deletePriceDate"
+          class="delete-confirm-btn"
+          @click="handleDeletePriceByPicker"
+        >
+          删除该日行情
+        </el-button>
+        <el-tooltip content="跳到「行情明细」表可多选批量删除" placement="top">
+          <el-button
+            type="text"
+            icon="el-icon-s-grid"
+            @click="activeTab = 'table'"
+          >
+            表格批量删除
+          </el-button>
+        </el-tooltip>
+      </div>
+      <div class="delete-card-tip">
+        <i class="el-icon-warning-outline"></i>
+        提示：仅可选择当前表格中已存在的日期；删除后不可恢复，请谨慎操作
+      </div>
+    </el-card>
+
     <el-tabs v-model="activeTab" style="margin-top: 20px;" type="border-card">
       <el-tab-pane label="K线图" name="chart">
         <div ref="klineChart" style="width: 100%; height: 500px;" v-loading="loading"></div>
       </el-tab-pane>
       <el-tab-pane label="行情明细" name="table">
+        <div class="quote-table-toolbar">
+          <div class="toolbar-left">
+            <el-tag size="medium" type="info" effect="plain">
+              <i class="el-icon-document"></i>
+              共 {{ quoteData.length }} 条
+            </el-tag>
+            <el-tag
+              v-if="selectedQuoteRows.length"
+              size="medium"
+              type="warning"
+              effect="plain"
+              style="margin-left: 8px;"
+            >
+              <i class="el-icon-finished"></i>
+              已选 {{ selectedQuoteRows.length }} 条
+            </el-tag>
+          </div>
+          <div class="toolbar-right">
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              icon="el-icon-delete"
+              :disabled="!selectedQuoteRows.length || !selectedAsset"
+              :loading="batchDeleting"
+              @click="handleBatchDeletePrices"
+            >
+              批量删除选中日期
+            </el-button>
+          </div>
+        </div>
         <vxe-table
+          ref="quoteTable"
           border
           stripe
           height="500"
@@ -254,8 +332,12 @@
           :data="quoteData"
           :scroll-y="{enabled: true, gt: 0}"
           show-overflow="title"
+          :checkbox-config="{ trigger: 'row', highlight: true, range: true }"
+          @checkbox-all="handleQuoteSelectionChange"
+          @checkbox-change="handleQuoteSelectionChange"
         >
-          <vxe-column field="date" title="日期" sortable width="150"></vxe-column>
+          <vxe-column type="checkbox" width="46" align="center" fixed="left"></vxe-column>
+          <vxe-column field="date" title="日期" sortable width="140" fixed="left"></vxe-column>
           <vxe-column field="open" title="开盘价" width="120">
             <template #default="{ row }">
               {{ row.open != null ? formatPrice(row.open) : '-' }}
@@ -291,6 +373,29 @@
           <vxe-column field="scale" title="规模" width="150">
             <template #default="{ row }">
               {{ row.scale != null && row.scale !== '' ? formatAmount(row.scale) : '-' }}
+            </template>
+          </vxe-column>
+          <vxe-column title="操作" width="110" fixed="right" align="center">
+            <template #default="{ row }">
+              <el-popconfirm
+                :title="`确认删除 ${row.date} 的行情记录？`"
+                confirm-button-text="确认删除"
+                cancel-button-text="取消"
+                confirm-button-type="danger"
+                icon="el-icon-warning"
+                icon-color="#f56c6c"
+                @confirm="handleDeletePrice(row)"
+              >
+                <el-button
+                  slot="reference"
+                  type="text"
+                  size="mini"
+                  icon="el-icon-delete"
+                  class="row-delete-btn"
+                >
+                  删除
+                </el-button>
+              </el-popconfirm>
             </template>
           </vxe-column>
         </vxe-table>
@@ -371,7 +476,17 @@
           size="small"
           :row-key="multiAssetTableRowKey"
         >
-          <el-table-column label="导入" width="56" align="center">
+          <el-table-column width="64" align="center">
+            <template slot="header">
+              <div class="multi-import-th" title="全选 / 取消全选">
+                <el-checkbox
+                  v-model="multiImportHeaderCheckModel"
+                  :indeterminate="multiImportHeaderSelect.indeterminate"
+                  :disabled="multiImportSubmitting"
+                />
+                <span class="multi-import-header-label">导入</span>
+              </div>
+            </template>
             <template slot-scope="{ row }">
               <el-checkbox v-model="row.selected" />
             </template>
@@ -527,7 +642,9 @@ import {
   importSingleAssetFromMulti,
   getPriceImportProgress,
   getMultiAssetRowPreviewStats,
-  createAsset
+  createAsset,
+  deleteAssetPrice,
+  deleteAssetPricesBatch
 } from '@/api/asset';
 import SyncProgressDialog from '@/components/SyncProgressDialog.vue';
 import AssetForm from '@/views/asset/AssetForm.vue';
@@ -550,6 +667,16 @@ export default {
       default: false
     },
     assetCode: {
+      type: String,
+      default: ''
+    },
+    /** 外部传入的起始日期（YYYY-MM-DD）：仅在 isDialog 模式下生效，用于与调用方表格同源区间 */
+    startDate: {
+      type: String,
+      default: ''
+    },
+    /** 外部传入的结束日期 */
+    endDate: {
       type: String,
       default: ''
     }
@@ -599,7 +726,17 @@ export default {
       multiBatchCreateLoading: false,
       /** 当前单资产导入时由后端进度接口填充 */
       multiImportProgressLine: '',
-      _multiImportProgressTimer: null
+      _multiImportProgressTimer: null,
+      /** 进度轮询与当前导入请求绑定，忽略过期响应 */
+      _multiImportPollProgressId: null,
+      /** 行情明细表多选选中行（用于批量删除） */
+      selectedQuoteRows: [],
+      /** 单条/批量删除中状态标识 */
+      batchDeleting: false,
+      /** 快捷删除：选中的待删除日期 */
+      deletePriceDate: '',
+      /** 单日快捷删除中标识 */
+      singleDeletingPrice: false
     };
   },
   computed: {
@@ -633,11 +770,55 @@ export default {
         scale: '规模'
       };
       return m[this.multiImportMetric] || '收盘价';
+    },
+    /** 快捷删除日期选择器：仅允许当前 quoteData 中存在的日期 */
+    deletePricePickerOptions() {
+      const dateSet = new Set((this.quoteData || []).map((it) => it.date));
+      return {
+        disabledDate(date) {
+          if (!date) return true;
+          const y = date.getFullYear();
+          const m = String(date.getMonth() + 1).padStart(2, '0');
+          const d = String(date.getDate()).padStart(2, '0');
+          return !dateSet.has(`${y}-${m}-${d}`);
+        }
+      };
+    },
+    /** 多资产表「导入」列表头：与明细勾选联动（双向绑定为三态） */
+    multiImportHeaderSelect() {
+      const rows = this.multiAssetRows || [];
+      const n = rows.length;
+      if (!n) return { checked: false, indeterminate: false };
+      let sel = 0;
+      for (let i = 0; i < n; i++) {
+        if (rows[i].selected) sel++;
+      }
+      return {
+        checked: sel === n && n > 0,
+        indeterminate: sel > 0 && sel < n
+      };
+    },
+    /** Element UI 2 单选框须 v-model；与表头三态、行 selected 同步 */
+    multiImportHeaderCheckModel: {
+      get() {
+        return this.multiImportHeaderSelect.checked;
+      },
+      set(val) {
+        const on = !!val;
+        const rows = this.multiAssetRows || [];
+        for (let i = 0; i < rows.length; i++) {
+          this.$set(rows[i], 'selected', on);
+        }
+      }
     }
   },
   mounted() {
     this.initDateRange();
     this.fetchAssetOptions();
+    // 弹窗模式：若调用方传入了 startDate/endDate，覆盖默认区间，使默认展示与调用方（如聊天表格）同源区间
+    if (this.isDialog && this.startDate && this.endDate) {
+      this.dateRange = [this.startDate, this.endDate];
+    }
   },
   watch: {
     assetCode(newVal) {
@@ -645,6 +826,10 @@ export default {
         this.selectedAsset = newVal;
         this.manualForm.date = '';
         this.resetManualOhlcEdited();
+        // 切换到新资产时，若仍携带外部区间则按该区间拉取，保证表格与弹窗区间一致
+        if (this.startDate && this.endDate) {
+          this.dateRange = [this.startDate, this.endDate];
+        }
         this.fetchData();
       }
     },
@@ -754,6 +939,11 @@ export default {
           amount: item.amount ?? 0,
           scale: item.scale != null ? item.scale : null
         }));
+        // 数据刷新后清空多选选中记录
+        this.selectedQuoteRows = [];
+        if (this.$refs.quoteTable && typeof this.$refs.quoteTable.clearCheckboxRow === 'function') {
+          try { this.$refs.quoteTable.clearCheckboxRow(); } catch (e) { /* ignore */ }
+        }
         
         this.renderChart();
         await this.fetchCoverageGaps();
@@ -905,6 +1095,110 @@ export default {
         this.$message.error(String(msg));
       } finally {
         this.manualSubmitting = false;
+      }
+    },
+    /* ================= 行情 K 线删除 ================= */
+    handleQuoteSelectionChange(payload) {
+      // vxe-table 多选事件返回 { records, ... }
+      const rows = (payload && payload.records) || [];
+      this.selectedQuoteRows = rows;
+    },
+    async handleDeletePrice(row) {
+      if (!this.selectedAsset || !row || !row.date) return;
+      this.batchDeleting = true;
+      try {
+        await deleteAssetPrice(this.selectedAsset, row.date);
+        this.$message.success(`已删除 ${row.date} 的行情记录`);
+        // 先在本地移除以避免闪烁，随后拉取最新数据
+        const idx = this.quoteData.findIndex((it) => it.date === row.date);
+        if (idx >= 0) this.quoteData.splice(idx, 1);
+        await this.fetchData();
+      } catch (err) {
+        const msg = (err && err.response && err.response.data && (err.response.data.detail || err.response.data.message)) || (err && err.message) || '删除失败';
+        this.$message.error(String(msg));
+      } finally {
+        this.batchDeleting = false;
+      }
+    },
+    async handleDeletePriceByPicker() {
+      if (!this.selectedAsset || !this.deletePriceDate) return;
+      const date = this.deletePriceDate;
+      try {
+        await this.$confirm(
+          `确认删除 <strong>${date}</strong> 的行情记录？<br/><span style="color:#909399;font-size:12px;">删除后不可恢复，请谨慎操作</span>`,
+          '删除确认',
+          {
+            confirmButtonText: '确认删除',
+            cancelButtonText: '取消',
+            type: 'warning',
+            dangerouslyUseHTMLString: true
+          }
+        );
+      } catch (e) {
+        return;
+      }
+      this.singleDeletingPrice = true;
+      try {
+        await deleteAssetPrice(this.selectedAsset, date);
+        this.$message.success(`已删除 ${date} 的行情记录`);
+        this.deletePriceDate = '';
+        const idx = this.quoteData.findIndex((it) => it.date === date);
+        if (idx >= 0) this.quoteData.splice(idx, 1);
+        await this.fetchData();
+      } catch (err) {
+        const msg = (err && err.response && err.response.data && (err.response.data.detail || err.response.data.message)) || (err && err.message) || '删除失败';
+        this.$message.error(String(msg));
+      } finally {
+        this.singleDeletingPrice = false;
+      }
+    },
+    async handleBatchDeletePrices() {
+      if (!this.selectedAsset || !this.selectedQuoteRows.length) return;
+      const dates = this.selectedQuoteRows.map((r) => r.date).filter(Boolean);
+      if (!dates.length) return;
+      const previewDates = dates.slice(0, 5).join('、') + (dates.length > 5 ? ` 等共 ${dates.length} 个日期` : '');
+      try {
+        await this.$confirm(
+          `确认删除选中的 ${dates.length} 条行情记录？<br/><span style="color:#909399;font-size:12px;">${previewDates}</span>`,
+          '批量删除确认',
+          {
+            confirmButtonText: '确认删除',
+            cancelButtonText: '取消',
+            type: 'warning',
+            dangerouslyUseHTMLString: true
+          }
+        );
+      } catch (e) {
+        return; // 用户取消
+      }
+      this.batchDeleting = true;
+      try {
+        // 优先尝试批量接口；后端未实现时退化为逐条调用
+        let useFallback = false;
+        try {
+          await deleteAssetPricesBatch(this.selectedAsset, dates);
+        } catch (err) {
+          const status = err && err.response && err.response.status;
+          if (status === 404 || status === 405 || status === 501) {
+            useFallback = true;
+          } else {
+            throw err;
+          }
+        }
+        if (useFallback) {
+          for (const d of dates) {
+            // eslint-disable-next-line no-await-in-loop
+            await deleteAssetPrice(this.selectedAsset, d);
+          }
+        }
+        this.$message.success(`已删除 ${dates.length} 条行情记录`);
+        this.selectedQuoteRows = [];
+        await this.fetchData();
+      } catch (err) {
+        const msg = (err && err.response && err.response.data && (err.response.data.detail || err.response.data.message)) || (err && err.message) || '批量删除失败';
+        this.$message.error(String(msg));
+      } finally {
+        this.batchDeleting = false;
       }
     },
     /**
@@ -1383,6 +1677,7 @@ export default {
       return `p-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     },
     stopMultiImportProgressPoll() {
+      this._multiImportPollProgressId = null;
       if (this._multiImportProgressTimer) {
         clearInterval(this._multiImportProgressTimer);
         this._multiImportProgressTimer = null;
@@ -1391,13 +1686,14 @@ export default {
     startMultiImportProgressPoll(progressId) {
       this.stopMultiImportProgressPoll();
       if (!progressId) return;
+      this._multiImportPollProgressId = progressId;
       let hadSnap = false;
-      let inFlight = false;
       const tick = () => {
-        if (inFlight) return;
-        inFlight = true;
-        getPriceImportProgress(progressId)
+        const id = this._multiImportPollProgressId;
+        if (!id) return;
+        getPriceImportProgress(id)
           .then((res) => {
+            if (this._multiImportPollProgressId !== id) return;
             const snap = unwrapPriceImportProgressPayload(res);
             if (snap) {
               hadSnap = true;
@@ -1407,12 +1703,10 @@ export default {
             }
           })
           .catch(() => {
+            if (this._multiImportPollProgressId !== id) return;
             if (!hadSnap) {
               this.multiImportProgressLine = '无法拉取进度（请检查网络或登录态）';
             }
-          })
-          .finally(() => {
-            inFlight = false;
           });
       };
       tick();
@@ -1733,6 +2027,107 @@ export default {
   color: #909399;
   word-break: break-all;
 }
+/* 行情明细表顶部工具栏 */
+.quote-table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px 12px;
+  border-bottom: 1px dashed #ebeef5;
+  margin-bottom: 8px;
+}
+.quote-table-toolbar .toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.quote-table-toolbar .toolbar-left i {
+  margin-right: 4px;
+}
+.quote-table-toolbar .toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.row-delete-btn {
+  color: #f56c6c;
+  padding: 4px 8px;
+}
+.row-delete-btn:hover {
+  color: #fff;
+  background: #f56c6c;
+  border-radius: 4px;
+}
+.row-delete-btn:focus {
+  color: #f56c6c;
+}
+/* 快捷删除某日行情卡片 */
+.manual-delete-card {
+  margin-bottom: 16px;
+  border: 1px solid #fde2e2;
+  background: linear-gradient(135deg, #fff8f8 0%, #fff5f5 100%);
+  border-radius: 8px;
+}
+.manual-delete-card >>> .el-card__body {
+  padding: 14px 18px;
+}
+.delete-card-header {
+  margin-bottom: 12px;
+}
+.delete-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  letter-spacing: 0.4px;
+}
+.delete-card-title i {
+  color: #f56c6c;
+  font-size: 18px;
+}
+.delete-card-hint {
+  font-size: 12px;
+  color: #909399;
+  font-weight: normal;
+  margin-left: 4px;
+}
+.delete-card-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.delete-date-picker {
+  width: 220px;
+}
+.delete-date-picker >>> .el-input__inner {
+  border-color: #fbc4c4;
+  background: #fff;
+}
+.delete-date-picker >>> .el-input__inner:hover {
+  border-color: #f89898;
+}
+.delete-date-picker >>> .el-input__inner:focus {
+  border-color: #f56c6c;
+}
+.delete-confirm-btn {
+  letter-spacing: 0.5px;
+}
+.delete-card-tip {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed #fde2e2;
+  font-size: 12px;
+  color: #909399;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.delete-card-tip i {
+  color: #e6a23c;
+}
 .manual-import-card {
   margin-bottom: 16px;
   border: 1px solid #ebeef5;
@@ -1798,6 +2193,21 @@ export default {
   background: #f4f4f5;
   border-radius: 4px;
   font-family: Consolas, 'Courier New', monospace;
+  word-break: break-all;
+}
+.multi-import-th {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  line-height: 1;
+  padding: 2px 0;
+}
+.multi-import-header-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #909399;
 }
 .multi-asset-toolbar {
   margin-bottom: 12px;

@@ -67,6 +67,8 @@
             <el-menu-item index="/analysis/multi-asset-import">多资产行情导入</el-menu-item>
             <el-menu-item index="/analysis/data-hub">数据接入中心</el-menu-item>
             <el-menu-item index="/analysis/data-assets">数据资产管理</el-menu-item>
+            <el-menu-item index="/analysis/zy-data-domain">ZY数据域管理</el-menu-item>
+            <el-menu-item index="/analysis/data-lineage">数据血缘图谱</el-menu-item>
           </el-submenu>
 
           <el-submenu index="agent">

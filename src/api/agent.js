@@ -19,11 +19,16 @@ export function getConversations(params) {
   })
 }
 
-// 获取对话详情（含消息历史）
-export function getConversation(id) {
+// 获取对话详情（含消息历史，支持分页）
+export function getConversation(id, params = {}) {
   return request({
     url: `/api/v1/agent/conversations/${id}`,
-    method: 'get'
+    method: 'get',
+    params: {
+      page: params.page || 1,
+      page_size: params.page_size || 20,
+      ...params
+    }
   })
 }
 

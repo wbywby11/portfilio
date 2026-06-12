@@ -208,7 +208,7 @@ const routes = [
         path: 'analysis/fx-import',
         name: 'FxImport',
         component: () => import('@/views/analysis/FxImport.vue'),
-        meta: { title: '汇率数据导入', icon: 'el-icon-upload2' }
+        meta: { title: '汇率与日历管理', icon: 'el-icon-upload2' }
       },
       {
         path: 'analysis/multi-asset-import',
@@ -227,6 +227,18 @@ const routes = [
         name: 'DataAssets',
         component: () => import('@/views/analysis/DataAsset/Index.vue'),
         meta: { title: '数据资产管理', icon: 'el-icon-folder-opened' }
+      },
+      {
+        path: 'analysis/zy-data-domain',
+        name: 'ZyDataDomain',
+        component: () => import('@/views/analysis/ZyDataDomain/Index.vue'),
+        meta: { title: 'ZY数据域管理', icon: 'el-icon-coin' }
+      },
+      {
+        path: 'analysis/data-lineage',
+        name: 'DataLineage',
+        component: () => import('@/views/analysis/DataLineage/Index.vue'),
+        meta: { title: '数据血缘图谱', icon: 'el-icon-connection' }
       },
       {
         path: 'analysis/subject-risk',
