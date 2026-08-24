@@ -5,7 +5,7 @@
 1. MongoDB fx_rates 集合
 2. 备选：portfilio-end/data/fx.xlsx（MongoDB 无数据时）
 
-格式：{ date: "YYYY-MM-DD", EUR: float, USD: float, HKD: float, CNH: float }
+格式：{ date: "YYYY-MM-DD", EUR: float, USD: float, HKD: float, JPY: float, CNH: float }
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ import pandas as pd
 from pymongo import UpdateOne
 
 from app.config.database import Database
+from app.config.collections import COL_FX_RATES
 
 # 汇率文件路径：仅引用 portfilio-end 内 data 目录
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -28,7 +29,7 @@ _FX_XLSX_PATH = _PROJECT_ROOT / "data" / "fx.xlsx"
 class FxService:
     """汇率服务"""
 
-    FX_COLUMNS = ["EUR", "USD", "HKD", "CNH"]
+    FX_COLUMNS = ["EUR", "USD", "HKD", "JPY", "CNH"]
 
     def __init__(self):
         self._db = None
@@ -43,7 +44,7 @@ class FxService:
     @property
     def collection(self):
         if self._collection is None:
-            self._collection = self.db["fx_rates"]
+            self._collection = self.db[COL_FX_RATES]
         return self._collection
 
     @staticmethod
@@ -216,17 +217,17 @@ class FxService:
         """
         p = path or _FX_XLSX_PATH
         if not p.exists():
-            return pd.DataFrame(columns=["EUR", "USD", "HKD", "CNH"])
+            return pd.DataFrame(columns=FxService.FX_COLUMNS)
         try:
             df = pd.read_excel(p, index_col=0, parse_dates=True)
         except Exception:
-            return pd.DataFrame(columns=["EUR", "USD", "HKD", "CNH"])
+            return pd.DataFrame(columns=FxService.FX_COLUMNS)
         if df.empty:
-            return pd.DataFrame(columns=["EUR", "USD", "HKD", "CNH"])
+            return pd.DataFrame(columns=FxService.FX_COLUMNS)
         df.columns = df.columns.astype(str).str.strip().str.upper()
         valid = [c for c in FxService.FX_COLUMNS if c in df.columns]
         if not valid:
-            return pd.DataFrame(columns=["EUR", "USD", "HKD", "CNH"])
+            return pd.DataFrame(columns=FxService.FX_COLUMNS)
         df = df[[c for c in valid]].copy()
         for col in FxService.FX_COLUMNS:
             if col not in df.columns:
@@ -315,29 +316,3 @@ class FxService:
             if pd.notna(v):
                 return float(v)
         return 1.0
-
-    async def get_fx_series_for_assets(
-        self,
-        asset_currency_map: Dict[str, str],
-        start_date: str,
-        end_date: str,
-    ) -> Dict[str, pd.Series]:
-        """
-        为资产列表构建 { asset_code: pd.Series } 汇率序列
-        用于 IndexNavConfig.fx_rates
-        """
-        df = await self.get_rates_dataframe(start_date=start_date, end_date=end_date)
-        if df.empty:
-            return {}
-
-        result = {}
-        for asset_code, currency in asset_currency_map.items():
-            if currency in ("CNH", "CNY"):
-                result[asset_code] = pd.Series(1.0, index=df.index)
-                continue
-            if currency not in df.columns:
-                result[asset_code] = pd.Series(1.0, index=df.index)
-                continue
-            s = df[currency].replace([np.inf, -np.inf], np.nan).ffill().fillna(1.0)
-            result[asset_code] = s.astype(float)
-        return result

@@ -5,20 +5,15 @@
     <el-card class="upload-card">
       <div slot="header" class="clearfix">
         <span><i class="el-icon-upload2"></i> 汇率数据导入</span>
+        <el-popover placement="bottom" width="420" trigger="click">
+          <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+            <li><strong>第一列</strong>：日期（作为行索引）</li>
+            <li><strong>后续列</strong>：EUR、USD、HKD、JPY、CNH，单元格为该货币对人民币的汇率</li>
+            <li><strong>覆盖</strong>：清空库内全部汇率后写入文件；<strong>增量</strong>：只补没有记录的日期及已有日期中仍为空的币种列</li>
+          </ul>
+          <el-button slot="reference" type="text" icon="el-icon-question" style="float: right; padding: 0;">格式说明</el-button>
+        </el-popover>
       </div>
-      <el-alert
-        title="文件格式说明"
-        type="info"
-        :closable="false"
-        style="margin-bottom: 16px;"
-      >
-        <p style="margin: 0 0 8px 0;">请上传 fx.xlsx 格式文件，参考 portfilio-end/大类资产模型备份/fx.xlsx：</p>
-        <ul style="margin: 0; padding-left: 20px;">
-          <li><strong>第一列</strong>：日期（作为行索引）</li>
-          <li><strong>后续列</strong>：EUR、USD、HKD、CNH，单元格为该货币对人民币的汇率</li>
-          <li><strong>导入模式</strong>：见下方选项——<strong>覆盖</strong>会清空库内全部汇率后写入文件；<strong>增量</strong>只补没有记录的日期，以及已有日期里仍为空的币种列（不覆盖已有数值）</li>
-        </ul>
-      </el-alert>
 
       <div class="fx-import-mode">
         <span class="fx-import-mode-label">Excel 导入模式</span>
@@ -64,7 +59,7 @@
         <span><i class="el-icon-edit-outline"></i> 手动录入汇率</span>
       </div>
       <p class="manual-fx-hint">
-        对人民币报价，<strong>至少填写一个</strong>大于 0 的币种；仅更新您填写的列，该日其他币种保持库中原值。无该日记录时会新建。
+        对人民币报价，<strong>至少填写一个</strong>大于 0 的币种；仅更新填写的列，其余保持原值。
       </p>
       <el-form :inline="true" size="small" @submit.native.prevent="submitManualFx">
         <el-form-item label="日期" required>
@@ -76,17 +71,8 @@
             style="width: 150px;"
           />
         </el-form-item>
-        <el-form-item label="EUR">
-          <el-input-number v-model="manualForm.EUR" :precision="6" :step="0.0001" :min="0" controls-position="right" class="manual-fx-input" placeholder="可选" />
-        </el-form-item>
-        <el-form-item label="USD">
-          <el-input-number v-model="manualForm.USD" :precision="6" :step="0.0001" :min="0" controls-position="right" class="manual-fx-input" placeholder="可选" />
-        </el-form-item>
-        <el-form-item label="HKD">
-          <el-input-number v-model="manualForm.HKD" :precision="6" :step="0.0001" :min="0" controls-position="right" class="manual-fx-input" placeholder="可选" />
-        </el-form-item>
-        <el-form-item label="CNH">
-          <el-input-number v-model="manualForm.CNH" :precision="6" :step="0.0001" :min="0" controls-position="right" class="manual-fx-input" placeholder="可选，常填 1" />
+        <el-form-item v-for="col in fxColumns" :key="col" :label="col">
+          <el-input-number v-model="manualForm[col]" :precision="6" :step="0.0001" :min="0" controls-position="right" class="manual-fx-input" :placeholder="col === 'CNH' ? '可选，常填 1' : '可选'" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="manualSaving" @click="submitManualFx">保存该日汇率</el-button>
@@ -121,14 +107,14 @@
       </div>
       <div v-loading="chartLoading" class="chart-content">
         <p v-if="fxRates.length > 0" class="fx-chart-hint">
-          时间轴缩放：在图内<strong>滚轮</strong>或按住<strong>拖拽</strong>可缩放平移；拖动<strong>底部滑块</strong>选择区间；右上角<strong>还原</strong>恢复全量。
+          滚轮/拖拽可缩放平移，底部滑块选择区间，右上角可还原。
         </p>
         <div v-if="fxRates.length === 0 && !chartLoading" class="chart-empty">暂无汇率数据</div>
         <div v-else ref="fxChart" class="fx-chart"></div>
       </div>
     </el-card>
       </el-tab-pane>
-      <el-tab-pane label="交易日历" name="calendar">
+      <el-tab-pane label="交易日历" name="calendar" lazy>
         <trade-calendar-panel />
       </el-tab-pane>
     </el-tabs>
@@ -140,7 +126,8 @@ import * as echarts from 'echarts';
 import { importFxRates, getFxStats, getFxRates, saveFxManualRates } from '@/api/fx';
 import TradeCalendarPanel from '@/components/TradeCalendarPanel';
 
-const FX_COLUMNS = ['EUR', 'USD', 'HKD', 'CNH'];
+// 兜底币种列表，仅在后端未返回 columns 时使用
+const FALLBACK_COLUMNS = ['EUR', 'USD', 'HKD', 'JPY', 'CNH'];
 
 export default {
   name: 'FxImport',
@@ -155,13 +142,9 @@ export default {
       uploading: false,
       importMode: 'replace',
       manualSaving: false,
-      manualForm: {
-        date: '',
-        EUR: null,
-        USD: null,
-        HKD: null,
-        CNH: null
-      },
+      // 动态币种列（从后端推断）
+      fxColumns: [],
+      manualForm: { date: '' },
       statsLoading: false,
       chartLoading: false,
       chartInstance: null,
@@ -236,9 +219,8 @@ export default {
       }).catch(() => {});
     },
     countManualFxFilled() {
-      const keys = ['EUR', 'USD', 'HKD', 'CNH'];
       let n = 0;
-      keys.forEach(k => {
+      this.fxColumns.forEach(k => {
         const v = this.manualForm[k];
         if (v !== null && v !== undefined && v !== '' && Number(v) > 0) n += 1;
       });
@@ -254,7 +236,7 @@ export default {
         return;
       }
       const payload = { date: this.manualForm.date };
-      ['EUR', 'USD', 'HKD', 'CNH'].forEach(k => {
+      this.fxColumns.forEach(k => {
         const v = this.manualForm[k];
         if (v !== null && v !== undefined && v !== '' && Number(v) > 0) {
           payload[k] = Number(v);
@@ -285,11 +267,24 @@ export default {
           start_date: data.start_date || null,
           end_date: data.end_date || null
         };
+        // 从后端推断可用币种列
+        if (data.columns && data.columns.length > 0) {
+          this.updateFxColumns(data.columns);
+        }
       } catch (err) {
         this.stats = { count: 0, start_date: null, end_date: null };
       } finally {
         this.statsLoading = false;
       }
+    },
+    updateFxColumns(cols) {
+      this.fxColumns = cols;
+      // 确保 manualForm 有每个币种的 key
+      cols.forEach(c => {
+        if (!(c in this.manualForm)) {
+          this.$set(this.manualForm, c, null);
+        }
+      });
     },
     async refreshAll() {
       await this.fetchStats();
@@ -310,6 +305,14 @@ export default {
         const res = await getFxRates(params);
         const data = res.data || res;
         this.fxRates = data.rows || [];
+        // 优先用 /rates 返回的 columns（反映实际有数据的列）
+        if (data.columns && data.columns.length > 0) {
+          this.updateFxColumns(data.columns);
+        }
+        // 兜底
+        if (this.fxColumns.length === 0) {
+          this.updateFxColumns(FALLBACK_COLUMNS);
+        }
       } catch (err) {
         this.fxRates = [];
       } finally {
@@ -327,7 +330,7 @@ export default {
       const myChart = echarts.init(dom);
       this.chartInstance = myChart;
       const dates = this.fxRates.map(r => r.date);
-      const series = FX_COLUMNS.map((col, i) => ({
+      const series = this.fxColumns.map((col, i) => ({
         name: col,
         type: 'line',
         data: this.fxRates.map(r => r[col]),

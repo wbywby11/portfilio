@@ -9,171 +9,138 @@
     </div>
 
     <div class="page-content" v-loading="loading">
-      <!-- 持仓汇总 -->
-      <el-row :gutter="20" class="summary-row">
-        <el-col :span="5">
-          <el-card shadow="hover" class="summary-card">
-            <div class="summary-label">总资产(CNH)</div>
-            <div class="summary-value">{{ formatCurrency(summary.totalValue) }}</div>
-          </el-card>
-        </el-col>
-        <el-col :span="5">
-          <el-card shadow="hover" class="summary-card">
-            <div class="summary-label">总杠杆</div>
-            <div class="summary-value">{{ formatNumber(summary.totalLeverage, 2) }}</div>
-          </el-card>
-        </el-col>
-        <el-col :span="5">
-          <el-card shadow="hover" class="summary-card">
-            <div class="summary-label">持仓资产数</div>
-            <div class="summary-value">{{ positions.length }}</div>
-          </el-card>
-        </el-col>
-        <el-col :span="5">
-          <el-card shadow="hover" class="summary-card">
-            <div class="summary-label">最大持仓</div>
-            <div class="summary-value">{{ formatPercent(summary.maxWeight) }}</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="summary-card">
-            <div class="summary-label">最小持仓</div>
-            <div class="summary-value">{{ formatPercent(summary.minWeight) }}</div>
-          </el-card>
-        </el-col>
-      </el-row>
+      <!-- 持仓汇总指标 -->
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="summary-label">总资产(CNH)</div>
+          <div class="summary-value">{{ formatCurrency(summary.totalValue) }}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">总杠杆</div>
+          <div class="summary-value">{{ formatNumber(summary.totalLeverage, 2) }}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">持仓资产数</div>
+          <div class="summary-value">{{ positions.length }}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">最大持仓</div>
+          <div class="summary-value">{{ formatPercent(summary.maxWeight) }}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Top3 集中度</div>
+          <div class="summary-value" :style="{ color: summary.top3Concentration > 60 ? '#F56C6C' : '#303133' }">
+            {{ formatPercent(summary.top3Concentration) }}
+          </div>
+        </div>
+      </div>
 
       <!-- 类别权重小计 -->
-      <el-row :gutter="20" style="margin-top: 15px;" v-if="categoryWeights.length > 0">
-        <el-col :span="24">
-          <el-card shadow="hover" class="category-summary-card">
-            <div class="category-summary-content">
-              <span class="category-summary-label">类别权重：</span>
-              <span 
-                v-for="item in categoryWeights" 
-                :key="item.category" 
-                class="category-item"
+      <div class="category-bar" v-if="categoryWeights.length > 0">
+        <span class="category-label">类别权重</span>
+        <span 
+          v-for="item in categoryWeights" 
+          :key="item.category" 
+          class="category-item"
+        >
+          <el-tag :type="getAssetClassType(item.category)" size="mini">{{ item.category }}</el-tag>
+          <span class="category-weight">{{ formatPercent(item.weight) }}</span>
+        </span>
+      </div>
+
+      <!-- 持仓表格 -->
+      <el-card shadow="never" class="info-card">
+        <div slot="header" class="card-header">
+          <span>持仓明细</span>
+          <span style="color: #909399; font-size: 13px; font-weight: normal;">
+            {{ updateTime }}
+          </span>
+        </div>
+        <el-table
+          :data="sortedPositions"
+          border
+          stripe
+          style="width: 100%;"
+          :show-summary="false"
+          size="medium"
+        >
+          <el-table-column type="index" label="#" width="45" align="center"></el-table-column>
+          <el-table-column prop="name" label="资产名称" min-width="140">
+            <template slot-scope="scope">
+              <span class="asset-name-cell">{{ getAssetName(scope.row) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="asset_class" label="类别" width="90" align="center">
+            <template slot-scope="scope">
+              <el-tag 
+                :type="getAssetClassType(getAssetClass(scope.row))" 
+                size="mini"
               >
-                <el-tag :type="getAssetClassType(item.category)" size="small">{{ item.category }}</el-tag>
-                <span class="category-weight">{{ formatPercent(item.weight) }}</span>
+                {{ getAssetClass(scope.row) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="当前权重" width="180">
+            <template slot-scope="scope">
+              <div class="weight-bar-cell">
+                <span class="weight-num">{{ formatPercent(getCurrentWeight(scope.row)) }}</span>
+                <div class="weight-bar-bg">
+                  <div 
+                    class="weight-bar-fill" 
+                    :style="{ 
+                      width: Math.min(Math.abs(getCurrentWeight(scope.row)) / summary.maxWeight * 100, 100) + '%',
+                      backgroundColor: getCurrentWeight(scope.row) >= 0 ? '#409EFF' : '#E6A23C'
+                    }"
+                  ></div>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="daily_change" label="当日涨跌" width="110" align="right">
+            <template slot-scope="scope">
+              <span :style="{ color: getDailyChangeColor(getDailyChange(scope.row)), fontWeight: 600 }">
+                {{ formatDailyChange(getDailyChange(scope.row)) }}
               </span>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+            </template>
+          </el-table-column>
+          <el-table-column prop="currency" label="货币" width="70" align="center">
+            <template slot-scope="scope">
+              <span style="color:#909399;font-size:12px;">{{ getCurrency(scope.row) }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+        <el-empty v-if="positions.length === 0" description="暂无持仓数据"></el-empty>
+      </el-card>
 
-      <el-row :gutter="20" style="margin-top: 20px;">
-        <!-- 持仓表格 -->
-        <el-col :span="16">
-          <el-card shadow="never" class="info-card">
-            <div slot="header" class="card-header">
-              <span>持仓明细表</span>
-              <span style="color: #909399; font-size: 13px; font-weight: normal;">
-                更新时间: {{ updateTime }}
-              </span>
+      <!-- 底层资产分析 -->
+      <el-card shadow="never" class="info-card" style="margin-top: 12px;">
+        <div slot="header" class="card-header">
+          <span>底层资产分析</span>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div class="window-selector">
+              <el-radio-group v-model="analysisWindow" size="mini" @change="handleWindowChange">
+                <el-radio-button :label="60">60天</el-radio-button>
+                <el-radio-button :label="120">120天</el-radio-button>
+                <el-radio-button :label="250">1年</el-radio-button>
+              </el-radio-group>
             </div>
-            <el-table
-              :data="positions"
-              border
-              stripe
-              style="width: 100%;"
-              show-summary
-              :summary-method="getSummaries"
-            >
-              <el-table-column prop="name" label="资产名称" min-width="150">
-                <template slot-scope="scope">
-                  <span>{{ getAssetName(scope.row) }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="asset_class" label="资产类别" width="110" align="center">
-                <template slot-scope="scope">
-                  <el-tag 
-                    :type="getAssetClassType(getAssetClass(scope.row))" 
-                    size="small"
-                  >
-                    {{ getAssetClass(scope.row) }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column prop="current_weight" label="当前权重" width="110" align="right">
-                <template slot-scope="scope">
-                  {{ formatPercent(getCurrentWeight(scope.row)) }}
-                </template>
-              </el-table-column>
-              <el-table-column prop="daily_change" label="当日涨跌" width="110" align="right">
-                <template slot-scope="scope">
-                  <span :style="{ color: getDailyChangeColor(getDailyChange(scope.row)) }">
-                    {{ formatDailyChange(getDailyChange(scope.row)) }}
-                  </span>
-                </template>
-              </el-table-column>
-              <el-table-column prop="currency" label="计价货币" width="100" align="center">
-                <template slot-scope="scope">
-                  {{ getCurrency(scope.row) }}
-                </template>
-              </el-table-column>
-            </el-table>
-            <el-empty v-if="positions.length === 0" description="暂无持仓数据"></el-empty>
-          </el-card>
-        </el-col>
-
-        <!-- 图表区 -->
-        <el-col :span="8">
-          <!-- 权重分布饼图 -->
-          <el-card shadow="never" class="info-card">
-            <div slot="header" class="card-header">
-              <span>权重分布</span>
-            </div>
-            <div ref="pieChart" style="width: 100%; height: 400px;"></div>
-            <el-empty v-if="positions.length === 0" description="暂无数据"></el-empty>
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <!-- 资产相关性分析 -->
-      <el-row :gutter="20" style="margin-top: 20px;">
-        <el-col :span="24">
-          <el-card shadow="never" class="info-card">
-            <div slot="header" class="card-header">
-              <span>底层资产分析</span>
-              <el-tooltip content="展示资产间的相关性矩阵和波动率分析" placement="top">
-                <i class="el-icon-info" style="color: #909399;"></i>
-              </el-tooltip>
-            </div>
-            <!-- 分析窗口选择器 -->
-            <el-row :gutter="15" style="margin-bottom: 15px;">
-              <el-col :span="24">
-                <div class="analysis-toolbar">
-                  <span class="toolbar-label">分析窗口：</span>
-                  <el-radio-group v-model="analysisWindow" size="small" @change="handleWindowChange">
-                    <el-radio-button :label="60">近60天</el-radio-button>
-                    <el-radio-button :label="120">近120天</el-radio-button>
-                    <el-radio-button :label="250">近1年</el-radio-button>
-                  </el-radio-group>
-                </div>
-              </el-col>
-            </el-row>
-            <el-row :gutter="20">
-              <!-- 资产相关性热力图 -->
-              <el-col :span="14">
-                <div class="analysis-section">
-                  <div class="section-title">资产相关性矩阵</div>
-                  <div v-show="correlationMatrix" ref="correlationChart" style="width: 100%; height: 380px;"></div>
-                  <el-empty v-if="!correlationMatrix" description="暂无相关性数据"></el-empty>
-                </div>
-              </el-col>
-              <!-- 波动率分析 -->
-              <el-col :span="10">
-                <div class="analysis-section">
-                  <div class="section-title">年化波动率</div>
-                  <div v-show="assetMetrics && assetMetrics.length > 0" ref="volatilityChart" style="width: 100%; height: 380px;"></div>
-                  <el-empty v-if="!assetMetrics || assetMetrics.length === 0" description="暂无波动率数据"></el-empty>
-                </div>
-              </el-col>
-            </el-row>
-          </el-card>
-        </el-col>
-      </el-row>
+          </div>
+        </div>
+        <div class="analysis-grid">
+          <!-- 资产相关性热力图 -->
+          <div class="analysis-section">
+            <div class="section-title">相关性矩阵</div>
+            <div v-if="correlationMatrix" ref="correlationChart" style="width: 100%; height: 360px;"></div>
+            <el-empty v-if="!correlationMatrix" description="暂无相关性数据" :image-size="60"></el-empty>
+          </div>
+          <!-- 波动率分析 -->
+          <div class="analysis-section">
+            <div class="section-title">年化波动率</div>
+            <div v-if="assetMetrics && assetMetrics.length > 0" ref="volatilityChart" style="width: 100%; height: 360px;"></div>
+            <el-empty v-if="!assetMetrics || assetMetrics.length === 0" description="暂无波动率数据" :image-size="60"></el-empty>
+          </div>
+        </div>
+      </el-card>
     </div>
   </div>
 </template>
@@ -188,7 +155,6 @@ export default {
   data() {
     return {
       loading: false,
-      pieChart: null,
       correlationChart: null,
       volatilityChart: null,
       analysisWindow: 120,
@@ -235,8 +201,24 @@ export default {
         totalValue,
         totalLeverage,
         maxWeight,
-        minWeight
+        minWeight,
+        top3Concentration: this.top3Concentration
       };
+    },
+    /** 按权重降序排列的持仓 */
+    sortedPositions() {
+      if (!this.positions || this.positions.length === 0) return [];
+      return this.positions.slice().sort((a, b) => {
+        return Math.abs(this.getCurrentWeight(b)) - Math.abs(this.getCurrentWeight(a));
+      });
+    },
+    /** Top3 集中度 */
+    top3Concentration() {
+      if (!this.positions || this.positions.length === 0) return 0;
+      const weights = this.positions.map(p => Math.abs(this.getCurrentWeight(p)));
+      weights.sort((a, b) => b - a);
+      const top3 = weights.slice(0, 3);
+      return top3.reduce((s, w) => s + w, 0);
     },
     categoryWeights() {
       if (this.positions.length === 0) {
@@ -264,9 +246,6 @@ export default {
     window.addEventListener('resize', this.handleResize);
   },
   beforeDestroy() {
-    if (this.pieChart) {
-      this.pieChart.dispose();
-    }
     if (this.correlationChart) {
       this.correlationChart.dispose();
     }
@@ -290,99 +269,20 @@ export default {
           await this.loadAssetAnalysis();
         }
         
-        this.$nextTick(() => {
-          this.initCharts();
-          this.renderPieChart();
-          this.initCorrelationChart();
-          this.initVolatilityChart();
-          this.renderCorrelationHeatmap();
-          this.renderVolatilityChart();
-        });
+        // 等待 Vue 重新渲染（v-if 条件变化后 DOM 需要一帧才能拿到尺寸）
+        await this.$nextTick();
+        await this.$nextTick();
+        
+        this.renderCorrelationHeatmap();
+        this.renderVolatilityChart();
       } catch (error) {
-        this.$message.error('加载数据失败：' + ((error.response && error.response.data && error.response.data.message) ? error.response.data.message : error.message));
+        // 404 等错误已由 store 统一处理，不重复弹提示
+        console.warn('Positions 加载数据失败:', error.message);
       } finally {
         this.loading = false;
       }
     },
-    initCharts() {
-      if (!this.pieChart && this.$refs.pieChart) {
-        this.pieChart = echarts.init(this.$refs.pieChart);
-      }
-    },
-    renderPieChart() {
-      if (!this.pieChart || this.positions.length === 0) {
-        return;
-      }
-
-      const data = this.positions
-        .map(p => ({
-          name: this.getAssetName(p),
-          value: Math.abs(this.getCurrentWeight(p))
-        }))
-        .filter(d => d.value > 0.0001);
-
-      if (data.length === 0) {
-        this.pieChart.clear();
-        return;
-      }
-
-      const option = {
-        tooltip: {
-          trigger: 'item',
-          formatter: (params) => {
-            return `${params.name}<br/>权重: ${params.value.toFixed(2)}%`;
-          }
-        },
-        legend: {
-          type: 'scroll',
-          orient: 'vertical',
-          right: 10,
-          top: 20,
-          bottom: 20,
-          formatter: (name) => {
-            if (name.length > 8) {
-              return name.substring(0, 8) + '...';
-            }
-            return name;
-          }
-        },
-        series: [{
-          name: '权重分布',
-          type: 'pie',
-          radius: ['40%', '70%'],
-          center: ['35%', '50%'],
-          avoidLabelOverlap: false,
-          itemStyle: {
-            borderRadius: 4,
-            borderColor: '#fff',
-            borderWidth: 2
-          },
-          label: {
-            show: false
-          },
-          emphasis: {
-            label: {
-              show: true,
-              fontSize: 14,
-              fontWeight: 'bold',
-              formatter: (params) => {
-                return `${params.name}\n${params.value.toFixed(2)}%`;
-              }
-            }
-          },
-          labelLine: {
-            show: false
-          },
-          data: data
-        }]
-      };
-
-      this.pieChart.setOption(option, true);
-    },
     handleResize() {
-      if (this.pieChart) {
-        this.pieChart.resize();
-      }
       if (this.correlationChart) {
         this.correlationChart.resize();
       }
@@ -497,20 +397,30 @@ export default {
     async handleWindowChange() {
       if (this.monitorState && this.monitorState.date) {
         await this.loadAssetAnalysis();
-        this.$nextTick(function() {
-          this.renderCorrelationHeatmap();
-          this.renderVolatilityChart();
-        }.bind(this));
+        await this.$nextTick();
+        await this.$nextTick();
+        this.renderCorrelationHeatmap();
+        this.renderVolatilityChart();
       }
     },
     initCorrelationChart() {
-      if (!this.correlationChart && this.$refs.correlationChart) {
-        this.correlationChart = echarts.init(this.$refs.correlationChart);
+      var el = this.$refs.correlationChart;
+      if (!el) return;
+      if (this.correlationChart) {
+        this.correlationChart.dispose();
+      }
+      if (el.clientWidth > 0 && el.clientHeight > 0) {
+        this.correlationChart = echarts.init(el);
       }
     },
     initVolatilityChart() {
-      if (!this.volatilityChart && this.$refs.volatilityChart) {
-        this.volatilityChart = echarts.init(this.$refs.volatilityChart);
+      var el = this.$refs.volatilityChart;
+      if (!el) return;
+      if (this.volatilityChart) {
+        this.volatilityChart.dispose();
+      }
+      if (el.clientWidth > 0 && el.clientHeight > 0) {
+        this.volatilityChart = echarts.init(el);
       }
     },
     renderCorrelationHeatmap() {
@@ -687,21 +597,52 @@ export default {
   margin-bottom: 0;
 }
 
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
 .summary-card {
   text-align: center;
-  padding: 15px 10px;
+  padding: 12px 8px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
 }
 
 .summary-label {
-  font-size: 13px;
+  font-size: 12px;
   color: #909399;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .summary-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   color: #303133;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 类别权重条 */
+.category-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: #f8fafc;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+}
+
+.category-label {
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
 }
 
 .category-summary-card {
@@ -744,9 +685,44 @@ export default {
   font-weight: 500;
 }
 
+/* 权重条形图列 */
+.weight-bar-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.weight-num {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 52px;
+  text-align: right;
+}
+.weight-bar-bg {
+  flex: 1;
+  height: 8px;
+  background: #f0f2f5;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.weight-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.asset-name-cell {
+  font-weight: 500;
+}
+
+/* 底层资产分析：上下布局，每项占满宽度 */
+.analysis-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
 /* 资产分析区域样式 */
 .analysis-section {
-  min-height: 280px;
   padding: 10px;
 }
 

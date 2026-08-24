@@ -140,7 +140,8 @@ const actions = {
       commit('SET_POSITIONS', positions);
       return payload;
     } catch (error) {
-      console.error('获取持仓明细失败:', error);
+      console.warn('获取持仓明细失败（可能未初始化）:', error.message);
+      commit('SET_POSITIONS', []);
       return null;
     } finally {
       commit('SET_LOADING', false);
@@ -314,8 +315,9 @@ const actions = {
       commit('SET_SUBJECTIVE_OVERRIDES', data);
       return data;
     } catch (error) {
-      console.error('获取主观调仓指令失败:', error);
-      throw error;
+      console.warn('获取主观调仓指令失败（可能未初始化）:', error.message);
+      commit('SET_SUBJECTIVE_OVERRIDES', []);
+      return [];
     } finally {
       commit('SET_LOADING', false);
     }

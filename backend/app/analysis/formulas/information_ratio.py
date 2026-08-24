@@ -10,7 +10,7 @@ def calculate_information_ratio(
     returns: pd.Series,
     benchmark_returns: pd.Series,
     annualize: bool = True,
-    freq_factor: int = 252,
+    freq_factor: int = 260,
 ) -> float:
     """计算信息比率（Information Ratio）.
 
@@ -21,7 +21,7 @@ def calculate_information_ratio(
         returns: 资产收益率序列（日度）
         benchmark_returns: 基准收益率序列（日度）
         annualize: 是否年化
-        freq_factor: 年化因子（默认252个交易日）
+        freq_factor: 年化因子（默认260个交易日）
 
     返回:
         信息比率

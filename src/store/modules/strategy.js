@@ -12,7 +12,6 @@ import {
   liveUnpublishModel as liveUnpublishModelApi,
   updateLiveConfig as updateLiveConfigApi,
   getLivePublishedModelList,
-  getLiveMonitoring as getLiveMonitoringApi,
   getLiveConfig as getLiveConfigApi,
   confirmManualRebalance as confirmManualRebalanceApi,
   getLiveChangeLogs as getLiveChangeLogsApi,
@@ -306,16 +305,6 @@ const actions = {
       return Array.isArray(res) ? res : (res.data || []);
     } catch (error) {
       console.error('获取实盘发布列表失败:', error);
-      throw error;
-    }
-  },
-
-  async fetchLiveMonitoring({ commit }, modelId) {
-    try {
-      const res = await getLiveMonitoringApi(modelId);
-      return res.data || res;
-    } catch (error) {
-      console.error('获取实盘监控失败:', error);
       throw error;
     }
   },

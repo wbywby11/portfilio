@@ -9,7 +9,10 @@ class AssetWeight(BaseModel):
     """单个资产权重模型"""
     asset_code: str = Field(..., description="资产代码")
     asset_name: Optional[str] = Field(None, description="资产名称")
-    weight: float = Field(..., ge=0, le=1, description="权重值(0-1之间)，表示该资产在组合中的占比")
+    weight: float = Field(
+        ...,
+        description="权重值，正值做多/负值做空（允许做空的策略可产生负权重；杠杆场景绝对值可大于1）",
+    )
 
 
 class AssetPositionOut(BaseModel):
@@ -135,7 +138,13 @@ class StrategyModelCreate(BaseModel):
     macd_windows: Optional[str] = Field(None, description="MACD 短期四档窗口")
     macd_long_window: Optional[int] = Field(None, description="MACD 长期窗口")
     reversal_windows: Optional[str] = Field(None, description="反转双窗口")
+    sharp_windows: Optional[str] = Field(None, description="夏普率窗口（仅sharpe选择器）")
     tie_break_window: Optional[int] = Field(None, description="并列决胜窗口")
+    # 风险控制策略
+    controller_code: Optional[str] = Field(None, description="风险控制策略模板代码")
+    controller_parameters: Optional[Dict[str, Any]] = Field(None, description="风险控制策略参数")
+    # 结构化参数（与 resolved_params 对称，前端提交时写入）
+    structured_params: Optional[Dict[str, Any]] = Field(None, description="结构化参数：{allocator, selector, controller}")
 
     @field_validator('parameters', mode='before')
     @classmethod
@@ -178,7 +187,13 @@ class StrategyModelUpdate(BaseModel):
     macd_windows: Optional[str] = Field(None, description="MACD 短期四档窗口")
     macd_long_window: Optional[int] = Field(None, description="MACD 长期窗口")
     reversal_windows: Optional[str] = Field(None, description="反转双窗口")
+    sharp_windows: Optional[str] = Field(None, description="夏普率窗口（仅sharpe选择器）")
     tie_break_window: Optional[int] = Field(None, description="并列决胜窗口")
+    # 风险控制策略
+    controller_code: Optional[str] = Field(None, description="风险控制策略模板代码")
+    controller_parameters: Optional[Dict[str, Any]] = Field(None, description="风险控制策略参数")
+    # 结构化参数（与 resolved_params 对称，前端提交时写入）
+    structured_params: Optional[Dict[str, Any]] = Field(None, description="结构化参数：{allocator, selector, controller}")
 
     @field_validator('parameters', mode='before')
     @classmethod
@@ -236,6 +251,19 @@ class StrategyModelOut(StrategyModelCreate):
     live_effective_asset_labels: Optional[List[str]] = Field(
         None,
         description="与 live_effective_assets 同序的展示用资产名称（供监控页标签等）",
+    )
+
+    # 策略标签与回测摘要（层间连接：第5层回测 → 第6层入库）
+    tags: List[str] = Field(default_factory=list, description="策略标签，用于检索和分类")
+    latest_backtest_summary: Optional[Dict[str, Any]] = Field(
+        None,
+        description="最近回测绩效快照（回测完成时自动写入）",
+    )
+
+    # 结构化参数（三层解耦：allocator / selector / controller）
+    resolved_params: Optional[Dict[str, Any]] = Field(
+        None,
+        description="结构化参数快照：{allocator: {}, selector: {enabled, type, params}, controller: {enabled, code, params}}。前端可直接用于渲染参数面板，无需从多个顶层字段拼凑。",
     )
 
     @field_serializer('parameters')
@@ -309,6 +337,8 @@ class BacktestRecordOut(BaseModel):
     initial_capital: float = Field(..., description="初始资金")
     result: BacktestResultOut = Field(..., description="回测结果")
     remark: Optional[str] = Field(None, description="备注信息")
+    param_version_id: Optional[str] = Field(None, description="关联的参数版本ID")
+    param_version_number: Optional[int] = Field(None, description="关联的参数版本号")
     created_at: datetime = Field(..., description="创建时间")
     
     model_config = {"protected_namespaces": ()}  # 允许使用 model_ 前缀的字段名

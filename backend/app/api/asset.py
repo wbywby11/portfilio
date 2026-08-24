@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from loguru import logger
 
 from app.models.asset import AssetType, Asset
+from app.models.asset import InstrumentType, AssetClass, SecurityType
 from app.schemas.asset import (
     AssetOption, AssetCreate, AssetUpdate, AssetOut, KlinePoint,
     PriceImportRequest, PriceImportResponse, PriceCoverageResponse,
@@ -21,51 +22,13 @@ from app.schemas.asset import (
 )
 from app.schemas.response import Response, PageData
 from app.services.asset_service import AssetService
+from app.services.price_templates import (
+    build_single_asset_price_template,
+    build_multi_asset_price_template,
+)
+from app.services.price_import_flow import import_price_data_from_excel_core
 
 
-def _parse_excel_to_price_list(contents: bytes) -> List[dict]:
-    """在线程中解析 Excel 为行情字典列表；须含日期列，且至少一列有效行情数值。"""
-    import pandas as pd
-    df = pd.read_excel(io.BytesIO(contents))
-    df.columns = df.columns.astype(str).str.strip()
-    column_mapping = {
-        "日期": "date",
-        "日期*": "date",
-        "date": "date",
-        "开盘价": "open",
-        "开盘价*": "open",
-        "open": "open",
-        "最高价": "high",
-        "最高价*": "high",
-        "high": "high",
-        "最低价": "low",
-        "最低价*": "low",
-        "low": "low",
-        "收盘价": "close",
-        "收盘价*": "close",
-        "收盘": "close",
-        "close": "close",
-        "成交量": "volume",
-        "volume": "volume",
-        "成交额": "amount",
-        "amount": "amount",
-        "规模": "scale",
-        "规模*": "scale",
-        "基金规模": "scale",
-        "scale": "scale",
-    }
-    df.rename(columns=column_mapping, inplace=True)
-    df.columns = df.columns.str.lower()
-    df.rename(columns=column_mapping, inplace=True)
-    if "date" not in df.columns:
-        raise ValueError("缺少必须列: date")
-    value_cols = ("open", "high", "low", "close", "volume", "amount", "scale")
-    present_value_cols = [c for c in value_cols if c in df.columns]
-    if not present_value_cols:
-        raise ValueError("缺少行情数值列：须至少包含开盘价、最高价、最低价、收盘价、成交量、成交额、规模之一")
-    df.dropna(subset=["date"], inplace=True)
-    df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
-    return df.to_dict("records")
 
 
 router = APIRouter()
@@ -87,32 +50,44 @@ def get_asset_service() -> AssetService:
 
 @router.get("/options", response_model=Response[List[AssetOption]], summary="资产查询(下拉框)")
 async def list_asset_options(
-    asset_type: Optional[str] = Query(None, description="资产类型"),
+    asset_type: Optional[str] = Query(None, description="[已废弃] 旧资产类型"),
+    instrument_type: Optional[str] = Query(None, description="工具形态过滤：指数型/现货型/期货型"),
+    asset_class: Optional[str] = Query(None, description="资产大类过滤：权益/固收/商品/货币/另类"),
     service: AssetService = Depends(get_asset_service),
 ):
     """提供给前台下拉框使用的资产列表(精简字段)"""
-    # 空字符串视为None
-    asset_type_enum = None
-    if asset_type and asset_type.strip():
-        try:
-            asset_type_enum = AssetType(asset_type)
-        except ValueError:
-            pass  # 如果不是合法枚举值,忽略
-    assets = await service.list_assets(asset_type=asset_type_enum, is_active=True, limit=500)
+    # 新维度过滤优先
+    query_filter: dict = {"is_active": True}
+    if instrument_type and instrument_type.strip():
+        query_filter["instrument_type"] = instrument_type.strip()
+    if asset_class and asset_class.strip():
+        query_filter["asset_class"] = asset_class.strip()
+    # 旧维度兼容（仅在新维度未指定时生效）
+    if not instrument_type and not asset_class and asset_type and asset_type.strip():
+        query_filter["asset_type"] = asset_type.strip()
+    assets = await service.list_assets_raw(query_filter, limit=500)
     data = [AssetOption(id=a.id or "", code=a.code, name=a.name) for a in assets]
     return Response.success(data=data)
 
 
 @router.post("/", response_model=Response[str], summary="创建资产")
 async def create_asset(asset_in: AssetCreate, service: AssetService = Depends(get_asset_service)):
-    asset = Asset(**asset_in.dict())
+    # 构造 Asset 模型数据，新字段必填，旧字段保持兼容
+    asset_data = asset_in.dict(exclude_unset=True)
+    # 移除 None 的 asset_type（避免写入空值覆盖）
+    if asset_data.get("asset_type") is None:
+        asset_data.pop("asset_type", None)
+    asset = Asset(**asset_data)
     asset_id = await service.create_asset(asset)
     return Response.success(data=asset_id, message="资产创建成功")
 
 
 @router.get("/", response_model=Response[PageData[AssetOut]], summary="资产列表")
 async def list_assets(
-    asset_type: Optional[str] = Query(None, description="资产类型"),
+    asset_type: Optional[str] = Query(None, description="[已废弃] 旧资产类型"),
+    instrument_type: Optional[str] = Query(None, description="工具形态过滤：指数型/现货型/期货型"),
+    asset_class: Optional[str] = Query(None, description="资产大类过滤：权益/固收/商品/货币/另类"),
+    security_type: Optional[str] = Query(None, description="证券细分过滤"),
     is_active: bool = Query(True, description="是否启用"),
     code: Optional[str] = Query(None, description="资产代码（模糊匹配）"),
     name: Optional[str] = Query(None, description="资产名称（模糊匹配）"),
@@ -120,22 +95,45 @@ async def list_assets(
     limit: int = 100,
     service: AssetService = Depends(get_asset_service),
 ):
-    # 空字符串视为None
-    asset_type_enum = None
-    if asset_type and asset_type.strip():
-        try:
-            asset_type_enum = AssetType(asset_type)
-        except ValueError:
-            pass  # 如果不是合法枚举值,忽略
+    # 构建查询：新维度优先
+    query_filter: dict = {}
+    if instrument_type and instrument_type.strip():
+        query_filter["instrument_type"] = instrument_type.strip()
+    if asset_class and asset_class.strip():
+        query_filter["asset_class"] = asset_class.strip()
+    if security_type and security_type.strip():
+        query_filter["security_type"] = security_type.strip()
+    # 旧维度兼容（仅在新维度未指定时生效）
+    if not instrument_type and not asset_class and not security_type:
+        if asset_type and asset_type.strip():
+            try:
+                asset_type_enum = AssetType(asset_type)
+                query_filter["asset_type"] = asset_type_enum
+            except ValueError:
+                pass
+
     assets = await service.list_assets(
-        asset_type=asset_type_enum, is_active=is_active,
-        skip=skip, limit=limit,
+        is_active=is_active, skip=skip, limit=limit,
         code=code, name=name,
+        **{k: v for k, v in query_filter.items() if k in ("asset_type",)},
     )
-    total = await service.count_assets(
-        asset_type=asset_type_enum, is_active=is_active,
-        code=code, name=name,
-    )
+    # 新维度过滤在内存中做（因为 _build_asset_query 尚未改造，用 raw 查询更可靠）
+    if instrument_type or asset_class or security_type:
+        # 重新用 raw 查询
+        raw_filter: dict = {"is_active": is_active} if is_active else {}
+        if instrument_type:
+            raw_filter["instrument_type"] = instrument_type.strip()
+        if asset_class:
+            raw_filter["asset_class"] = asset_class.strip()
+        if security_type:
+            raw_filter["security_type"] = security_type.strip()
+        assets = await service.list_assets_raw(raw_filter, skip=skip, limit=limit, code=code, name=name)
+        total = await service.count_assets_raw(raw_filter, code=code, name=name)
+    else:
+        total = await service.count_assets(
+            is_active=is_active, code=code, name=name,
+            **{k: v for k, v in query_filter.items() if k in ("asset_type",)},
+        )
     page_size = limit or 20
     page = (skip // page_size) + 1 if page_size else 1
     pages = (total + page_size - 1) // page_size if page_size else 1
@@ -208,24 +206,13 @@ async def import_assets_from_excel(
         import pandas as pd
         contents = await file.read()
         df = pd.read_excel(io.BytesIO(contents))
+
+        # 空单元格 → None，避免 NaN 经 to_dict('records') 写入 MongoDB
+        df = df.where(pd.notnull(df), None)
         
-        # 列名映射
-        mapping = {
-            "资产代码*": "code",
-            "资产代码": "code",
-            "资产名称*": "name",
-            "资产名称": "name",
-            "资产类型*": "asset_type",
-            "资产类型": "asset_type",
-            "交易所": "exchange",
-            "资产描述": "description",
-            "展期天数(k)": "rollover_days",
-            "持仓量阈值(th)": "rollover_threshold",
-            "观察窗口起点(p)": "rollover_window_p",
-            "观察窗口终点(q)": "rollover_window_q",
-            "替代标的代码": "substitute_code",
-            "切换日期(YYYYMMDD)": "switch_date"
-        }
+        # 列名映射（唯一来源：app/schemas/field_mappings.py）
+        from app.schemas.field_mappings import ASSET_COLUMN_MAPPING
+        mapping = ASSET_COLUMN_MAPPING
         
         # 过滤并重命名列
         df.rename(columns=mapping, inplace=True)
@@ -477,9 +464,14 @@ async def update_asset(
 @router.delete("/{asset_id}", response_model=Response[dict], summary="删除资产")
 async def delete_asset(
     asset_id: str,
+    hard: bool = Query(False, description="是否硬删除（永久删除资产记录并级联清理行情数据）"),
     service: AssetService = Depends(get_asset_service),
 ):
-    """删除资产(软删除,将is_active设置为False)"""
+    """
+    删除资产：
+    - hard=false（默认）：软删除，仅将 is_active 置为 False，保留行情数据以便恢复
+    - hard=true：硬删除，永久移除资产记录并级联删除 asset_prices 中对应行情
+    """
     validate_object_id(asset_id)
     
     # 检查资产是否存在
@@ -487,11 +479,33 @@ async def delete_asset(
     if not existing_asset:
         raise HTTPException(status_code=404, detail="资产不存在")
     
-    success = await service.delete_asset(asset_id)
-    if not success:
-        raise HTTPException(status_code=500, detail="删除失败")
+    prices_deleted = 0
     
-    return Response.success(data={"asset_id": asset_id}, message="资产删除成功")
+    if hard:
+        # 硬删除：级联清理行情数据 + 永久删除资产记录
+        asset_code = getattr(existing_asset, 'code', None) or getattr(existing_asset, 'asset_code', None)
+        if asset_code:
+            result = await service.price_collection.delete_many({"asset_code": asset_code})
+            prices_deleted = result.deleted_count
+        
+        del_result = await service.collection.delete_one({"_id": ObjectId(asset_id)})
+        if del_result.deleted_count == 0:
+            raise HTTPException(status_code=500, detail="删除失败")
+        
+        return Response.success(
+            data={"asset_id": asset_id, "hard": True, "prices_deleted": prices_deleted},
+            message=f"资产已永久删除，同时清理行情数据 {prices_deleted} 条"
+        )
+    else:
+        # 软删除：仅标记为停用，保留行情数据
+        success = await service.delete_asset(asset_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="删除失败")
+        
+        return Response.success(
+            data={"asset_id": asset_id, "hard": False},
+            message="资产已停用（软删除），行情数据已保留"
+        )
 
 
 @router.get(
@@ -637,81 +651,7 @@ async def download_price_template(
     ),
 ):
     """下载单列资产、纵向日期行的行情 Excel 模板（与「批量导入行情」配套）。"""
-    import pandas as pd
-
-    kind = (kind or "full").strip().lower()
-    allowed = {"full", "open", "high", "low", "close", "volume", "amount", "scale"}
-    if kind not in allowed:
-        kind = "full"
-
-    label_cn = {
-        "open": "开盘价*",
-        "high": "最高价*",
-        "low": "最低价*",
-        "close": "收盘价*",
-        "volume": "成交量*",
-        "amount": "成交额*",
-        "scale": "规模*",
-    }
-    sample_val = {
-        "open": 3000.50,
-        "high": 3050.80,
-        "low": 2995.20,
-        "close": 3020.60,
-        "volume": 125000000,
-        "amount": 15000000000.00,
-        "scale": 1.25e11,
-    }
-
-    if kind == "full":
-        columns = [
-            "日期*",
-            "开盘价",
-            "最高价",
-            "最低价",
-            "收盘价*",
-            "成交量",
-            "成交额",
-            "规模",
-        ]
-        example_data = [
-            ["2025-01-01", 3000.50, 3050.80, 2995.20, 3020.60, 125000000, 15000000000.00, 1.2e11],
-            ["2025-01-02", "", "", "", 3075.50, 130000000, 16000000000.00, ""],
-        ]
-        instructions = [
-            ["字段名称", "是否必填", "说明"],
-            ["日期*", "是", "格式：YYYY-MM-DD 或 YYYYMMDD"],
-            ["开盘价", "否", "数值"],
-            ["最高价", "否", "数值"],
-            ["最低价", "否", "数值"],
-            ["收盘价*", "新交易日建议填", "按日合并时可只更新部分列；无该日时须能推断收盘价"],
-            ["成交量", "否", "整数或数值"],
-            ["成交额", "否", "数值"],
-            ["规模", "否", "如 AUM、份额规模等"],
-        ]
-        fname = "price_import_template_single_asset_full.xlsx"
-    else:
-        col2 = label_cn[kind]
-        columns = ["日期*", col2]
-        example_data = [
-            ["2025-01-01", sample_val[kind]],
-            ["2025-01-02", sample_val[kind]],
-        ]
-        instructions = [
-            ["字段名称", "是否必填", "说明"],
-            ["日期*", "是", "格式：YYYY-MM-DD 或 YYYYMMDD"],
-            [col2.replace("*", ""), "是", "与资产库 → 资产行情 → 批量导入行情 配合；按日合并只更新本列"],
-        ]
-        fname = f"price_import_template_single_asset_{kind}.xlsx"
-
-    df = pd.DataFrame(example_data, columns=columns)
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="行情导入模板")
-        pd.DataFrame(instructions[1:], columns=instructions[0]).to_excel(
-            writer, index=False, sheet_name="说明"
-        )
-    output.seek(0)
+    output, fname = build_single_asset_price_template(kind)
     headers = {"Content-Disposition": f'attachment; filename="{fname}"'}
     return StreamingResponse(
         output,
@@ -731,72 +671,8 @@ async def download_multi_asset_price_template(
     大类资产底层数据格式：第 4 行（Excel 行号）为资产名称、第 5 行为资产代码、第 6 行起为日期与数值列。
     与「多资产Excel导入」解析规则一致；导入时在界面选择相同 metric。
     """
-    import pandas as pd
-
-    metric = (metric or "close").strip().lower()
-    if metric not in ("close", "open", "high", "low", "amount", "volume", "scale"):
-        metric = "close"
-    metric_label = {
-        "close": "收盘价",
-        "open": "开盘价",
-        "high": "最高价",
-        "low": "最低价",
-        "amount": "成交额",
-        "volume": "成交量",
-        "scale": "规模",
-    }[metric]
-
-    n_rows = 12
-    n_cols = 5
-    grid = [[None] * n_cols for _ in range(n_rows)]
-    grid[3][0] = "Date"
-    grid[3][1] = "沪深300"
-    grid[3][2] = "中证500"
-    grid[3][3] = "示例债券指数"
-    grid[3][4] = "示例货币利率"
-    grid[4][0] = "Date"
-    grid[4][1] = "000300.SH"
-    grid[4][2] = "000905.SH"
-    grid[4][3] = "CBA00101.CS"
-    grid[4][4] = "DR007.IB"
-    sample_dates = ["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07", "2025-01-08"]
-    for i, d in enumerate(sample_dates):
-        r = 5 + i
-        if r >= n_rows:
-            break
-        grid[r][0] = d
-        grid[r][1] = 3500.12 + i
-        grid[r][2] = 5200.45 + i
-        grid[r][3] = 100.2 + i * 0.01
-        grid[r][4] = 1.85 + i * 0.001
-
-    df = pd.DataFrame(grid)
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, header=False, sheet_name="Sheet1")
-        instructions = [
-            ["说明", "内容"],
-            [
-                "布局A（Wind类）",
-                f"第 4 行：各列资产中文名称；第 5 行：资产代码；第 6 行起：A 列为日期，其余列为「{metric_label}」",
-            ],
-            [
-                "布局B（基金/证券）",
-                "第 1 行 A 列为「基金代码」等、B 列起为各资产代码；第 2 行 A 列为「基金名称」、B 列起为名称；"
-                "第 3 行起 A 列为日期，其余列为行情数值（与图3收盘价表一致）",
-            ],
-            ["metric", f"导入时请选择 metric={metric}，与下载模板一致"],
-            ["日期", "支持 YYYY-MM-DD；可增加行延续历史"],
-            ["多 Sheet", "可在多个工作表中放置资产列，解析时会合并（同代码只保留首次出现）"],
-            ["导入入口", "资产库 → 资产行情 →「多资产Excel导入」"],
-        ]
-        pd.DataFrame(instructions[1:], columns=instructions[0]).to_excel(
-            writer, index=False, sheet_name="填写说明"
-        )
-    output.seek(0)
-    headers = {
-        "Content-Disposition": f'attachment; filename="price_import_template_multi_asset_{metric}.xlsx"'
-    }
+    output, fname = build_multi_asset_price_template(metric)
+    headers = {"Content-Disposition": f'attachment; filename="{fname}"'}
     return StreamingResponse(
         output,
         headers=headers,
@@ -1034,79 +910,14 @@ async def import_price_data_from_excel(
         contents = await file.read()
         print(f"[行情导入] 文件大小: {len(contents)} 字节")
         
-        # 在线程池中解析 Excel，避免阻塞事件循环导致请求超时
-        loop = asyncio.get_event_loop()
-        try:
-            price_data_list = await loop.run_in_executor(
-                None,
-                _parse_excel_to_price_list,
-                contents,
-            )
-        except Exception as parse_err:
-            print(f"[行情导入] Excel 解析失败: {parse_err}")
-            raise HTTPException(status_code=400, detail=f"Excel 解析失败: {str(parse_err)}")
-        
-        if not price_data_list:
-            print(f"[行情导入] 无有效数据行")
-            return Response.success(
-                data=PriceImportResponse(
-                    asset_code=asset_code,
-                    total_count=0,
-                    inserted_count=0,
-                    updated_count=0,
-                    skipped_count=0,
-                    skipped_non_trade_days=0,
-                    error_count=0,
-                    errors=[],
-                ),
-                message="无有效数据行，导入跳过",
-            )
-        
-        print(f"[行情导入] 解析行数: {len(price_data_list)}")
-        if price_data_list:
-            print(f"[行情导入] 首行示例: date={price_data_list[0].get('date')}, close={price_data_list[0].get('close')}")
-
-        if only_date:
-            od = only_date.strip()[:10]
-            try:
-                datetime.strptime(od, "%Y-%m-%d")
-            except ValueError:
-                raise HTTPException(status_code=400, detail="only_date 须为 YYYY-MM-DD")
-            before_n = len(price_data_list)
-            price_data_list = [
-                r for r in price_data_list
-                if str(r.get("date", ""))[:10] == od
-            ]
-            print(f"[行情导入] only_date={od} 过滤后 {len(price_data_list)} 行（原 {before_n} 行）")
-        
-        # 导入数据（服务端已做分批写入与保活，减少超时导致的不全）
-        result = await service.import_price_data(
+        return await import_price_data_from_excel_core(
             asset_code=asset_code,
-            price_data_list=price_data_list,
+            contents=contents,
             replace_existing=replace_existing,
             only_missing_dates=only_missing_dates,
+            only_date=only_date,
+            service=service,
         )
-        print(f"[行情导入] 完成 total={result['total_count']} inserted={result['inserted_count']} updated={result['updated_count']} error={result['error_count']}")
-        if result.get('errors'):
-            for err in result['errors'][:5]:
-                print(f"[行情导入] 错误: {err}")
-            if len(result['errors']) > 5:
-                print(f"[行情导入] ... 共 {len(result['errors'])} 条错误")
-        
-        # 返回结果
-        response_data = PriceImportResponse(
-            asset_code=asset_code,
-            **result
-        )
-        
-        msg = (
-            f"导入完成：新增{result['inserted_count']}条，更新{result['updated_count']}条，"
-            f"跳过{result.get('skipped_count', 0)}条，错误{result['error_count']}条"
-        )
-        if result.get("skipped_non_trade_days"):
-            msg += f"（其中{result['skipped_non_trade_days']}条非交易日历内日期已跳过）"
-        return Response.success(data=response_data, message=msg)
-        
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e

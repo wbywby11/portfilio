@@ -4,288 +4,18 @@
     <div class="page-header">
       <div class="header-left">
         <h2 class="page-title">日常监控</h2>
-        <p class="page-desc">组合净值跟踪、信号检测与调仓管理（按已实盘发布的混合动量或主观配置策略实例隔离）</p>
-        <p v-if="!eligibleLoading && currentStrategy" class="page-strategy-inline">
-          已选策略：<strong>{{ currentStrategy.name }}</strong>
-          <span class="page-strategy-meta">（{{ currentStrategy.template_code }}<template v-if="currentStrategy.selector_type === 'hybrid'"> · 混合动量</template><template v-else-if="liveEffectiveParams && liveEffectiveParams.is_manual_allocation"> · 主观配置</template>）</span>
-        </p>
         <p v-if="!eligibleLoading && isManualAllocationMonitor" class="manual-step-inline">
           <el-checkbox v-model="manualPresetStepOptIn">
             主观：预设调仓日步进（与回测一致，在每档调仓日当日推演完成后暂停，便于查看绩效后再继续）
           </el-checkbox>
         </p>
       </div>
-      <div class="header-actions">
-        <el-select
-          v-if="eligibleStrategies.length > 1"
-          v-model="selectedStrategyId"
-          placeholder="选择监控策略"
-          filterable
-          style="width: 280px; margin-right: 10px;"
-          @change="onStrategySelectChange">
-          <el-option
-            v-for="s in eligibleStrategies"
-            :key="s.id"
-            :label="formatStrategyOption(s)"
-            :value="s.id">
-          </el-option>
-        </el-select>
-        <el-button
-          type="warning"
-          icon="el-icon-s-operation"
-          :disabled="!canOperateMonitor || blockInitDuringManualPresetPause"
-          @click="showInitDialog">
-          初始化
-        </el-button>
-        <el-button
-          v-if="isManualAllocationMonitor"
-          type="success"
-          plain
-          icon="el-icon-d-arrow-right"
-          :disabled="!canOperateMonitor || !manualPresetStepPaused || running || initializing || continuingStep"
-          :loading="continuingStep"
-          @click="handleContinueManualStep">
-          继续执行（步进）
-        </el-button>
-        <el-button
-          type="primary"
-          icon="el-icon-video-play"
-          :disabled="!canOperateMonitor"
-          @click="handleRunMonitor"
-          :loading="running">
-          运行监控
-        </el-button>
-      </div>
     </div>
 
-    <el-alert
-      v-if="!eligibleLoading && !hasEligibleStrategies"
-      type="warning"
-      :closable="false"
-      show-icon
-      style="margin-bottom: 16px;"
-      title="暂无准入策略"
-      description="日常监控需要至少一条已实盘发布的准入策略：risk_budget_target_vol + 混合动量，或主观配置模板（manual_allocation / manual_allocation_strategy）。请完成配置并实盘发布。">
-    </el-alert>
 
-    <el-alert
-      v-if="!eligibleLoading && hasEligibleStrategies && !hasPublishedLiveStrategy"
-      type="info"
-      :closable="false"
-      show-icon
-      style="margin-bottom: 16px;"
-      title="当前仅系统基准（config.py）"
-      description="下拉中的「系统基准」对应 monitor_id=default，参数与绩效可与 app/monitor/config.py 对照。若需对比实盘实例，请在策略模型中完成混合动量或主观配置并实盘发布。">
-    </el-alert>
 
-    <!-- 当前实盘策略与监控实例状态（新发布策略需先初始化才有数据） -->
-    <el-card
-      v-if="!eligibleLoading && hasEligibleStrategies && activeMonitorId && currentStrategy"
-      shadow="never"
-      class="strategy-context-card">
-      <div class="strategy-context-row">
-        <div class="strategy-context-main">
-          <span class="strategy-context-label">当前监控策略</span>
-          <span class="strategy-context-name">{{ currentStrategy.name || '（未命名）' }}</span>
-          <el-tag size="small" type="info" style="margin-left: 8px;">{{ currentStrategy.template_code }}</el-tag>
-          <el-tag v-if="currentStrategy.selector_type === 'hybrid'" size="small" type="success" style="margin-left: 4px;">混合动量</el-tag>
-          <el-tag v-else-if="liveEffectiveParams && liveEffectiveParams.is_manual_allocation" size="small" type="warning" style="margin-left: 4px;">主观配置</el-tag>
-          <span class="strategy-context-id">
-            {{ currentStrategy.is_config_baseline ? '监控实例：default（app/monitor/config.py）' : '模型 ID：' + activeMonitorId }}
-          </span>
-        </div>
-        <div class="strategy-context-status">
-          <el-tag v-if="!monitorState" type="warning" effect="dark">监控未初始化</el-tag>
-          <template v-else>
-            <el-tag type="success" effect="plain">监控已就绪 · 数据日期 {{ formatStrategyDate(monitorState.date) }}</el-tag>
-            <el-tag
-              v-if="manualPresetStepPaused"
-              type="warning"
-              effect="dark"
-              style="margin-left: 8px;">
-              步进暂停 · 下一预设调仓日 {{ monitorState.manual_preset_next_date || '—' }}
-            </el-tag>
-          </template>
-        </div>
-      </div>
 
-      <!-- 实盘可变参数：仅反映已实盘发布快照；可进详情或点单卡快捷改参并发布 -->
-      <div v-if="liveEffectiveParams" class="live-effective-params">
-        <div class="live-effective-params-title-row">
-          <div>
-            <span class="live-effective-params-title">实盘生效参数</span>
-            <p class="live-effective-params-note">以下为最近一次<strong>实盘发布</strong>冻结的配置；仅在策略页保存或未点「实盘发布」的修改不会显示在此处。</p>
-          </div>
-          <el-button
-            v-if="canClickLiveParams"
-            type="text"
-            class="live-effective-link"
-            @click="goEditLiveParams">
-            进入策略详情修改并发布 →
-          </el-button>
-        </div>
-        <div v-if="!isManualAllocationMonitor" class="live-param-metrics">
-          <div
-            class="live-param-metric"
-            :class="{ 'live-param-metric--interactive': canClickLiveParams }"
-            @click.stop="canClickLiveParams && openQuickEdit('target_vol')">
-            <span class="live-param-metric-label">目标波动</span>
-            <span class="live-param-metric-value">{{ liveEffectiveParams.target_vol_pct }}<span class="live-param-unit">%</span></span>
-          </div>
-          <div
-            v-if="!isRiskBudgetTargetVolLiveStrategy"
-            class="live-param-metric"
-            :class="{ 'live-param-metric--interactive': canClickLiveParams }"
-            @click.stop="canClickLiveParams && openQuickEdit('vol_reset')">
-            <span class="live-param-metric-label">波动重置阈值</span>
-            <span class="live-param-metric-value">{{ liveEffectiveParams.vol_reset_threshold_pct }}<span class="live-param-unit">%</span></span>
-          </div>
-          <div
-            class="live-param-metric"
-            :class="{ 'live-param-metric--interactive': canClickLiveParams }"
-            @click.stop="canClickLiveParams && openQuickEdit('max_leverage')">
-            <span class="live-param-metric-label">总杠杆上限</span>
-            <span class="live-param-metric-value">{{ liveEffectiveParams.max_total_leverage }}</span>
-          </div>
-        </div>
-        <div
-          v-if="!isManualAllocationMonitor && liveEffectiveParams.asset_classes && liveEffectiveParams.asset_classes.length"
-          class="live-asset-classes">
-          <span class="live-block-label">资产类别</span>
-          <el-tag
-            v-for="(cls, cidx) in liveEffectiveParams.asset_classes"
-            :key="'cls-' + cidx"
-            size="small"
-            :type="assetClassTagType(cls)"
-            effect="plain"
-            class="live-class-tag">
-            {{ cls }}
-          </el-tag>
-        </div>
 
-        <div
-          id="monitor-subjective-live-params"
-          v-if="isManualAllocationMonitor"
-          class="live-window-section live-manual-section">
-          <div class="live-effective-params-title">主观实盘参数</div>
-          <p class="live-effective-params-note live-manual-snapshot-hint">
-            初始化权重与预设调仓日权重均采用条形展示（与下方「实盘发布记录」及监控仪表板「本页绩效对应的实盘参数」一致）。可点击区块编辑并发布。
-          </p>
-          <SubjectiveManualWeightsSnapshot
-            :manual-weights="liveEffectiveParams.manual_weights || {}"
-            :manual-adjustments="liveEffectiveParams.manual_weight_adjustments || []"
-            :resolve-label="subjectiveSnapshotResolveLabel"
-            :interactive-init="canClickLiveParams"
-            :interactive-presets="canClickLiveParams"
-            @init-click="onSubjectiveSnapshotInitClick"
-            @presets-click="onSubjectiveSnapshotPresetsClick" />
-        </div>
-
-        <div v-if="hasLiveWindowParams" class="live-window-section">
-          <div class="live-effective-params-title">动量与反转窗口（交易日）</div>
-          <div class="live-param-metrics">
-            <div
-              v-if="liveEffectiveParams.mom_windows"
-              class="live-param-metric live-param-metric-wide"
-              :class="{ 'live-param-metric--interactive': canClickLiveParams }"
-              @click.stop="canClickLiveParams && openQuickEdit('mom_windows')">
-              <span class="live-param-metric-label">MOM</span>
-              <span class="live-param-metric-value subtle">{{ liveEffectiveParams.mom_windows }}</span>
-            </div>
-            <div
-              v-if="liveEffectiveParams.posi_windows"
-              class="live-param-metric live-param-metric-wide"
-              :class="{ 'live-param-metric--interactive': canClickLiveParams }"
-              @click.stop="canClickLiveParams && openQuickEdit('posi_windows')">
-              <span class="live-param-metric-label">POSI</span>
-              <span class="live-param-metric-value subtle">{{ liveEffectiveParams.posi_windows }}</span>
-            </div>
-            <div
-              v-if="liveEffectiveParams.smom_windows"
-              class="live-param-metric live-param-metric-wide"
-              :class="{ 'live-param-metric--interactive': canClickLiveParams }"
-              @click.stop="canClickLiveParams && openQuickEdit('smom_windows')">
-              <span class="live-param-metric-label">SMOM</span>
-              <span class="live-param-metric-value subtle">{{ liveEffectiveParams.smom_windows }}</span>
-            </div>
-            <div
-              v-if="liveEffectiveParams.macd_windows"
-              class="live-param-metric live-param-metric-wide"
-              :class="{ 'live-param-metric--interactive': canClickLiveParams }"
-              @click.stop="canClickLiveParams && openQuickEdit('macd_windows')">
-              <span class="live-param-metric-label">MACD 短期</span>
-              <span class="live-param-metric-value subtle">{{ liveEffectiveParams.macd_windows }}</span>
-            </div>
-            <div
-              v-if="liveEffectiveParams.macd_long_window != null && liveEffectiveParams.macd_long_window !== ''"
-              class="live-param-metric"
-              :class="{ 'live-param-metric--interactive': canClickLiveParams }"
-              @click.stop="canClickLiveParams && openQuickEdit('macd_long_window')">
-              <span class="live-param-metric-label">MACD 长期</span>
-              <span class="live-param-metric-value subtle">{{ liveEffectiveParams.macd_long_window }}</span>
-            </div>
-            <div
-              v-if="liveEffectiveParams.reversal_windows"
-              class="live-param-metric live-param-metric-wide"
-              :class="{ 'live-param-metric--interactive': canClickLiveParams }"
-              @click.stop="canClickLiveParams && openQuickEdit('reversal_windows')">
-              <span class="live-param-metric-label">反转</span>
-              <span class="live-param-metric-value subtle">{{ liveEffectiveParams.reversal_windows }}</span>
-            </div>
-            <div
-              v-if="!isRiskBudgetTargetVolLiveStrategy && liveEffectiveParams.min_history_momentum != null && liveEffectiveParams.min_history_momentum !== ''"
-              class="live-param-metric"
-              :class="{ 'live-param-metric--interactive': canClickLiveParams }"
-              @click.stop="canClickLiveParams && openQuickEdit('min_history_days')">
-              <span class="live-param-metric-label">动量最小历史</span>
-              <span class="live-param-metric-value subtle">{{ liveEffectiveParams.min_history_momentum }} 日</span>
-            </div>
-            <div
-              v-if="!isRiskBudgetTargetVolLiveStrategy && liveEffectiveParams.min_history_reversal != null && liveEffectiveParams.min_history_reversal !== ''"
-              class="live-param-metric"
-              :class="{ 'live-param-metric--interactive': canClickLiveParams }"
-              @click.stop="canClickLiveParams && openQuickEdit('min_history_reversal_hint')">
-              <span class="live-param-metric-label">反转最小历史</span>
-              <span class="live-param-metric-value subtle">{{ liveEffectiveParams.min_history_reversal }} 日</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div
-        v-if="canClickLiveParams || effectiveAssetTags.length"
-        class="strategy-context-assets"
-        :class="{ 'strategy-context-assets--interactive': canClickLiveParams }"
-        @click.stop="canClickLiveParams && openAssetsEdit()">
-        <div class="strategy-context-assets-row">
-          <span class="strategy-context-assets-label">底层资产（参与计算）</span>
-          <span v-if="canClickLiveParams" class="strategy-context-assets-hint">点击调整并实盘发布 →</span>
-        </div>
-        <div class="strategy-context-asset-tags">
-          <template v-if="effectiveAssetTags.length">
-            <el-tag
-              v-for="(nm, idx) in effectiveAssetTags"
-              :key="'ctx-' + idx"
-              size="small"
-              type="info"
-              effect="plain"
-              class="strategy-context-asset-tag">
-              {{ nm }}
-            </el-tag>
-          </template>
-          <span v-else-if="canClickLiveParams" class="strategy-context-assets-empty">暂无，点击添加</span>
-        </div>
-      </div>
-      <el-alert
-        v-if="!monitorState"
-        type="info"
-        :closable="false"
-        show-icon
-        style="margin-top: 12px;"
-        title="新发布策略尚无日常监控数据"
-        description="每个策略实例使用独立 monitor_id（即模型 ID）。刚完成实盘发布后，组合净值、绩效、信号等均为空属正常情况。请先点击右上角「初始化」从启动日期逐日构建监控状态，再使用「运行监控」滚动至最新交易日。">
-      </el-alert>
-    </el-card>
 
     <!-- 初始化对话框 -->
     <el-dialog
@@ -300,9 +30,6 @@
         show-icon
         style="margin-bottom: 20px;">
       </el-alert>
-      <p v-if="currentStrategy" class="init-dialog-strategy">
-        将为策略「{{ currentStrategy.name }}」（{{ activeMonitorId }}）创建/重建监控实例；与回测无关，仅写入日常监控库。
-      </p>
       <el-form label-width="100px">
         <el-form-item label="启动日期">
           <el-date-picker
@@ -541,66 +268,99 @@
       </span>
     </el-dialog>
 
-    <template v-if="hasEligibleStrategies && activeMonitorId">
+    <!-- 区域0：监控策略管理（可折叠） -->
+    <el-card shadow="never" class="monitor-section monitor-section--full">
+      <div slot="header" class="section-header section-header--toggle" @click="strategyListCollapsed = !strategyListCollapsed">
+        <span>监控策略管理</span>
+        <i :class="strategyListCollapsed ? 'el-icon-arrow-down' : 'el-icon-arrow-up'" style="color:#909399;margin-left:8px;" />
+      </div>
+      <div v-show="!strategyListCollapsed">
+        <MonitoredStrategyList
+          ref="strategyList"
+          :selected-id="activeMonitorId || ''"
+          @view="handleStrategyView"
+          @init="handleStrategyInit"
+          @run="handleStrategyRun"
+          @archive="handleStrategyArchive"
+        />
+      </div>
+    </el-card>
+
+    <template v-if="activeMonitorId">
       <!-- 区域1：监控总览 -->
-      <el-card shadow="never" class="monitor-section">
+      <el-card shadow="never" class="monitor-section monitor-section--full">
         <div slot="header" class="section-header">
           <span>监控总览</span>
+          <el-select
+            v-if="monitoredStrategyOptions.length > 1"
+            :value="activeMonitorId"
+            size="small"
+            style="width: 200px; margin-left: 16px;"
+            @change="handleStrategySwitch"
+          >
+            <el-option
+              v-for="s in monitoredStrategyOptions"
+              :key="s._id"
+              :label="s.display_name"
+              :value="s._id"
+            />
+          </el-select>
         </div>
         <MonitorDashboard ref="dashboard" :strategy-context="currentStrategy" />
       </el-card>
 
-      <!-- 区域2：净值走势 -->
-      <el-card shadow="never" class="monitor-section">
-        <div slot="header" class="section-header">
-          <span>净值走势</span>
-        </div>
-        <NavHistory ref="navHistory" />
-      </el-card>
+      <div class="monitor-grid">
+        <!-- 区域2：净值走势（跨 2 列全宽） -->
+        <el-card shadow="never" class="monitor-section monitor-section--span2">
+          <div slot="header" class="section-header">
+            <span>净值走势</span>
+          </div>
+          <NavHistory ref="navHistory" />
+        </el-card>
 
-      <!-- 区域3：持仓明细 -->
-      <el-card shadow="never" class="monitor-section">
-        <div slot="header" class="section-header">
-          <span>持仓明细</span>
-        </div>
-        <Positions ref="positions" />
-      </el-card>
+        <!-- 区域3：持仓明细 -->
+        <el-card shadow="never" class="monitor-section">
+          <div slot="header" class="section-header">
+            <span>持仓明细</span>
+          </div>
+          <Positions ref="positions" />
+        </el-card>
 
-      <!-- 区域4：信号监测 -->
-      <el-card shadow="never" class="monitor-section">
-        <div slot="header" class="section-header">
-          <span>信号监测</span>
-        </div>
-        <Signals ref="signals" :subjective-vol-only="shouldHideVolMonitoring" />
-      </el-card>
+        <!-- 区域4：信号监控 -->
+        <el-card shadow="never" class="monitor-section">
+          <div slot="header" class="section-header">
+            <span>信号监控</span>
+          </div>
+          <Signals ref="signals" :subjective-vol-only="shouldHideVolMonitoring" />
+        </el-card>
 
-      <!-- 区域5：主观调仓 -->
-      <el-card shadow="never" class="monitor-section">
-        <div slot="header" class="section-header">
-          <span>主观调仓</span>
-        </div>
-        <SubjectiveOverride ref="subjective" :strategy-context="currentStrategy" />
-      </el-card>
+        <!-- 区域5：主观调仓 -->
+        <el-card shadow="never" class="monitor-section">
+          <div slot="header" class="section-header">
+            <span>主观调仓</span>
+          </div>
+          <SubjectiveOverride ref="subjective" :strategy-context="currentStrategy" />
+        </el-card>
 
-      <!-- 区域6：事件日志 -->
-      <el-card shadow="never" class="monitor-section">
-        <div slot="header" class="section-header">
-          <span>事件日志</span>
-        </div>
-        <EventLog ref="eventLog" />
-      </el-card>
+        <!-- 区域6：事件日志 -->
+        <el-card shadow="never" class="monitor-section">
+          <div slot="header" class="section-header">
+            <span>事件日志</span>
+          </div>
+          <EventLog ref="eventLog" />
+        </el-card>
 
-      <!-- 区域7：实盘发布记录（与监控运行时一致的参数/资产/窗口变更） -->
-      <el-card
-        v-if="currentStrategy && !currentStrategy.is_config_baseline && activeMonitorId && activeMonitorId !== 'default'"
-        shadow="never"
-        class="monitor-section">
-        <div slot="header" class="section-header">
-          <span>实盘发布记录</span>
-        </div>
-        <p class="section-desc">仅展示实盘发布、取消实盘、日常监控侧实盘配置；不含策略保存类记录。「实盘发布」行内为相对<strong>上次落库快照</strong>变更的生效参数、底层资产与窗口。</p>
-        <LivePublishRecords ref="publishLog" :model-id="activeMonitorId" />
-      </el-card>
+        <!-- 区域7：实盘发布记录（研究员策略无实盘发布，不渲染以避免用 monitor_id 请求策略模型） -->
+        <el-card
+          v-if="currentStrategy && activeMonitorId && activeMonitorId !== 'default' && !isResearcherMonitor"
+          shadow="never"
+          class="monitor-section">
+          <div slot="header" class="section-header">
+            <span>实盘发布记录</span>
+          </div>
+          <LivePublishRecords ref="publishLog" :model-id="activeMonitorId" />
+        </el-card>
+      </div>
     </template>
   </div>
 </template>
@@ -623,6 +383,7 @@ import SubjectiveOverride from './SubjectiveOverride.vue';
 import EventLog from './EventLog.vue';
 import LivePublishRecords from './LivePublishRecords.vue';
 import SubjectiveManualWeightsSnapshot from './SubjectiveManualWeightsSnapshot.vue';
+import MonitoredStrategyList from './MonitoredStrategyList.vue';
 import { normalizeWeightsToTwoDecimalSumOne, formatWeightSliderTooltip } from '@/utils/subjectiveWeights';
 import { isRiskBudgetTargetVolTemplateCode } from '@/utils/strategyTemplateFlags';
 
@@ -636,7 +397,8 @@ export default {
     SubjectiveOverride,
     EventLog,
     LivePublishRecords,
-    SubjectiveManualWeightsSnapshot
+    SubjectiveManualWeightsSnapshot,
+    MonitoredStrategyList
   },
   data() {
     return {
@@ -649,7 +411,6 @@ export default {
       continuingStep: false,
       eligibleLoading: true,
       eligibleStrategies: [],
-      selectedStrategyId: null,
       quickEditVisible: false,
       quickEditLoading: false,
       quickEditSaving: false,
@@ -682,7 +443,9 @@ export default {
       manualPresetsEditorSaving: false,
       manualPresetsEditorModel: null,
       manualPresetRows: [],
-      manualPresetCodes: []
+      manualPresetCodes: [],
+      selectedMonitoredStrategy: null,
+      strategyListCollapsed: false
     };
   },
   computed: {
@@ -691,30 +454,41 @@ export default {
     hasEligibleStrategies() {
       return this.eligibleStrategies.length > 0;
     },
-    /** 除 config.py 基准外是否已有实盘发布的混合动量策略 */
-    hasPublishedLiveStrategy() {
-      return this.eligibleStrategies.some(s => !s.is_config_baseline && s.id !== 'default');
-    },
     canOperateMonitor() {
-      return this.hasEligibleStrategies && !!this.activeMonitorId;
+      return !!this.activeMonitorId;
     },
-    /** 策略模型可跳转编辑；系统基准不可 */
+    monitoredStrategyOptions() {
+      const list = this.$refs.strategyList;
+      return list ? list.strategies : [];
+    },
     canClickLiveParams() {
       return (
         !!this.activeMonitorId &&
         this.activeMonitorId !== 'default' &&
         !!this.currentStrategy &&
-        !this.currentStrategy.is_config_baseline
+        !this.isResearcherMonitor
       );
     },
     currentStrategy() {
       if (!this.activeMonitorId) return null;
-      return this.eligibleStrategies.find(s => s.id === this.activeMonitorId) || null;
+      return this.eligibleStrategies.find(s => s.id === this.activeMonitorId)
+        || this.selectedMonitoredStrategy
+        || null;
     },
-    /** risk_budget_target_vol：部分实盘参数固定，不在监控页快捷编辑或展示 */
+    /** 研究员策略（hybrid_12 / sharpe_18）：完全独立自主，无策略模型与实盘发布，不触发任何 strategy-models 请求 */
+    isResearcherMonitor() {
+      const s = this.currentStrategy;
+      return !!(s && s.source_type === 'researcher');
+    },
+    /** 目标波动率预算策略（含旧 code 兼容）：部分实盘参数固定，不在监控页快捷编辑或展示 */
     isRiskBudgetTargetVolLiveStrategy() {
       const s = this.currentStrategy;
       return !!(s && isRiskBudgetTargetVolTemplateCode(s.template_code));
+    },
+    /** 夏普率风险预算策略（旧 code）：实盘参数已固化，日常监控不展示 */
+    isSharpeRiskBudgetLiveStrategy() {
+      const s = this.currentStrategy;
+      return !!(s && s.template_code === 'sharpe_risk_budget');
     },
     /** 底层资产标签：优先接口返回的展示名，与 live_effective_assets 同序 */
     effectiveAssetTags() {
@@ -756,7 +530,7 @@ export default {
       const p = this.liveEffectiveParams;
       return !!(p && p.is_manual_allocation);
     },
-    /** 是否隐藏波动率监测：manual_allocation / etf_cycle_rotation / risk_parity 均隐藏 */
+    /** 是否隐藏波动率监控：manual_allocation / etf_cycle_rotation / risk_parity 均隐藏 */
     shouldHideVolMonitoring() {
       if (this.isManualAllocationMonitor) return true;
       const s = this.currentStrategy;
@@ -795,13 +569,11 @@ export default {
   methods: {
     ...mapActions('monitor', ['initMonitorAction', 'runMonitorAction', 'setActiveMonitorContext']),
     formatStrategyOption(s) {
-      if (s.is_config_baseline || s.id === 'default') {
-        return `${s.name || '系统基准（config.py）'} · 对比基准`;
-      }
       if (s.live_effective_params && s.live_effective_params.is_manual_allocation) {
         return `${s.name || s.id}（${s.template_code || ''} · 主观配置）`;
       }
-      const sel = s.selector_type === 'hybrid' ? '混合动量' : (s.selector_type || '');
+      const selMap = { 'hybrid': '混合动量', 'sharpe': '夏普率选择器' };
+      const sel = selMap[s.selector_type] || s.selector_type || '';
       return `${s.name || s.id}（${s.template_code || ''}${sel ? ' · ' + sel : ''}）`;
     },
     assetClassTagType(assetClass) {
@@ -816,39 +588,22 @@ export default {
       try {
         const res = await getLiveEligibleForMonitor();
         const body = res && res.data !== undefined ? res.data : res;
-        this.eligibleStrategies = (body && body.strategies) ? body.strategies : [];
-        if (this.eligibleStrategies.length > 0) {
-          const prevId = this.selectedStrategyId || this.activeMonitorId;
-          const keep = prevId && this.eligibleStrategies.some(s => s.id === prevId);
-          const pickId = keep ? prevId : this.eligibleStrategies[0].id;
-          this.selectedStrategyId = pickId;
-          await this.setActiveMonitorContext({ monitorId: pickId });
-          this.$nextTick(() => this.refreshAllComponents());
-        } else {
-          this.selectedStrategyId = null;
-          await this.setActiveMonitorContext({ monitorId: null });
-        }
+        const all = (body && body.strategies) ? body.strategies : [];
+        // 过滤掉旧的 config 基线
+        this.eligibleStrategies = all.filter(s => !s.is_config_baseline && s.id !== 'default');
       } catch (e) {
         console.error(e);
         this.eligibleStrategies = [];
-        await this.setActiveMonitorContext({ monitorId: null });
-        this.$message.error('加载监控准入策略失败');
       } finally {
         this.eligibleLoading = false;
       }
     },
-    async onStrategySelectChange(id) {
-      if (!id) return;
-      await this.setActiveMonitorContext({ monitorId: id });
-      this.refreshAllComponents();
-    },
+
     goEditLiveParams() {
-      if (!this.canClickLiveParams) {
-        this.$message.info('系统基准参数以 app/monitor/config.py 为准，请在代码库中修改。');
-        return;
-      }
+      if (!this.canClickLiveParams) return;
       this.$router.push({
-        path: `/strategy/model/detail/${this.activeMonitorId}`,
+        name: 'StrategyModelDetail',
+        params: { id: this.activeMonitorId },
         query: { fromMonitor: '1' }
       });
     },
@@ -1543,6 +1298,41 @@ export default {
         }
       }).catch(() => {});
     },
+    // ── 监控策略管理事件 ──
+    async handleStrategyView(strategy) {
+      this.selectedMonitoredStrategy = strategy;
+      await this.setActiveMonitorContext({ monitorId: strategy._id });
+      this.$nextTick(() => this.refreshAllComponents());
+    },
+    async handleStrategyInit(strategy) {
+      this.selectedMonitoredStrategy = strategy;
+      await this.setActiveMonitorContext({ monitorId: strategy._id });
+      this.showInitDialog();
+    },
+    async handleStrategyRun(strategy) {
+      this.selectedMonitoredStrategy = strategy;
+      await this.setActiveMonitorContext({ monitorId: strategy._id });
+      this.$nextTick(() => {
+        this.refreshAllComponents();
+        this.handleRunMonitor();
+      });
+    },
+    async handleStrategySwitch(monitorId) {
+      const list = this.$refs.strategyList;
+      const strategy = (list ? list.strategies : []).find(s => s._id === monitorId);
+      this.selectedMonitoredStrategy = strategy || null;
+      await this.setActiveMonitorContext({ monitorId });
+      this.$nextTick(() => this.refreshAllComponents());
+    },
+    /** 归档后：若归档的是当前活动策略，清除监控上下文并刷新 eligible */
+    async handleStrategyArchive(archivedId) {
+      if (this.activeMonitorId === archivedId) {
+        this.selectedMonitoredStrategy = null;
+        await this.setActiveMonitorContext({ monitorId: null });
+      }
+      await this.loadEligibleContext();
+    },
+
     async handleRunMonitor() {
       const stepHint =
         this.isManualAllocationMonitor && this.manualPresetStepOptIn
@@ -1588,19 +1378,18 @@ export default {
 
 <style scoped>
 .page-container {
-  padding: 20px;
+  padding: 16px;
 }
 
 .monitor-center {
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 
 .header-left {
@@ -1613,25 +1402,8 @@ export default {
 }
 
 .page-title {
-  font-size: 20px;
-  margin: 0 0 8px 0;
-}
-
-.page-desc {
-  color: #909399;
-  font-size: 14px;
+  font-size: 18px;
   margin: 0;
-}
-
-.page-strategy-inline {
-  margin: 8px 0 0 0;
-  font-size: 14px;
-  color: #606266;
-}
-
-.page-strategy-meta {
-  color: #909399;
-  font-weight: normal;
 }
 
 .manual-step-inline {
@@ -1645,61 +1417,23 @@ export default {
   line-height: 1.45;
 }
 
-.strategy-context-assets {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid #ebeef5;
+/* 双列网格布局：左右对齐、紧凑排列 */
+.monitor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: stretch;
 }
 
-.strategy-context-assets-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 6px;
+/* 跨 2 列全宽卡片 */
+.monitor-section--span2 {
+  grid-column: 1 / -1;
 }
 
-.strategy-context-assets-label {
-  font-size: 13px;
-  color: #909399;
+.monitor-section--full {
+  margin-bottom: 12px;
 }
 
-.strategy-context-assets-hint {
-  font-size: 12px;
-  color: #409eff;
-  font-weight: 500;
-}
-
-.strategy-context-assets--interactive {
-  cursor: pointer;
-  border-radius: 6px;
-  margin-left: -4px;
-  margin-right: -4px;
-  padding-left: 4px;
-  padding-right: 4px;
-  transition: background-color 0.15s ease;
-}
-
-.strategy-context-assets--interactive:hover {
-  background: rgba(64, 158, 255, 0.06);
-}
-
-.strategy-context-asset-tags {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.strategy-context-assets-empty {
-  font-size: 13px;
-  color: #c0c4cc;
-}
-
-.strategy-context-asset-tag {
-  margin: 0 !important;
-}
 
 .assets-edit-body {
   min-height: 120px;
@@ -1728,67 +1462,6 @@ export default {
   color: #909399;
 }
 
-.live-effective-params {
-  margin-top: 14px;
-  padding: 14px 14px 12px;
-  background: linear-gradient(145deg, #f9fafb 0%, #f4f6f9 100%);
-  border-radius: 8px;
-  border: 1px solid #ebeef5;
-}
-
-.live-effective-params-title-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.live-effective-params-note {
-  margin: 4px 0 0 0;
-  font-size: 12px;
-  color: #909399;
-  line-height: 1.45;
-  max-width: 720px;
-}
-
-.live-effective-link {
-  flex-shrink: 0;
-  padding: 0 !important;
-}
-
-.live-effective-params-title {
-  font-size: 12px;
-  color: #909399;
-  letter-spacing: 0.06em;
-  font-weight: 600;
-}
-
-.live-param-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.live-param-metric {
-  min-width: 118px;
-  padding: 10px 14px;
-  background: #fff;
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-.live-param-metric--interactive {
-  cursor: pointer;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.live-param-metric--interactive:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.12);
-}
 
 .quick-edit-body {
   min-height: 48px;
@@ -1801,33 +1474,6 @@ export default {
   line-height: 1.5;
 }
 
-.live-param-metric-wide {
-  flex: 1 1 200px;
-}
-
-.live-param-metric-label {
-  display: block;
-  font-size: 12px;
-  color: #909399;
-  margin-bottom: 4px;
-}
-
-.live-param-metric-value {
-  font-size: 20px;
-  font-weight: 600;
-  color: #303133;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-}
-
-.live-param-metric-value.subtle {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.live-manual-snapshot-hint {
-  margin: 0 0 10px 0 !important;
-}
 
 .subjective-editor-body {
   max-height: 62vh;
@@ -1943,94 +1589,28 @@ export default {
   text-align: right;
 }
 
-.live-param-unit {
-  font-size: 13px;
-  font-weight: 500;
-  color: #909399;
-  margin-left: 1px;
-}
-
-.live-window-section {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px dashed #e4e7ed;
-}
-
-.live-asset-classes {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px dashed #e4e7ed;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.live-block-label {
-  font-size: 13px;
-  color: #909399;
-  margin-right: 4px;
-}
-
-.live-class-tag {
-  margin: 0 !important;
-}
 
 .monitor-section {
-  margin-bottom: 20px;
+  margin-bottom: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
 }
-
-.section-desc {
-  margin: 0 0 14px 0;
-  font-size: 13px;
-  color: #909399;
-  line-height: 1.5;
+.section-header--toggle {
+  cursor: pointer;
+  user-select: none;
+}
+.section-header--toggle:hover {
+  color: #409eff;
 }
 
-.strategy-context-card {
-  margin-bottom: 16px;
-  border: 1px solid #ebeef5;
-}
-
-.strategy-context-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.strategy-context-main {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.strategy-context-label {
-  color: #909399;
-  font-size: 13px;
-}
-
-.strategy-context-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.strategy-context-id {
-  font-size: 12px;
-  color: #c0c4cc;
-  margin-left: 8px;
-}
 
 .init-dialog-strategy {
   font-size: 13px;
@@ -2047,4 +1627,25 @@ export default {
 .monitor-section >>> .page-header {
   display: none;
 }
+
+/* 网格内卡片body自动撑满行高 */
+.monitor-grid .monitor-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.monitor-grid .monitor-section >>> .el-card__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 窄屏回退单列 */
+@media (max-width: 1200px) {
+  .monitor-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
 </style>

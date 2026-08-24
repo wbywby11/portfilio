@@ -49,6 +49,13 @@
       </el-form>
     </el-card>
 
+    <!-- 空状态引导 -->
+    <el-card v-if="!loading && metricsData.length === 0" class="empty-card" shadow="never" style="margin-top: 20px;">
+      <el-empty description="选择资产与日期范围后点击“开始分析”，查看绩效指标与走势对比">
+        <el-button type="primary" size="small" icon="el-icon-search" @click="handleAnalyze">开始分析</el-button>
+      </el-empty>
+    </el-card>
+
     <!-- 资产指标表格 -->
     <el-card v-if="metricsData.length > 0" class="metrics-card" style="margin-top: 20px;">
       <div slot="header" class="clearfix">

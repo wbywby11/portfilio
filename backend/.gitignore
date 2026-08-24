@@ -49,5 +49,45 @@ htmlcov/
 # 日志目录（loguru 切分存储）
 logs/
 
-# 日志目录（loguru 切分存储）
-logs/
+# 大数据文件（Excel原始数据/JSON导入文件）
+data/daily_px.xlsx
+data/fx.xlsx
+data/trade_dates.xlsx
+data/daily_px_prices.json
+data/fx_rates.json
+data/fx_rates_mongoimport.json
+data/trade_dates.json
+data/fund_asset_prices.import.json
+data/fund_assets.import.json
+data/~$*.xlsx
+data/uploads/
+data/结果/
+data/seed/*.xlsx
+data/seed/*.csv
+raw_data/
+scripts/raw_data/
+exports/
+
+# 临时文件
+*.zip
+~$*
+
+# 回测导出与对照组数据
+backtest_exports/
+data/对照_*
+data/资产费用.xlsx
+data/subjective_views.xlsx
+data/template_pdfs/
+app/data/template_pdfs/
+
+# 一次性诊断脚本与排查输出（不入库）
+scripts/_tmp_*
+scripts/_check_*
+scripts/_verify_*
+scripts/_diag_*
+scripts/_cmp_*
+scripts/_compare_*
+scripts/_import_*
+scripts/_overwrite_*
+scripts/diag_*
+tests/regression/_*.txt

@@ -1,0 +1,60 @@
+# GMSI 2.0 原型验收清单（回归测试侧资产，非系统架构组件）
+#
+# 验收由 tests/regression/test_prototype_alignment.py 驱动：按清单逐层
+# 运行系统回测，与原型基线 NAV（baseline.nav_csv）对比日收益相关系数
+# 与端点误差。容差来自引擎收束双跑比对（P2/P3）的差异归因：子策略
+# 漂移口径与组合层市值漂移带来可解释的小差异。
+#
+# 实测对齐水平（2026-08，统一引擎新路径）：
+#   GMAP      corr=0.950  end_err=3.2%
+#   GCMI      corr=0.998  end_err=1.2%
+#   PORTFOLIO corr=0.968  end_err=1.8%（母层 3% ewma vol 控制）
+# 容差在实测值上留有余量；基线数值变化须先修订本清单。
+#
+# 注：模型已按前端重建流程升级为 V2（旧同名模型已删除），
+# 下方 name 为数据库中的现行模型名。
+
+prototype: gmsi2
+display_name: GMSI 2.0 多资产商品指数
+description: >
+  GMAP（大类资产配置，动量 top8 + 反方差加权 + ewma vol 定标 3%）与
+  GCMI（趋势跟踪/截面动量 50:50 混合 + vol 定标 3%）两个子指数，
+  按 60/40 月度再平衡复合为母指数，母层再叠加 3% ewma 波动率控制。
+
+models:
+  gmap:
+    name: GMSI2-GMAP 商品动量策略 V2
+    template_code: vol_scaled_budget
+  gcmi:
+    name: GMSI2-GCMI 趋势截面复合策略 V2
+    template_code: trend_cross_sectional
+
+portfolio_model:
+  name: GMSI2 母组合 V2
+  initial_nav: 1000.0
+  rebalance_frequency: monthly
+  sub_strategies:
+    - { ref: gmap, weight: 0.6 }
+    - { ref: gcmi, weight: 0.4 }
+
+# 母组合层波动率控制（原型 use_mother_vol_control=True 口径）
+portfolio:
+  vol_target: 0.03
+  vol_lookback_short: 20
+  vol_lookback_long: 60
+  vol_method: ewma
+  vol_annualize_factor: null
+
+baseline:
+  # 原型基线（gmsi2_replication/make_baseline_nav.py 生成，已归档副本）
+  nav_csv: tests/fixtures/baselines/gmsi2_baseline_nav.csv
+  start_date: '20140103'
+  end_date: '20260610'
+  # 清单层 key → 基线 CSV 列名
+  series:
+    gmap: gmap_nav
+    gcmi: gcmi_nav
+    portfolio: gmsi2_nav
+  tolerance:
+    corr_min: 0.94
+    end_err_max: 0.05

@@ -21,10 +21,46 @@
           <el-input v-model="form.name" placeholder="请输入资产名称"></el-input>
         </el-form-item>
 
-        <el-form-item label="资产分类" prop="asset_type">
-          <el-select v-model="form.asset_type" placeholder="请选择资产分类">
+        <el-form-item label="工具形态" prop="instrument_type">
+          <el-select v-model="form.instrument_type" placeholder="请选择工具形态" style="width: 100%">
             <el-option
-              v-for="item in assetCategories"
+              v-for="item in instrumentTypes"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            >
+              <span>{{ item.label }}</span>
+              <span style="color: #909399; font-size: 12px; margin-left: 8px;">{{ item.hint }}</span>
+            </el-option>
+          </el-select>
+          <div style="color: #909399; font-size: 12px; line-height: 1.4; margin-top: 4px;">
+            决定 TR 计算方式：指数型（直接收盘价）/ 现货型（上市前替代）/ 期货型（主力展期）
+          </div>
+        </el-form-item>
+
+        <el-form-item label="资产大类" prop="asset_class">
+          <el-select v-model="form.asset_class" placeholder="请选择资产大类" style="width: 100%">
+            <el-option
+              v-for="item in assetClasses"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            ></el-option>
+          </el-select>
+          <div style="color: #909399; font-size: 12px; line-height: 1.4; margin-top: 4px;">
+            用于资产过滤、报告分组、风控分类
+          </div>
+        </el-form-item>
+
+        <el-form-item label="证券细分" prop="security_type">
+          <el-select
+            v-model="form.security_type"
+            placeholder="可选，用于细粒度筛选"
+            clearable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="item in securityTypes"
               :key="item.value"
               :label="item.label"
               :value="item.value"
@@ -45,8 +81,8 @@
           ></el-input>
         </el-form-item>
 
-        <!-- 展期信息：仅当选择期货类时显示 -->
-        <template v-if="form.asset_type === '期货类'">
+        <!-- 展期信息：仅当选择期货型时显示 -->
+        <template v-if="form.instrument_type === '期货型'">
           <el-divider content-position="left">展期信息（可选）</el-divider>
 
           <el-row :gutter="20">
@@ -104,8 +140,8 @@
           </el-row>
         </template>
 
-        <!-- 替代信息：仅当选择现货类时显示 -->
-        <template v-if="form.asset_type === '现货类'">
+        <!-- 替代信息：仅当选择现货型时显示 -->
+        <template v-if="form.instrument_type === '现货型'">
           <el-divider content-position="left">替代信息（可选）</el-divider>
 
           <el-row :gutter="20">
@@ -143,6 +179,30 @@
 <script>
 import { mapState } from 'vuex';
 
+// 旧 → 新 兼容映射（迁移完成后删除）
+function _legacyToInstrument(old) {
+  if (!old) return '';
+  if (old === '指数类' || old === '指数型') return '指数型';
+  if (old === '现货类' || old === '现货型') return '现货型';
+  if (old === '期货类' || old === '期货型') return '期货型';
+  // 基础类型映射（股票/债券/基金按现货型，其他按指数型）
+  if (['股票', '债券', '基金', '货币'].includes(old)) return '现货型';
+  return '指数型';
+}
+function _legacyToClass(old, name) {
+  if (!old && !name) return '';
+  const n = (name || '') + ' ' + (old || '');
+  if (n.includes('债')) return '固收';
+  if (['黄金', '白银', '原油', '螺纹', '铁矿', '有色', '豆粕', '棉花', '沪'].some(k => n.includes(k))) return '商品';
+  if (n.includes('货币')) return '货币';
+  if (['BTC', 'ETH', '加密'].some(k => n.includes(k))) return '另类';
+  if (old === '债券') return '固收';
+  if (old === '商品') return '商品';
+  if (old === '货币') return '货币';
+  if (old === '数字货币') return '另类';
+  return '权益';
+}
+
 export default {
   name: 'AssetForm',
   props: {
@@ -165,7 +225,9 @@ export default {
       form: {
         code: '',
         name: '',
-        asset_type: '',
+        instrument_type: '',
+        asset_class: '',
+        security_type: '',
         exchange: '',
         description: '',
         rollover_days: null,
@@ -179,14 +241,15 @@ export default {
       rules: {
         code: [{ required: true, message: '请输入资产代码', trigger: 'blur' }],
         name: [{ required: true, message: '请输入资产名称', trigger: 'blur' }],
-        asset_type: [{ required: true, message: '请选择资产分类', trigger: 'change' }]
+        instrument_type: [{ required: true, message: '请选择工具形态', trigger: 'change' }],
+        asset_class: [{ required: true, message: '请选择资产大类', trigger: 'change' }]
       },
       submitting: false,
       isEdit: false
     };
   },
   computed: {
-    ...mapState('asset', ['assetCategories'])
+    ...mapState('asset', ['instrumentTypes', 'assetClasses', 'securityTypes'])
   },
   created() {
     if (this.isDialog) {
@@ -213,17 +276,17 @@ export default {
         this.resetForm();
       }
     },
-    // 监听资产分类变化，根据类型清空对应字段
-    'form.asset_type'(newVal) {
-      if (newVal !== '期货类') {
-        // 如果不是期货类，清空展期相关字段
+    // 监听工具形态变化，根据类型清空对应字段
+    'form.instrument_type'(newVal) {
+      if (newVal !== '期货型') {
+        // 不是期货型，清空展期相关字段
         this.form.rollover_days = null;
         this.form.rollover_threshold = null;
         this.form.rollover_window_p = null;
         this.form.rollover_window_q = null;
       }
-      if (newVal !== '现货类') {
-        // 如果不是现货类，清空替代相关字段
+      if (newVal !== '现货型') {
+        // 不是现货型，清空替代相关字段
         this.form.substitute_code = '';
         this.form.switch_date = '';
       }
@@ -236,7 +299,9 @@ export default {
       this.form = {
         code: '',
         name: '',
-        asset_type: '',
+        instrument_type: '',
+        asset_class: '',
+        security_type: '',
         exchange: '',
         description: '',
         rollover_days: null,
@@ -273,7 +338,10 @@ export default {
         this.form = {
           code: asset.code,
           name: asset.name,
-          asset_type: asset.asset_type,
+          // 新字段（优先） + 旧字段兼容（迁移后 asset_type 会移除）
+          instrument_type: asset.instrument_type || _legacyToInstrument(asset.asset_type),
+          asset_class: asset.asset_class || _legacyToClass(asset.asset_type, asset.name),
+          security_type: asset.security_type || '',
           exchange: asset.exchange || '',
           description: asset.description || '',
           rollover_days: asset.rollover_days,
@@ -286,7 +354,7 @@ export default {
       } else {
         this.$message.error('找不到资产信息');
         if (!this.isDialog) {
-          this.$router.push('/asset/list');
+          this.$router.push({ name: 'AssetList' });
         }
       }
     },
@@ -306,7 +374,7 @@ export default {
                 if (this.isDialog) {
                   this.$emit('success');
                 } else {
-                  this.$router.push('/asset/list');
+                  this.$router.push({ name: 'AssetList' });
                 }
               } catch (error) {
                 // 如果是 404 错误，说明后端暂不支持更新
@@ -334,7 +402,7 @@ export default {
               if (this.isDialog) {
                 this.$emit('success');
               } else {
-                this.$router.push('/asset/list');
+                this.$router.push({ name: 'AssetList' });
               }
             }
           } catch (error) {

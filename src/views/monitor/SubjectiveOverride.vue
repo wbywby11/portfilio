@@ -232,7 +232,7 @@
 <script>
 import { mapState } from 'vuex';
 
-/** 无策略上下文时的默认 12 资产（与 app/monitor/config.py 中文名一致，仅 monitor_id=default 等场景） */
+/** 无策略上下文时的默认 12 资产（仅 monitor_id=default 等场景） */
 const LEGACY_ASSET_ROWS = [
   { key: '沪深300', name: '沪深300' },
   { key: '创业板指', name: '创业板指' },
@@ -454,7 +454,7 @@ export default {
           this.$store.dispatch('monitor/fetchMonitorState')
         ]);
       } catch (error) {
-        this.$message.error('加载数据失败：' + error.message);
+        console.warn('SubjectiveOverride 加载数据失败:', error.message);
       } finally {
         this.loading = false;
       }

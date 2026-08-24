@@ -55,10 +55,9 @@ service.interceptors.response.use(
           break;
         }
         case 404:
-          if (error.config && error.config.skipGlobal404Message) {
-            break;
-          }
-          Message.error('请求的资源不存在');
+          // 日常监控中切换未初始化策略时 404 属于正常预期，store 层已统一 catch 并降级
+          // 不再弹 Message.error，避免干扰用户；若确有需要可改用 console.warn
+          console.warn('[API 404]', error.config?.url, error.message);
           break;
         // 500 和其他业务错误由组件级 catch 处理
       }

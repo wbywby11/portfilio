@@ -13,4 +13,17 @@ module.exports = {
       },
     },
   },
+  devServer: {
+    client: {
+      overlay: {
+        runtimeErrors: (error) => {
+          // 屏蔽 ResizeObserver 误报（vxe-table 展开行时的正常浏览器通知）
+          if (error.message && error.message.includes('ResizeObserver loop')) {
+            return false
+          }
+          return true
+        },
+      },
+    },
+  },
 }

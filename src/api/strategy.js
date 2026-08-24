@@ -47,6 +47,32 @@ export function validateTemplate(data) {
   });
 }
 
+// 上传策略PDF文档
+export function uploadTemplatePdf(templateId, formData) {
+  return request({
+    url: `/api/v1/model-templates/${templateId}/upload-pdf`,
+    method: 'post',
+    data: formData,
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+}
+
+// 获取策略PDF文档URL
+export function getTemplatePdfUrl(templateId) {
+  return request({
+    url: `/api/v1/model-templates/${templateId}/pdf-url`,
+    method: 'get'
+  });
+}
+
+// 删除策略PDF文档
+export function deleteTemplatePdf(templateId) {
+  return request({
+    url: `/api/v1/model-templates/${templateId}/pdf`,
+    method: 'delete'
+  });
+}
+
 // 创建策略模型
 export function createStrategyModel(data) {
   return request({
@@ -113,15 +139,9 @@ export function computeMetricsFromSnapshots(snapshots, cutoffDate) {
   });
 }
 
-// 按指数编制规则获取资产权重上限（供权重初始化、预设调仓、步进输入限制与提示）
+// 权重上限由前端策略参数配置驱动，不再从后端硬编码获取
 export function getMaxWeightsByCodes(thscodes) {
-  const codes = Array.isArray(thscodes) ? thscodes.join(',') : (thscodes || '');
-  if (!codes) return Promise.resolve({ data: { data: {} } });
-  return request({
-    url: '/api/v1/backtests/max-weights',
-    method: 'get',
-    params: { thscodes: codes }
-  });
+  return Promise.resolve({ data: { data: {} } });
 }
 
 // 发布模型（个别环境 Mongo/网络较慢，单独放宽超时）
@@ -179,20 +199,12 @@ export function getLivePublishedModelList(params) {
   });
 }
 
-/** 日常监控准入：已实盘发布 + risk_budget_target_vol + 混合动量 */
+/** 日常监控准入：已实盘发布 + vol_scaled_budget + 混合动量 */
 export function getLiveEligibleForMonitor(params) {
   return request({
     url: '/api/v1/strategy-models/live/eligible-for-monitor',
     method: 'get',
     params
-  });
-}
-
-// 获取单个策略实盘监控数据
-export function getLiveMonitoring(modelId) {
-  return request({
-    url: `/api/v1/strategy-models/${modelId}/live-monitoring`,
-    method: 'get'
   });
 }
 
@@ -232,63 +244,62 @@ export function updateStrategyModel(modelId, data, axiosConfig = {}) {
   });
 }
 
-// 计算策略（算法优化计算）
-export function calculateStrategy(data) {
+
+// ==================== 多维回测分析 ====================
+
+// 参数敏感度分析（第5层策略验证增强）
+export function runSensitivityAnalysis(data) {
   return request({
-    url: '/api/v1/algorithms/calculate',
+    url: '/api/v1/backtests/sensitivity',
     method: 'post',
-    data
+    data,
+    timeout: 300000  // 5分钟超时（多次回测耗时）
   });
 }
 
-// 业绩基准相关API
-
-// 获取业绩基准列表
-export function getBenchmarkList() {
+// 情景推演
+export function runScenarioAnalysis(data) {
   return request({
-    url: '/api/v1/benchmarks/',
-    method: 'get'
-  });
-}
-
-// 获取单个业绩基准
-export function getBenchmark(benchmarkId) {
-  return request({
-    url: `/api/v1/benchmarks/${benchmarkId}`,
-    method: 'get'
-  });
-}
-
-// 根据代码获取业绩基准
-export function getBenchmarkByCode(code) {
-  return request({
-    url: `/api/v1/benchmarks/by-code/${code}`,
-    method: 'get'
-  });
-}
-
-// 创建业绩基准
-export function createBenchmark(data) {
-  return request({
-    url: '/api/v1/benchmarks/',
+    url: '/api/v1/backtests/scenario',
     method: 'post',
-    data
+    data,
+    timeout: 180000
   });
 }
 
-// 更新业绩基准
-export function updateBenchmark(benchmarkId, data) {
+// 鲁棒性检验（滑动子区间回测）
+export function runRobustnessCheck(data) {
   return request({
-    url: `/api/v1/benchmarks/${benchmarkId}`,
-    method: 'put',
-    data
+    url: '/api/v1/backtests/robustness',
+    method: 'post',
+    data,
+    timeout: 300000
   });
 }
 
-// 删除业绩基准
-export function deleteBenchmark(benchmarkId) {
+// 组合评估报告（Phase 3: 组合评估能力补全）
+export function generatePortfolioReport(data) {
   return request({
-    url: `/api/v1/benchmarks/${benchmarkId}`,
-    method: 'delete'
+    url: '/api/v1/backtests/portfolio-report',
+    method: 'post',
+    data,
+    timeout: 120000
+  });
+}
+
+// 获取策略参数版本列表
+export function getParamVersions(modelId, { skip = 0, limit = 50 } = {}) {
+  return request({
+    url: `/api/v1/strategy-models/${modelId}/param-versions`,
+    method: 'get',
+    params: { skip, limit }
+  });
+}
+
+// 获取单个参数版本详情
+export function getParamVersion(modelId, versionId) {
+  return request({
+    url: `/api/v1/strategy-models/${modelId}/param-versions/${versionId}`,
+    method: 'get'
   });
 }

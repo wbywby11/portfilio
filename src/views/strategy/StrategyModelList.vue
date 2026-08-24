@@ -13,17 +13,17 @@
       <!-- 搜索栏 -->
       <el-form :inline="true" :model="searchForm" class="search-form">
         <el-form-item label="模型名称">
-          <el-input v-model="searchForm.name" placeholder="请输入模型名称" clearable></el-input>
+          <el-input v-model="searchForm.name" placeholder="请输入模型名称" clearable style="width: 160px;"></el-input>
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="searchForm.status" placeholder="请选择" clearable>
+          <el-select v-model="searchForm.status" placeholder="请选择" clearable style="width: 120px;">
             <el-option label="草稿" value="草稿"></el-option>
             <el-option label="已发布" value="已发布"></el-option>
             <el-option label="已归档" value="已归档"></el-option>
           </el-select>
         </el-form-item>
-        <el-form-item label="模板">
-          <el-select v-model="searchForm.template_code" placeholder="请选择模板" clearable>
+        <el-form-item label="策略">
+          <el-select v-model="searchForm.template_code" placeholder="请选择策略" clearable style="width: 150px;">
             <el-option
               v-for="item in templateOptions"
               :key="item.code"
@@ -48,29 +48,67 @@
         :scroll-y="{enabled: true, gt: 0}"
         show-overflow="title"
       >
-        <vxe-column field="name" title="策略名称" min-width="200" show-overflow="title"></vxe-column>
-        <vxe-column field="template_code" title="所用模板" width="150">
+        <vxe-column field="name" title="策略名称" min-width="180" show-overflow="title"></vxe-column>
+        <vxe-column field="template_code" title="所用模板" width="140">
           <template #default="{ row }">
             <el-tag size="small">
               {{ row.template_name || row.template_code }}
             </el-tag>
           </template>
         </vxe-column>
-        <vxe-column field="status" title="状态" width="100">
+        <vxe-column title="年化收益率" width="95" align="right">
+          <template #default="{ row }">
+            <span v-if="row.latest_backtest_summary" :style="{color: (row.latest_backtest_summary.annual_return||0) >= 0 ? '#f56c6c' : '#67c23a'}">
+              {{ formatPct(row.latest_backtest_summary.annual_return) }}
+            </span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </vxe-column>
+        <vxe-column title="年化波动率" width="95" align="right">
+          <template #default="{ row }">
+            <span v-if="row.latest_backtest_summary">{{ formatPct(row.latest_backtest_summary.annual_vol) }}</span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </vxe-column>
+        <vxe-column title="夏普率" width="75" align="right">
+          <template #default="{ row }">
+            <span v-if="row.latest_backtest_summary" :style="{color: (row.latest_backtest_summary.sharpe||0) >= 1 ? '#f56c6c' : (row.latest_backtest_summary.sharpe||0) >= 0 ? '#e6a23c' : '#67c23a', fontWeight: 600}">
+              {{ formatNum(row.latest_backtest_summary.sharpe) }}
+            </span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </vxe-column>
+        <vxe-column title="最大回撤" width="90" align="right">
+          <template #default="{ row }">
+            <span v-if="row.latest_backtest_summary" style="color:#f56c6c">
+              {{ formatPct(row.latest_backtest_summary.max_drawdown) }}
+            </span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </vxe-column>
+        <vxe-column title="回测区间" width="170" align="center">
+          <template #default="{ row }">
+            <span v-if="row.latest_backtest_summary && row.latest_backtest_summary.start_date">
+              {{ formatDateShort(row.latest_backtest_summary.start_date) }} ~ {{ formatDateShort(row.latest_backtest_summary.end_date) }}
+            </span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </vxe-column>
+        <vxe-column field="status" title="状态" width="80">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)" size="small">
               {{ getStatusLabel(row.status) }}
             </el-tag>
           </template>
         </vxe-column>
-        <vxe-column field="live_publish_enabled" title="实盘" width="108">
+        <vxe-column field="live_publish_enabled" title="实盘" width="80">
           <template #default="{ row }">
             <el-tag :type="row.live_publish_enabled ? 'success' : 'info'" size="small">
               {{ row.live_publish_enabled ? '已发布' : '未发布' }}
             </el-tag>
           </template>
         </vxe-column>
-        <vxe-column field="asset_codes" title="关联资产" width="200">
+        <vxe-column field="asset_codes" title="关联资产" width="90">
           <template #default="{ row }">
             <el-popover
               placement="top-start"
@@ -82,60 +120,28 @@
                 {{ assetCode }} - {{ row.asset_names && row.asset_names[assetCode] || '未知资产' }}
               </div>
               <template slot="reference">
-                <el-tag size="small" type="info" style="margin-right: 5px;">
+                <el-tag size="small" type="info">
                   {{ row.asset_codes.length }}个资产
                 </el-tag>
               </template>
             </el-popover>
           </template>
         </vxe-column>
-        <vxe-column field="description" title="描述" min-width="150" show-overflow="title"></vxe-column>
-        <vxe-column field="created_at" title="创建时间" width="160">
-          <template #default="{ row }">
-            {{ formatDate(row.created_at) }}
-          </template>
-        </vxe-column>
-        <vxe-column title="操作" width="400" fixed="right">
+        <vxe-column title="操作" width="150" fixed="right">
           <template #default="{ row }">
             <el-button type="text" size="small" @click="handleView(row)">查看</el-button>
-            <el-button
-              type="text"
-              size="small"
-              @click="handleBacktest(row)"
-            >
-              回测
-            </el-button>
-            <el-button
-              type="text"
-              size="small"
-              @click="handlePublish(row)"
-              :disabled="row.status === '已发布' || row.status === 'published' || row.status === '已归档' || row.status === 'archived'"
-            >
-              发布
-            </el-button>
-            <el-button
-              type="text"
-              size="small"
-              :disabled="!canRowLivePublish(row)"
-              :loading="liveOpRowId === row.id && liveOpKind === 'publish'"
-              @click="handleLivePublishRow(row)"
-            >
-              实盘发布
-            </el-button>
-            <el-button
-              type="text"
-              size="small"
-              style="color: #e6a23c;"
-              :disabled="!row.live_publish_enabled || isRowArchived(row)"
-              :loading="liveOpRowId === row.id && liveOpKind === 'unpublish'"
-              @click="handleLiveUnpublishRow(row)"
-            >
-              取消实盘
-            </el-button>
             <el-button type="text" size="small" @click="handleEdit(row)">编辑</el-button>
-            <el-button type="text" size="small" @click="handleDelete(row)" style="color: #f56c6c;">
-              删除
-            </el-button>
+            <el-dropdown trigger="click" @command="cmd => handleRowCommand(cmd, row)">
+              <el-button type="text" size="small">
+                更多<i class="el-icon-arrow-down el-icon--right"></i>
+              </el-button>
+              <el-dropdown-menu slot="dropdown">
+                <el-dropdown-item command="publish" :disabled="row.status === '已发布' || row.status === 'published' || isRowArchived(row)">发布</el-dropdown-item>
+                <el-dropdown-item command="livePublish" :disabled="!canRowLivePublish(row)">实盘发布</el-dropdown-item>
+                <el-dropdown-item command="liveUnpublish" :disabled="!row.live_publish_enabled || isRowArchived(row)">取消实盘</el-dropdown-item>
+                <el-dropdown-item command="delete" divided style="color: #f56c6c;">删除</el-dropdown-item>
+              </el-dropdown-menu>
+            </el-dropdown>
           </template>
         </vxe-column>
       </vxe-table>
@@ -152,13 +158,6 @@
         style="margin-top: 20px; text-align: right;"
       />
     </div>
-
-    <!-- 回测配置对话框 -->
-    <backtest-dialog
-      v-model="backtestDialogVisible"
-      :model-id="currentModelId"
-      @success="handleBacktestSuccess"
-    />
 
     <!-- 策略详情弹窗 -->
     <el-dialog
@@ -194,12 +193,10 @@
 
 <script>
 import dayjs from 'dayjs';
-import BacktestDialog from '@/components/BacktestDialog.vue';
 
 export default {
   name: 'StrategyModelList',
   components: {
-    BacktestDialog,
     StrategyModelDetail: () => import('./StrategyModelDetail.vue'),
     StrategyModelForm: () => import('./StrategyModelForm.vue')
   },
@@ -218,7 +215,6 @@ export default {
         pageSize: 20,
         total: 0
       },
-      backtestDialogVisible: false,
       currentModelId: '',
       detailDialogVisible: false,
       formDialogVisible: false,
@@ -280,15 +276,14 @@ export default {
       this.currentModelId = row.id;
       this.formDialogVisible = true;
     },
+    handleRowCommand(cmd, row) {
+      if (cmd === 'publish') this.handlePublish(row);
+      else if (cmd === 'livePublish') this.handleLivePublishRow(row);
+      else if (cmd === 'liveUnpublish') this.handleLiveUnpublishRow(row);
+      else if (cmd === 'delete') this.handleDelete(row);
+    },
     handleFormSuccess() {
       this.formDialogVisible = false;
-      this.fetchData();
-    },
-    async handleBacktest(row) {
-      this.currentModelId = row.id;
-      this.backtestDialogVisible = true;
-    },
-    handleBacktestSuccess() {
       this.fetchData();
     },
     async handlePublish(row) {
@@ -333,7 +328,7 @@ export default {
       if (!this.canRowLivePublish(row)) return;
       try {
         await this.$confirm(
-          '确认实盘发布「' + (row.name || row.id) + '」？次交易日生效；risk_budget_target_vol + 混合动量策略可进入「日常监控」准入列表。',
+          '确认实盘发布「' + (row.name || row.id) + '」？次交易日生效；vol_scaled_budget + 混合动量策略可进入「日常监控」准入列表。',
           '实盘发布',
           { type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消' }
         );
@@ -432,6 +427,21 @@ export default {
     },
     formatDate(date) {
       return date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-';
+    },
+    formatDateShort(date) {
+      return date ? dayjs(date).format('YYYY-MM-DD') : '-';
+    },
+    formatPct(v) {
+      if (v === null || v === undefined) return '—';
+      const n = Number(v);
+      if (isNaN(n)) return '—';
+      return (n * 100).toFixed(2) + '%';
+    },
+    formatNum(v) {
+      if (v === null || v === undefined) return '—';
+      const n = Number(v);
+      if (isNaN(n)) return '—';
+      return n.toFixed(2);
     }
   }
 };

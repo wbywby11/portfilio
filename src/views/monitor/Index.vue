@@ -1,269 +1,119 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
-      <h2 class="page-title">监控仪表板</h2>
-      <div>
-        <el-button type="primary" icon="el-icon-refresh" @click="loadData" :loading="loading">刷新数据</el-button>
+  <div class="dashboard-container">
+    <template v-if="!monitorState">
+      <el-empty :image-size="80">
+        <template slot="description">
+          <p style="color: #606266; font-size: 14px;">尚未建立本策略的日常监控数据</p>
+          <p style="color: #909399; font-size: 13px;">请在页面顶部点击「初始化」，完成后再查看监控数据。</p>
+        </template>
+      </el-empty>
+    </template>
+    <template v-else>
+      <!-- 时间段选择器 -->
+      <div class="period-bar">
+        <span class="period-label">绩效区间</span>
+        <el-radio-group v-model="selectedPeriod" size="small" @change="onPeriodChange">
+          <el-radio-button label="1m">近1月</el-radio-button>
+          <el-radio-button label="3m">近3月</el-radio-button>
+          <el-radio-button label="6m">近6月</el-radio-button>
+          <el-radio-button label="1y">近1年</el-radio-button>
+          <el-radio-button label="all">全部</el-radio-button>
+        </el-radio-group>
+        <span class="period-range">{{ periodRangeLabel }}</span>
       </div>
-    </div>
 
-    <div class="page-content" v-loading="loading">
-      <template v-if="!monitorState">
-        <el-empty :image-size="100">
-          <template slot="description">
-            <p class="empty-desc-title">尚未建立本策略的日常监控数据</p>
-            <p class="empty-desc-line">该策略实例（monitor_id = 模型 ID）还未执行过「初始化」。</p>
-            <p class="empty-desc-line">实盘发布仅完成准入，不会产生净值/绩效/信号；请在页面顶部点击「初始化」，完成后再使用「运行监控」滚动至最新交易日。</p>
-          </template>
-        </el-empty>
-      </template>
-      <template v-else>
-      <el-alert
-        v-if="performanceMismatch"
-        type="warning"
-        :closable="false"
-        show-icon
-        style="margin-bottom: 16px;"
-        title="绩效与下方曲线可能与顶部「当前实盘生效参数」不一致"
-        description="下方指标基于「最近一次初始化」时冻结的实盘快照；若已修改策略或再次实盘发布但未重新初始化，请重新执行初始化后再查看。">
-      </el-alert>
-      <div v-if="monitorState && monitorState.performance_basis" class="perf-basis-block">
-        <div class="section-title">
-          <span>本页绩效对应的实盘参数</span>
+      <!-- 核心绩效指标 -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">当前净值</div>
+          <div class="metric-value large">{{ formatNumber(currentNav, 4) }}</div>
+          <div class="metric-sub">{{ formatDate(monitorState && monitorState.date) }}</div>
         </div>
-        <p class="perf-basis-line muted">
-          {{ performanceBasisMeta }}
-        </p>
-        <p v-if="perfBasisSummary" class="perf-basis-summary">{{ perfBasisSummary }}</p>
-        <div
-          v-if="perfBasisParams && perfBasisParams.is_manual_allocation"
-          class="perf-basis-manual-wrap">
-          <p class="perf-basis-manual-hint muted">
-            以下为该绩效快照对应的<strong>初始化权重</strong>与<strong>预设调仓日权重</strong>（条形展示与
-            <a href="#monitor-subjective-live-params" class="perf-basis-manual-link">实盘生效参数 · 主观实盘参数</a>
-            一致，数据同源）。
-            若已在策略侧改参或实盘发布但未重新初始化，可能与页面顶部当前实盘参数不一致。
-          </p>
-          <SubjectiveManualWeightsSnapshot
-            compact
-            :manual-weights="perfBasisParams.manual_weights || {}"
-            :manual-adjustments="perfBasisParams.manual_weight_adjustments || []"
-            :resolve-label="perfBasisAssetLabelFn"
-          />
+        <div class="metric-card">
+          <div class="metric-label">区间收益率</div>
+          <div class="metric-value" :style="{ color: getReturnColor(periodStats.periodReturn) }">
+            {{ formatPct(periodStats.periodReturn) }}
+          </div>
+          <div class="metric-sub">{{ periodStats.tradingDays }} 个交易日</div>
         </div>
-        <div
-          v-if="perfBasisParams && !perfBasisParams.is_manual_allocation"
-          class="perf-basis-metrics">
-          <div class="perf-basis-metric">
-            <span class="lbl">目标波动</span>
-            <span class="val">{{ perfBasisParams.target_vol_pct }}%</span>
+        <div class="metric-card">
+          <div class="metric-label">年化收益率</div>
+          <div class="metric-value" :style="{ color: getReturnColor(periodStats.annualReturn) }">
+            {{ formatPct(periodStats.annualReturn) }}
           </div>
-          <div v-if="!isRiskBudgetTargetVolPerfLocked" class="perf-basis-metric">
-            <span class="lbl">波动重置阈值</span>
-            <span class="val">{{ perfBasisParams.vol_reset_threshold_pct }}%</span>
-          </div>
-          <div class="perf-basis-metric">
-            <span class="lbl">总杠杆上限</span>
-            <span class="val">{{ perfBasisParams.max_total_leverage }}</span>
-          </div>
+          <div class="metric-sub">历史年化</div>
         </div>
-        <div
-          v-if="perfBasisParams && perfBasisParams.asset_classes && perfBasisParams.asset_classes.length"
-          class="perf-basis-asset-classes">
-          <span class="perf-basis-block-label">资产类别</span>
-          <el-tag
-            v-for="(cls, cidx) in perfBasisParams.asset_classes"
-            :key="'pb-cls-' + cidx"
-            size="small"
-            :type="assetClassTagType(cls)"
-            effect="plain"
-            class="perf-basis-class-tag">
-            {{ cls }}
-          </el-tag>
+        <div class="metric-card">
+          <div class="metric-label">年化波动率</div>
+          <div class="metric-value">{{ formatPct(periodStats.annualVol) }}</div>
+          <div class="metric-sub">历史波动</div>
         </div>
-        <div v-if="hasPerfBasisWindowParams" class="perf-basis-window-block">
-          <div class="perf-basis-subtitle">动量与反转窗口（交易日）</div>
-          <div class="perf-basis-metrics perf-basis-metrics--wrap">
-            <div v-if="perfBasisParams.mom_windows" class="perf-basis-metric perf-basis-metric--wide">
-              <span class="lbl">MOM</span>
-              <span class="val val--subtle">{{ perfBasisParams.mom_windows }}</span>
-            </div>
-            <div v-if="perfBasisParams.posi_windows" class="perf-basis-metric perf-basis-metric--wide">
-              <span class="lbl">POSI</span>
-              <span class="val val--subtle">{{ perfBasisParams.posi_windows }}</span>
-            </div>
-            <div v-if="perfBasisParams.smom_windows" class="perf-basis-metric perf-basis-metric--wide">
-              <span class="lbl">SMOM</span>
-              <span class="val val--subtle">{{ perfBasisParams.smom_windows }}</span>
-            </div>
-            <div v-if="perfBasisParams.macd_windows" class="perf-basis-metric perf-basis-metric--wide">
-              <span class="lbl">MACD 短期</span>
-              <span class="val val--subtle">{{ perfBasisParams.macd_windows }}</span>
-            </div>
-            <div
-              v-if="perfBasisParams.macd_long_window != null && perfBasisParams.macd_long_window !== ''"
-              class="perf-basis-metric">
-              <span class="lbl">MACD 长期</span>
-              <span class="val val--subtle">{{ perfBasisParams.macd_long_window }}</span>
-            </div>
-            <div v-if="perfBasisParams.reversal_windows" class="perf-basis-metric perf-basis-metric--wide">
-              <span class="lbl">反转</span>
-              <span class="val val--subtle">{{ perfBasisParams.reversal_windows }}</span>
-            </div>
-            <div
-              v-if="!isRiskBudgetTargetVolPerfLocked && perfBasisParams.min_history_days != null && perfBasisParams.min_history_days !== ''"
-              class="perf-basis-metric">
-              <span class="lbl">最小历史天数</span>
-              <span class="val val--subtle">{{ perfBasisParams.min_history_days }} 日</span>
-            </div>
-            <div
-              v-if="!isRiskBudgetTargetVolPerfLocked && perfBasisParams.min_history_momentum != null && perfBasisParams.min_history_momentum !== ''"
-              class="perf-basis-metric">
-              <span class="lbl">动量最小历史</span>
-              <span class="val val--subtle">{{ perfBasisParams.min_history_momentum }} 日</span>
-            </div>
-            <div
-              v-if="!isRiskBudgetTargetVolPerfLocked && perfBasisParams.min_history_reversal != null && perfBasisParams.min_history_reversal !== ''"
-              class="perf-basis-metric">
-              <span class="lbl">反转最小历史</span>
-              <span class="val val--subtle">{{ perfBasisParams.min_history_reversal }} 日</span>
-            </div>
+        <div class="metric-card">
+          <div class="metric-label">夏普比率</div>
+          <div class="metric-value" :style="{ color: getSharpeColor(periodStats.sharpe) }">
+            {{ formatNum(periodStats.sharpe, 3) }}
           </div>
+          <div class="metric-sub">风险调整</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">最大回撤</div>
+          <div class="metric-value" style="color: #67C23A;">
+            {{ formatPct(periodStats.maxDrawdown) }}
+          </div>
+          <div class="metric-sub">区间最大</div>
         </div>
       </div>
-      <el-alert
-        v-else
-        type="info"
-        :closable="false"
-        show-icon
-        style="margin-bottom: 16px;"
-        title="未记录绩效对应的参数快照"
-        description="请重新执行页面顶部「初始化」后，此处将展示与净值曲线一致的实盘参数说明。">
-      </el-alert>
-      <!-- 策略表现指标卡片区 -->
-      <div class="section-title">
-        <span>策略表现</span>
-      </div>
-      <el-row :gutter="20" class="metrics-row">
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card primary">
-            <div class="metric-label">当前净值</div>
-            <div class="metric-value large">{{ formatNumber(currentNav, 2) }}</div>
-            <div class="metric-sub">更新: {{ formatDate(monitorState && monitorState.date) }}</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">总杠杆</div>
-            <div class="metric-value">{{ formatNumber(totalLeverage, 2) }}</div>
-            <div class="metric-sub">目标: 1.00</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">年化收益率</div>
-            <div class="metric-value" :style="{ color: getReturnColor(performance && performance.annual_return) }">
-              {{ formatPercentPoints(performance && performance.annual_return) }}
-            </div>
-            <div class="metric-sub">历史年化</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">年化波动率</div>
-            <div class="metric-value">{{ formatPercentPoints(performance && performance.annual_volatility) }}</div>
-            <div class="metric-sub">历史波动</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">夏普比率</div>
-            <div class="metric-value">{{ formatNumber(performance && performance.sharpe_ratio, 3) }}</div>
-            <div class="metric-sub">风险调整</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">最大回撤</div>
-            <div class="metric-value" style="color: #67C23A;">
-              {{ formatPercentPoints(performance && performance.max_drawdown) }}
-            </div>
-            <div class="metric-sub">历史最大</div>
-          </el-card>
-        </el-col>
-      </el-row>
 
-      <!-- 当日表现指标区域 -->
-      <div class="section-title" style="margin-top: 25px;">
-        <span>当日表现</span>
+      <!-- 实时状态指标 -->
+      <div class="metrics-grid metrics-grid--sub">
+        <div class="metric-card">
+          <div class="metric-label">当日收益</div>
+          <div class="metric-value" :style="{ color: getReturnColor(dailyReturnPct) }">
+            {{ dailyReturnPct !== null ? formatSignedPct(dailyReturnPct) : '-' }}
+          </div>
+          <div class="metric-sub">较前日</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">当前回撤</div>
+          <div class="metric-value" style="color: #67C23A;">
+            {{ formatPct(currentDrawdown) }}
+          </div>
+          <div class="metric-sub">距历史高点</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">总杠杆</div>
+          <div class="metric-value">{{ formatNum(totalLeverage, 2) }}</div>
+          <div class="metric-sub">权重绝对值之和</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">持仓资产数</div>
+          <div class="metric-value">{{ positionCount }}</div>
+          <div class="metric-sub">权重 &gt; 1%</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">距下次调仓</div>
+          <div class="metric-value">{{ daysToNextRebalance != null ? daysToNextRebalance + ' 天' : '-' }}</div>
+          <div class="metric-sub">{{ nextRebalanceDateLabel }}</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">监控波动率</div>
+          <div class="metric-value" :style="{ color: monitoredVolatilityColor }">
+            {{ formattedMonitoredVolatility }}
+          </div>
+          <div class="metric-sub">{{ isManualAllocationDashboard ? '主观策略无阈值' : '阈值: ' + formattedVolThreshold }}</div>
+        </div>
       </div>
-      <el-row :gutter="20" class="metrics-row">
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">当日收益额</div>
-            <div class="metric-value" :style="{ color: getReturnColor(dailyPnL) }">
-              {{ dailyPnL !== null ? (dailyPnL >= 0 ? '+' : '') + formatNumber(dailyPnL, 4) : '-' }}
-            </div>
-            <div class="metric-sub">净值变动</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">当日收益率</div>
-            <div class="metric-value" :style="{ color: getReturnColor(dailyReturnPct) }">
-              {{ dailyReturnPct !== null ? formatSignedPercent(dailyReturnPct) : '-' }}
-            </div>
-            <div class="metric-sub">较前日</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">当前回撤</div>
-            <div class="metric-value" style="color: #67C23A;">
-              {{ formatPercentPoints(currentDrawdown) }}
-            </div>
-            <div class="metric-sub">距离高点</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">持仓资产数</div>
-            <div class="metric-value">{{ positionCount }}</div>
-            <div class="metric-sub">权重 > 0</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">距下次调仓</div>
-            <div class="metric-value">{{ daysToNextRebalance != null ? daysToNextRebalance : '-' }}</div>
-            <div class="metric-sub">天</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="metric-card">
-            <div class="metric-label">监测波动率</div>
-            <div class="metric-value" :style="{ color: monitoredVolatilityColor }">
-              {{ formattedMonitoredVolatility }}
-            </div>
-            <div v-if="!isManualAllocationDashboard" class="metric-sub">阈值: {{ formattedVolThreshold }}</div>
-            <div v-else class="metric-sub">不设波动率重置阈值</div>
-          </el-card>
-        </el-col>
-      </el-row>
-      </template>
-    </div>
+    </template>
   </div>
 </template>
 
 <script>
 import dayjs from 'dayjs';
 import { mapState, mapActions } from 'vuex';
-import SubjectiveManualWeightsSnapshot from './SubjectiveManualWeightsSnapshot.vue';
-import { isRiskBudgetTargetVolTemplateCode } from '@/utils/strategyTemplateFlags';
 
 export default {
   name: 'MonitorIndex',
-  components: { SubjectiveManualWeightsSnapshot },
+  components: {},
   props: {
     strategyContext: {
       type: Object,
@@ -272,63 +122,71 @@ export default {
   },
   data() {
     return {
-      loading: false
+      loading: false,
+      selectedPeriod: 'all'
     };
   },
   computed: {
     ...mapState('monitor', ['monitorState', 'navHistory', 'performance', 'signals']),
-    perfBasisParams() {
-      const pb = this.monitorState && this.monitorState.performance_basis;
-      if (!pb || !pb.live_effective_params) return null;
-      return pb.live_effective_params;
+    /** 按选定区间过滤后的净值序列 */
+    filteredNavHistory() {
+      if (!this.navHistory || !this.navHistory.length) return [];
+      if (this.selectedPeriod === 'all') return this.navHistory;
+      const monthsMap = { '1m': 1, '3m': 3, '6m': 6, '1y': 12 };
+      const months = monthsMap[this.selectedPeriod];
+      if (!months) return this.navHistory;
+      const cutoff = dayjs().subtract(months, 'month');
+      return this.navHistory.filter(h => dayjs(h.date).isAfter(cutoff));
     },
-    perfBasisSummary() {
-      const pb = this.monitorState && this.monitorState.performance_basis;
-      return pb && pb.live_effective_summary ? pb.live_effective_summary : '';
+    /** 区间绩效统计 */
+    periodStats() {
+      const data = this.filteredNavHistory;
+      const empty = { periodReturn: null, annualReturn: null, annualVol: null, sharpe: null, maxDrawdown: null, tradingDays: 0 };
+      if (data.length < 2) return empty;
+      const firstNav = data[0].nav || 1;
+      const lastNav = data[data.length - 1].nav || 1;
+      const periodReturn = (lastNav / firstNav) - 1;
+      const tradingDays = data.length;
+      const annualReturn = Math.pow(lastNav / firstNav, 252 / tradingDays) - 1;
+      const dailyReturns = [];
+      for (let i = 1; i < data.length; i++) {
+        if (data[i].nav && data[i - 1].nav) {
+          dailyReturns.push(data[i].nav / data[i - 1].nav - 1);
+        }
+      }
+      let annualVol = null, sharpe = null;
+      if (dailyReturns.length > 1) {
+        const mean = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
+        const variance = dailyReturns.reduce((s, r) => s + Math.pow(r - mean, 2), 0) / dailyReturns.length;
+        annualVol = Math.sqrt(variance * 252);
+        sharpe = annualVol > 0 ? annualReturn / annualVol : 0;
+      }
+      let maxDrawdown = 0, peak = firstNav;
+      for (const item of data) {
+        if (item.nav > peak) peak = item.nav;
+        const dd = (item.nav - peak) / peak;
+        if (dd < maxDrawdown) maxDrawdown = dd;
+      }
+      return { periodReturn, annualReturn, annualVol, sharpe, maxDrawdown, tradingDays };
     },
-    performanceBasisMeta() {
-      const pb = this.monitorState && this.monitorState.performance_basis;
-      if (!pb) return '';
-      const v = pb.live_version != null ? `v${pb.live_version}` : '—';
-      const cap = pb.captured_at ? this.formatPerfCaptured(pb.captured_at) : '—';
-      return `初始化快照 · 实盘版本 ${v} · 记录时间 ${cap}`;
+    /** 区间标签 */
+    periodRangeLabel() {
+      const data = this.filteredNavHistory;
+      if (!data.length) return '';
+      const s = dayjs(data[0].date).format('YYYY-MM-DD');
+      const e = dayjs(data[data.length - 1].date).format('YYYY-MM-DD');
+      return `${s} ~ ${e}`;
     },
-    performanceMismatch() {
-      const pb = this.monitorState && this.monitorState.performance_basis;
-      const cur = this.strategyContext;
-      if (!pb || !cur || cur.is_config_baseline) return false;
-      const pv = pb.live_version;
-      const cv = cur.live_version;
-      if (pv == null || cv == null) return false;
-      return Number(pv) !== Number(cv);
-    },
-    /** 子组件 resolveLabel：箭头函数固定父组件 this */
-    perfBasisAssetLabelFn() {
-      return code => this.perfBasisAssetLabel(code);
-    },
-    /** 与日常监控顶部「实盘生效参数」窗口块一致，用于绩效说明区展示 */
-    hasPerfBasisWindowParams() {
-      const p = this.perfBasisParams;
-      if (!p || p.is_manual_allocation) return false;
-      const hideHist = this.isRiskBudgetTargetVolPerfLocked;
-      const hist = !hideHist && (
-        (p.min_history_days != null && p.min_history_days !== '') ||
-        (p.min_history_momentum != null && p.min_history_momentum !== '') ||
-        (p.min_history_reversal != null && p.min_history_reversal !== '')
-      );
-      return !!(
-        p.mom_windows ||
-        p.posi_windows ||
-        p.smom_windows ||
-        p.reversal_windows ||
-        p.macd_windows ||
-        (p.macd_long_window != null && p.macd_long_window !== '') ||
-        hist
-      );
-    },
-    isRiskBudgetTargetVolPerfLocked() {
-      const ctx = this.strategyContext;
-      return !!(ctx && isRiskBudgetTargetVolTemplateCode(ctx.template_code));
+    /** 下次调仓日期文本 */
+    nextRebalanceDateLabel() {
+      if (!this.signals) return '';
+      if (this.signals.pending_rebalance && this.signals.pending_rebalance.execute_date) {
+        return dayjs(this.signals.pending_rebalance.execute_date).format('YYYY-MM-DD');
+      }
+      if (this.signals.monthly_rebalance && this.signals.monthly_rebalance.next_date) {
+        return dayjs(this.signals.monthly_rebalance.next_date).format('YYYY-MM-DD');
+      }
+      return '';
     },
     /** 主观配置：仪表盘不展示「相对重置阈值」口径 */
     isManualAllocationDashboard() {
@@ -395,7 +253,7 @@ export default {
       }
       return 6;
     },
-    // 格式化的监测波动率
+    // 格式化的监控波动率
     formattedMonitoredVolatility() {
       if (this.currentVolatility === null) return '-';
       return this.currentVolatility.toFixed(2) + '%';
@@ -404,7 +262,7 @@ export default {
     formattedVolThreshold() {
       return this.volResetThreshold.toFixed(2) + '%';
     },
-    // 监测波动率颜色
+    // 监控波动率颜色
     monitoredVolatilityColor() {
       if (this.currentVolatility === null) return '#909399';
       if (this.isManualAllocationDashboard) return '#303133';
@@ -474,281 +332,137 @@ export default {
         this.loading = false;
       }
     },
-    formatNumber(num, decimals = 2) {
-      if (num === null || num === undefined) return '-';
-      return num.toFixed(decimals);
-    },
-    /** 后端绩效接口已是「百分比数值」（如 4.74 表示 4.74%），勿再乘以 100 */
-    formatPercentPoints(num) {
-      if (num === null || num === undefined || Number.isNaN(Number(num))) return '-';
-      return Number(num).toFixed(2) + '%';
-    },
-    formatSignedPercent(num) {
+    formatSignedPct(num) {
       if (num === null || num === undefined) return '-';
       const pct = num * 100;
       const sign = pct >= 0 ? '+' : '';
       return sign + pct.toFixed(2) + '%';
     },
+    formatNumber(num, decimals = 2) {
+      if (num === null || num === undefined) return '-';
+      return num.toFixed(decimals);
+    },
     formatDate(date) {
       return date ? dayjs(date).format('YYYY-MM-DD') : '-';
     },
-    formatPerfCaptured(iso) {
-      if (!iso) return '—';
-      const d = dayjs(iso);
-      return d.isValid() ? d.format('YYYY-MM-DD HH:mm:ss') : String(iso);
+    onPeriodChange() {
+      // 计算属性自动响应，无需额外操作
+    },
+    formatPct(num) {
+      if (num === null || num === undefined || Number.isNaN(Number(num))) return '-';
+      return (Number(num) * 100).toFixed(2) + '%';
+    },
+    formatNum(num, decimals = 2) {
+      if (num === null || num === undefined || Number.isNaN(Number(num))) return '-';
+      return Number(num).toFixed(decimals);
+    },
+    getSharpeColor(value) {
+      if (value === null || value === undefined) return '#909399';
+      if (value >= 1) return '#F56C6C';
+      if (value >= 0.5) return '#E6A23C';
+      if (value >= 0) return '#303133';
+      return '#67C23A';
     },
     getReturnColor(value) {
       if (value === null || value === undefined) return '#909399';
-      if (value > 0) return '#F56C6C';  // 涨用红色
-      if (value < 0) return '#67C23A';  // 跌用绿色
+      if (value > 0) return '#F56C6C';
+      if (value < 0) return '#67C23A';
       return '#909399';
     },
-    assetClassTagType(assetClass) {
-      const map = { '权益': 'primary', '固定收益': 'success', '大宗商品': 'warning', '其他': 'info' };
-      return map[assetClass] || 'info';
-    },
-    perfBasisAssetLabel(code) {
-      const c = String(code || '').trim();
-      if (!c) return '—';
-      const ctx = this.strategyContext;
-      const pb = this.monitorState && this.monitorState.performance_basis;
-      const map = (ctx && ctx.asset_names) || {};
-      if (map[c]) return `${map[c]}（${c}）`;
-      if (
-        pb &&
-        Array.isArray(pb.live_effective_assets) &&
-        Array.isArray(pb.live_effective_asset_labels)
-      ) {
-        const assets = pb.live_effective_assets;
-        const labels = pb.live_effective_asset_labels;
-        for (let i = 0; i < assets.length; i++) {
-          if (String(assets[i]).trim() === c) {
-            const nm = labels[i];
-            if (nm != null && String(nm).trim() && String(nm).trim() !== c) {
-              return `${nm}（${c}）`;
-            }
-            break;
-          }
-        }
-      }
-      return c;
-    }
   }
 };
 </script>
 
 <style scoped>
-.page-container {
-  padding: 20px;
+.dashboard-container {
+  padding: 0;
 }
 
-.page-header {
+/* ── 时间段选择栏 ── */
+.period-bar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #ebeef5;
 }
 
-.page-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 500;
+.period-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #606266;
+  white-space: nowrap;
 }
 
-.page-content {
-  min-height: 400px;
+.period-range {
+  font-size: 12px;
+  color: #909399;
+  margin-left: auto;
 }
 
-.section-title {
-  margin-bottom: 15px;
+/* ── 绩效卡片网格 ── */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
-.section-title span {
-  font-size: 15px;
-  font-weight: 500;
-  color: #303133;
-}
-
-.metrics-row {
+.metrics-grid--sub {
   margin-bottom: 0;
 }
 
 .metric-card {
   text-align: center;
-  padding: 15px;
+  padding: 10px 8px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  transition: box-shadow 0.2s;
 }
 
-.metric-card.primary {
-  background: linear-gradient(135deg, #409EFF 0%, #66b1ff 100%);
-  color: #fff;
-}
-
-.metric-card.primary .metric-label,
-.metric-card.primary .metric-sub {
-  color: rgba(255, 255, 255, 0.85);
-}
-
-.metric-card.primary .metric-value {
-  color: #fff;
+.metric-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .metric-label {
-  font-size: 13px;
+  font-size: 12px;
   color: #909399;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
 }
 
 .metric-value {
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 600;
   color: #303133;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
 }
 
 .metric-value.large {
-  font-size: 32px;
+  font-size: 22px;
 }
 
 .metric-sub {
-  font-size: 12px;
+  font-size: 11px;
   color: #c0c4cc;
 }
 
-.perf-basis-block {
-  margin-bottom: 20px;
-  padding: 12px 14px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e4e7ed;
+/* ── 窄屏自适应 ── */
+@media (max-width: 1400px) {
+  .metrics-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
-.perf-basis-line.muted {
-  margin: 0 0 8px 0;
-  font-size: 12px;
-  color: #909399;
-}
-
-.perf-basis-summary {
-  margin: 0 0 10px 0;
-  font-size: 13px;
-  color: #606266;
-  line-height: 1.5;
-}
-
-.perf-basis-manual-wrap {
-  margin: 10px 0 12px 0;
-  padding-top: 10px;
-  border-top: 1px dashed #e4e7ed;
-}
-
-.perf-basis-manual-hint {
-  margin: 0 0 10px 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #909399;
-}
-
-.perf-basis-manual-link {
-  color: #409eff;
-  text-decoration: none;
-}
-
-.perf-basis-manual-link:hover {
-  text-decoration: underline;
-}
-
-.perf-basis-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.perf-basis-metric {
-  min-width: 100px;
-  padding: 8px 12px;
-  background: #fff;
-  border-radius: 6px;
-  border: 1px solid #ebeef5;
-}
-
-.perf-basis-metric .lbl {
-  display: block;
-  font-size: 11px;
-  color: #909399;
-  margin-bottom: 4px;
-}
-
-.perf-basis-metric .val {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  font-variant-numeric: tabular-nums;
-}
-
-.perf-basis-metric .val.val--subtle {
-  font-size: 14px;
-  font-weight: 600;
-  word-break: break-all;
-}
-
-.perf-basis-metric--wide {
-  flex: 1 1 200px;
-  min-width: 160px;
-}
-
-.perf-basis-metrics--wrap {
-  margin-top: 6px;
-}
-
-.perf-basis-asset-classes {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed #e4e7ed;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.perf-basis-block-label {
-  font-size: 12px;
-  color: #909399;
-  margin-right: 4px;
-}
-
-.perf-basis-class-tag {
-  margin: 0 !important;
-}
-
-.perf-basis-window-block {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed #e4e7ed;
-}
-
-.perf-basis-subtitle {
-  font-size: 12px;
-  color: #909399;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  margin-bottom: 6px;
-}
-
-.empty-desc-title {
-  font-weight: 600;
-  color: #303133;
-  margin: 0 0 10px 0;
-  font-size: 15px;
-}
-
-.empty-desc-line {
-  margin: 6px 0;
-  color: #606266;
-  font-size: 14px;
-  line-height: 1.6;
-  max-width: 520px;
-  margin-left: auto;
-  margin-right: auto;
-  text-align: left;
+@media (max-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 </style>

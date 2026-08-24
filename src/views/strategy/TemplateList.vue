@@ -1,12 +1,8 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h2 class="page-title">模型模板库</h2>
-      <div>
-        <el-button type="primary" icon="el-icon-plus" @click="handleCreate">
-          新增模板
-        </el-button>
-      </div>
+      <h2 class="page-title">策略库</h2>
+      <div></div>
     </div>
 
     <div class="page-content">
@@ -15,7 +11,7 @@
         <el-form-item>
           <el-input
             v-model="searchKeyword"
-            placeholder="请输入模板名称或编码"
+            placeholder="请输入策略名称或编码"
             clearable
             @clear="handleSearch"
             @keyup.enter.native="handleSearch"
@@ -26,160 +22,156 @@
         </el-form-item>
       </el-form>
 
-      <!-- 模板列表 -->
-      <div class="template-grid">
-        <div class="template-grid-item" v-for="template in filteredTemplateList" :key="template.id">
-          <el-card class="template-card" shadow="hover">
-            <div slot="header" class="card-header">
-              <span class="template-name">{{ template.name }}</span>
-            </div>
-            
-            <div class="card-content">
-              <p class="template-desc">{{ template.description || '暂无描述' }}</p>
-              
-              <el-divider></el-divider>
-              
-              <div class="template-info">
-                <div class="info-item">
-                  <span class="label">状态：</span>
-                  <el-tag :type="template.is_active ? 'success' : 'info'" size="mini">
-                    {{ template.is_active ? '已启用' : '已禁用' }}
-                  </el-tag>
+      <!-- 策略列表（按分类分组） -->
+      <template v-for="group in groupedTemplateList">
+        <div :key="group.category" class="category-section" v-if="group.items.length > 0">
+          <h3 class="category-title">
+            <i :class="group.icon"></i>
+            {{ group.label }}
+            <span class="category-count">（{{ group.items.length }}）</span>
+          </h3>
+          <div class="template-grid">
+            <div class="template-grid-item" v-for="template in group.items" :key="template.id">
+              <el-card class="template-card" shadow="hover">
+                <div slot="header" class="card-header">
+                  <span class="template-name">{{ template.name }}</span>
+                  <el-tag v-if="template.category" :type="getCategoryTagType(template.category)" size="mini">{{ getCategoryLabel(template.category) }}</el-tag>
                 </div>
-              </div>
+                
+                <div class="card-content">
+                  <el-tooltip
+                    :content="template.description"
+                    placement="top"
+                    :disabled="!template.description"
+                    :open-delay="300"
+                  >
+                    <p class="template-desc">{{ template.description || '暂无描述' }}</p>
+                  </el-tooltip>
 
-              <div class="params-preview" v-if="template.parameters && template.parameters.length > 0">
-                <p class="section-title">参数定义（{{ template.parameters.length }}个）：</p>
-                <el-tag
-                  v-for="param in template.parameters.slice(0, 3)"
-                  :key="param.name"
-                  size="mini"
-                  style="margin-right: 8px; margin-bottom: 8px;"
-                >
-                  {{ param.label || param.name }}
-                </el-tag>
-                <span v-if="template.parameters.length > 3" style="color: #909399; font-size: 12px;">
-                  ...
-                </span>
-              </div>
-            </div>
+                  <div class="template-info">
+                    <div class="info-item">
+                      <span class="label">状态：</span>
+                      <el-tag :type="template.is_active ? 'success' : 'info'" size="mini">
+                        {{ template.is_active ? '已启用' : '已禁用' }}
+                      </el-tag>
+                    </div>
+                  </div>
 
-            <div class="card-actions">
-              <el-button size="small" type="text" @click="handleView(template)">
-                查看详情
-              </el-button>
-              <el-button size="small" type="text" @click="handleEdit(template)">
-                编辑
-              </el-button>
-              <el-button size="small" type="text" @click="handleUse(template)" style="color: #67c23a;">
-                使用模板
-              </el-button>
-              <el-button size="small" type="text" @click="handleDelete(template)" style="color: #f56c6c;">
-                删除
-              </el-button>
+                  <div class="params-preview" v-if="template.parameters && template.parameters.length > 0">
+                    <p class="section-title">参数定义（{{ template.parameters.length }}个）：</p>
+                    <el-tag
+                      v-for="param in template.parameters.slice(0, 3)"
+                      :key="param.name"
+                      size="mini"
+                      style="margin-right: 8px; margin-bottom: 8px;"
+                    >
+                      {{ param.label || param.name }}
+                    </el-tag>
+                    <span v-if="template.parameters.length > 3" style="color: #909399; font-size: 12px;">
+                      ...
+                    </span>
+                  </div>
+                </div>
+
+                <div class="card-actions">
+                  <el-button size="small" type="text" @click="handleView(template)">
+                    查看详情
+                  </el-button>
+                  <el-button size="small" type="text" @click="handleEdit(template)">
+                    编辑
+                  </el-button>
+                  <el-button size="small" type="text" @click="handleUse(template)" style="color: #67c23a;">
+                    使用模板
+                  </el-button>
+
+                </div>
+              </el-card>
             </div>
-          </el-card>
+          </div>
         </div>
-      </div>
+      </template>
 
       <!-- 空状态 -->
-      <el-empty v-if="filteredTemplateList.length === 0" :description="searchKeyword ? '没有找到匹配的模板' : '暂无模板数据'"></el-empty>
+      <el-empty v-if="filteredTemplateList.length === 0" :description="searchKeyword ? '没有找到匹配的策略' : '暂无策略数据'"></el-empty>
     </div>
 
     <!-- 详情对话框 -->
     <el-dialog
-      title="模板详情"
       :visible.sync="detailDialogVisible"
-      width="600px"
+      :fullscreen="pdfFullscreen"
+      :width="pdfFullscreen ? '' : '900px'"
       append-to-body
+      :top="pdfFullscreen ? '0' : '5vh'"
+      custom-class="pdf-detail-dialog"
+      :show-close="false"
+      @closed="onDetailClosed"
     >
-      <div v-if="currentTemplate">
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="模板名称">
-            {{ currentTemplate.name }}
-          </el-descriptions-item>
-          <el-descriptions-item label="模板代码">
-            {{ currentTemplate.code }}
-          </el-descriptions-item>
-          <el-descriptions-item label="描述">
-            {{ currentTemplate.description || '暂无' }}
-          </el-descriptions-item>
-          <el-descriptions-item label="状态">
-            <el-tag :type="currentTemplate.is_active ? 'success' : 'info'" size="small">
-              {{ currentTemplate.is_active ? '已启用' : '已禁用' }}
-            </el-tag>
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <div v-if="currentTemplate.parameters && currentTemplate.parameters.length > 0" style="margin-top: 20px;">
-          <h4>参数定义</h4>
-          <el-table :data="currentTemplate.parameters" border size="small">
-            <el-table-column prop="name" label="参数名" width="120"></el-table-column>
-            <el-table-column prop="label" label="显示名" width="120"></el-table-column>
-            <el-table-column prop="param_type" label="类型" width="80">
-              <template slot-scope="scope">
-                <el-tag size="mini" :type="getParamTypeTag(scope.row.param_type)">
-                  {{ getParamTypeLabel(scope.row.param_type) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="default_value" label="默认值" width="100">
-              <template slot-scope="scope">
-                <span v-if="scope.row.param_type === 'boolean'">
-                  <el-tag :type="scope.row.default_value ? 'success' : 'info'" size="mini">
-                    {{ scope.row.default_value ? '是' : '否' }}
-                  </el-tag>
-                </span>
-                <span v-else-if="scope.row.param_type === 'dict'">
-                  <el-popover placement="top" trigger="hover" :content="JSON.stringify(scope.row.default_value)">
-                    <el-tag slot="reference" size="mini" type="danger">JSON</el-tag>
-                  </el-popover>
-                </span>
-                <span v-else>
-                  {{ scope.row.default_value !== null && scope.row.default_value !== undefined ? scope.row.default_value : '-' }}
-                </span>
-              </template>
-            </el-table-column>
-            <el-table-column label="参数范围" width="150">
-              <template slot-scope="scope">
-                <span v-if="scope.row.param_type === 'number' || scope.row.param_type === 'slider'">
-                  [{{ scope.row.min_value }}, {{ scope.row.max_value }}]
-                  <span v-if="scope.row.param_type === 'slider' && scope.row.step">
-                    <br>步长: {{ scope.row.step }}
-                  </span>
-                </span>
-                <span v-else-if="scope.row.param_type === 'select' && scope.row.options">
-                  {{ Array.isArray(scope.row.options) ? scope.row.options.join(', ') : scope.row.options }}
-                </span>
-                <span v-else>-</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="required" label="必填" width="60">
-              <template slot-scope="scope">
-                <el-tag :type="scope.row.required ? 'danger' : 'info'" size="mini">
-                  {{ scope.row.required ? '是' : '否' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="description" label="说明" show-overflow-tooltip></el-table-column>
-          </el-table>
-        </div>
-
-        <div v-if="currentTemplate.source_code" style="margin-top: 20px;">
-          <h4>算法源代码</h4>
-          <div class="codemirror-wrapper">
-            <textarea ref="detailCodeEditor"></textarea>
-          </div>
+      <!-- 自定义顶部标题栏 -->
+      <div slot="title" class="pdf-dialog-header">
+        <span class="pdf-dialog-title">{{ currentTemplate ? `${currentTemplate.name} - 策略说明` : '模板详情' }}</span>
+        <div class="pdf-dialog-actions">
+          <el-upload
+            class="pdf-upload-inline"
+            action="#"
+            :http-request="handlePdfUpload"
+            :before-upload="handlePdfBefore"
+            :show-file-list="false"
+            accept=".pdf"
+          >
+            <el-button
+              :type="pdfUrl ? 'default' : 'primary'"
+              :icon="pdfUrl ? 'el-icon-refresh' : 'el-icon-upload2'"
+              size="mini"
+              :loading="uploadingPdf"
+            >{{ pdfUrl ? '替换PDF' : '上传PDF' }}</el-button>
+          </el-upload>
+          <el-button v-if="pdfUrl" type="primary" icon="el-icon-download" size="mini" @click="handleDownloadPdf">下载PDF</el-button>
+          <el-button
+            v-if="pdfUrl"
+            type="danger"
+            plain
+            icon="el-icon-delete"
+            size="mini"
+            :loading="deletingPdf"
+            @click="handleDeletePdf"
+          >删除PDF</el-button>
+          <el-button
+            :type="pdfFullscreen ? 'info' : 'default'"
+            :icon="pdfFullscreen ? 'el-icon-copy-document' : 'el-icon-full-screen'"
+            size="mini"
+            @click="pdfFullscreen = !pdfFullscreen"
+          >{{ pdfFullscreen ? '退出全屏' : '全屏' }}</el-button>
+          <el-button icon="el-icon-close" size="mini" @click="detailDialogVisible = false">关闭</el-button>
         </div>
       </div>
-      <span slot="footer" class="dialog-footer">
-        <el-button @click="detailDialogVisible = false">关闭</el-button>
-      </span>
+      <div v-if="currentTemplate" class="pdf-viewer-wrapper" :class="{'pdf-fullscreen': pdfFullscreen}">
+        <pdf-viewer
+          v-if="pdfUrl && detailDialogVisible"
+          :url="pdfUrl"
+        />
+        <div v-else-if="!pdfUrl" class="pdf-empty-state" v-loading="uploadingPdf" element-loading-text="正在上传PDF…">
+          <i class="el-icon-document" style="font-size: 48px; color: #c0c4cc;"></i>
+          <p style="color: #909399; margin: 12px 0 20px;">该策略尚未上传说明文档（PDF）</p>
+          <el-upload
+            class="pdf-empty-upload"
+            action="#"
+            drag
+            :http-request="handlePdfUpload"
+            :before-upload="handlePdfBefore"
+            :show-file-list="false"
+            accept=".pdf"
+          >
+            <i class="el-icon-upload"></i>
+            <div class="el-upload__text">将PDF文件拖到此处，或<em>点击上传</em></div>
+          </el-upload>
+          <p style="color: #c0c4cc; font-size: 12px; margin-top: 12px;">仅支持PDF格式，大小不超过50MB</p>
+        </div>
+      </div>
     </el-dialog>
 
     <!-- 模板表单对话框 -->
     <el-dialog
-      :title="isEditTemplate ? '编辑模板' : '新增模板'"
+      title="编辑模板"
       :visible.sync="formDialogVisible"
       width="1000px"
       append-to-body
@@ -203,7 +195,9 @@
       <strategy-model-form
         v-if="useTemplateDialogVisible"
         is-dialog
-        :initial-template-code="currentTemplateCode"
+        :initial-template-code="currentTemplateCategory === 'allocation' ? currentTemplateCode : ''"
+        :initial-selector-code="currentTemplateCategory === 'selection' ? currentTemplateCode : ''"
+        :initial-controller-code="currentTemplateCategory === 'control' ? currentTemplateCode : ''"
         @success="handleUseSuccess"
         @close="useTemplateDialogVisible = false"
       />
@@ -214,14 +208,18 @@
 <script>
 import { mapState } from 'vuex';
 import dayjs from 'dayjs';
-import CodeMirror from 'codemirror';
-import 'codemirror/lib/codemirror.css';
-import 'codemirror/theme/monokai.css';
-import 'codemirror/mode/python/python';
+import PdfViewer from '@/components/PdfViewer.vue';
+import { uploadTemplatePdf, deleteTemplatePdf } from '@/api/strategy';
+import request from '@/utils/request';
+
+// 与其他接口统一：从共享 axios 实例的 baseURL 派生后端地址（门户/服务配置注入的即此实例），
+// 不再独立读 VUE_APP_BASE_URL 后回退 127.0.0.1，避免 PDF 预览绕开服务配置导致连接拒绝
+const API_BASE = String(request.defaults.baseURL || process.env.VUE_APP_BASE_URL || '').replace(/\/$/, '');
 
 export default {
   name: 'TemplateList',
   components: {
+    PdfViewer,
     TemplateForm: () => import('./TemplateForm.vue'),
     StrategyModelForm: () => import('./StrategyModelForm.vue')
   },
@@ -232,10 +230,13 @@ export default {
       loading: false,
       detailDialogVisible: false,
       currentTemplate: null,
-      detailCodeEditor: null,  // CodeMirror 实例
+      pdfUrl: null,       // PDF 文档访问 URL
+      pdfFullscreen: false, // PDF 全屏状态
+      uploadingPdf: false,  // PDF 上传中
+      deletingPdf: false,   // PDF 删除中
       formDialogVisible: false,
-      isEditTemplate: false,
       currentTemplateCode: '',
+      currentTemplateCategory: '',
       useTemplateDialogVisible: false
     };
   },
@@ -251,6 +252,18 @@ export default {
         const code = (template.code || '').toLowerCase();
         return name.includes(keyword) || code.includes(keyword);
       });
+    },
+    // 按分类分组的模板列表
+    groupedTemplateList() {
+      const list = this.filteredTemplateList;
+      const allocation = list.filter(t => !t.category || t.category === 'allocation');
+      const selection = list.filter(t => t.category === 'selection');
+      const control = list.filter(t => t.category === 'control');
+      return [
+        { category: 'allocation', label: '配置策略', icon: 'el-icon-s-data', items: allocation },
+        { category: 'selection', label: '资产选择策略', icon: 'el-icon-s-grid', items: selection },
+        { category: 'control', label: '风险控制策略', icon: 'el-icon-s-check', items: control },
+      ];
     }
   },
   created() {
@@ -272,11 +285,7 @@ export default {
     handleSearch() {
       this.fetchData();
     },
-    handleCreate() {
-      this.isEditTemplate = false;
-      this.currentTemplateCode = '';
-      this.formDialogVisible = true;
-    },
+
     handleFormSuccess() {
       this.formDialogVisible = false;
       this.fetchData();
@@ -286,58 +295,128 @@ export default {
       this.$message.success('策略创建成功');
     },
     async handleView(template) {
-      // 单独获取带有源代码的模板详情
+      // 加载模板详情并尝试获取PDF文档URL
       try {
         const fullTemplate = await this.$store.dispatch('strategy/fetchTemplate', template.code);
         this.currentTemplate = fullTemplate;
+        this.pdfUrl = null;
+        this.pdfFullscreen = false;
         this.detailDialogVisible = true;
-        // 初始化代码编辑器
-        this.$nextTick(() => {
-          if (fullTemplate.source_code && this.$refs.detailCodeEditor) {
-            // 清理旧的编辑器
-            if (this.detailCodeEditor) {
-              this.detailCodeEditor.toTextArea();
-            }
-            // 创建新的只读编辑器
-            this.detailCodeEditor = CodeMirror.fromTextArea(this.$refs.detailCodeEditor, {
-              mode: 'python',
-              theme: 'monokai',
-              lineNumbers: true,
-              lineWrapping: true,
-              readOnly: true,  // 只读模式
-              cursorBlinkRate: -1  // 隐藏光标
-            });
-            this.detailCodeEditor.setValue(fullTemplate.source_code);
-            this.detailCodeEditor.setSize(null, '400px');
-          }
-        });
+
+        // 如果有 pdf_filename，直接构建URL
+        if (fullTemplate.pdf_filename) {
+          this.pdfUrl = `${API_BASE}/api/v1/model-templates/pdf/${fullTemplate.pdf_filename}`;
+        }
       } catch (error) {
         this.$message.error('加载模板详情失败');
       }
     },
+    onDetailClosed() {
+      // 弹窗关闭后清理状态
+      this.pdfUrl = null;
+      this.currentTemplate = null;
+    },
+    /** 上传前校验：格式与大小与后端限制保持一致 */
+    handlePdfBefore(file) {
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      if (!isPdf) {
+        this.$message.error('仅支持PDF文件格式');
+        return false;
+      }
+      if (file.size / 1024 / 1024 > 50) {
+        this.$message.error(`文件大小不能超过50MB（当前 ${(file.size / 1024 / 1024).toFixed(1)}MB）`);
+        return false;
+      }
+      return true;
+    },
+    /** 自定义上传：走 @/utils/request 统一拦截器，避开组件内硬编码接口地址 */
+    async handlePdfUpload(options) {
+      const templateId = this.currentTemplate && this.currentTemplate.id;
+      if (!templateId) {
+        this.$message.error('上传失败：未获取到模板ID，请关闭弹窗后重新打开详情');
+        return;
+      }
+      const formData = new FormData();
+      formData.append('file', options.file);
+      this.uploadingPdf = true;
+      try {
+        const res = await uploadTemplatePdf(templateId, formData);
+        const data = res.data || res;
+        if (!data.pdf_filename) {
+          throw new Error('接口未返回 pdf_filename');
+        }
+        this.$set(this.currentTemplate, 'pdf_filename', data.pdf_filename);
+        // 后端固定以 {code}.pdf 命名，替换后 URL 不变；带时间戳强制 iframe 重新拉取，否则命中缓存仍显示旧文档
+        this.pdfUrl = `${API_BASE}/api/v1/model-templates/pdf/${data.pdf_filename}?t=${Date.now()}`;
+        this.$message.success(`上传成功：已为策略「${this.currentTemplate.name}」保存说明文档 ${data.pdf_filename}`);
+        this.fetchData();
+      } catch (error) {
+        const detail = (error.response && error.response.data && error.response.data.detail) || error.message;
+        this.$message.error(`上传失败：${detail || '请稍后重试'}`);
+      } finally {
+        this.uploadingPdf = false;
+      }
+    },
+    /** 删除当前策略的 PDF 说明文档（同时清理磁盘文件与模板字段） */
+    async handleDeletePdf() {
+      const templateId = this.currentTemplate && this.currentTemplate.id;
+      if (!templateId) {
+        this.$message.error('删除失败：未获取到模板ID，请关闭弹窗后重新打开详情');
+        return;
+      }
+      const templateName = this.currentTemplate.name || this.currentTemplate.code;
+      try {
+        await this.$confirm(`确定删除策略「${templateName}」的说明文档？此操作不可撤销`, '确认删除', {
+          type: 'warning',
+          confirmButtonText: '删除',
+          cancelButtonText: '取消'
+        });
+      } catch (e) {
+        return;  // 用户取消
+      }
+      this.deletingPdf = true;
+      try {
+        await deleteTemplatePdf(templateId);
+        this.pdfUrl = null;
+        this.$set(this.currentTemplate, 'pdf_filename', null);
+        this.$message.success(`已删除策略「${templateName}」的说明文档`);
+        this.fetchData();
+      } catch (error) {
+        const detail = (error.response && error.response.data && error.response.data.detail) || error.message;
+        this.$message.error(`删除失败：${detail || '请稍后重试'}`);
+      } finally {
+        this.deletingPdf = false;
+      }
+    },
+    handleDownloadPdf() {
+      if (this.pdfUrl) {
+        // 使用 fetch 获取 PDF blob，再触发下载（避免跨域下 link.download 失效）
+        fetch(this.pdfUrl)
+          .then(resp => resp.blob())
+          .then(blob => {
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = (this.currentTemplate && this.currentTemplate.pdf_filename) || '策略说明.pdf';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+          })
+          .catch(() => {
+            // fallback：新标签页打开
+            window.open(this.pdfUrl, '_blank');
+          });
+      }
+    },
     handleEdit(template) {
-      this.isEditTemplate = true;
       this.currentTemplateCode = template.code;
       this.formDialogVisible = true;
     },
     handleUse(template) {
       this.currentTemplateCode = template.code;
+      this.currentTemplateCategory = template.category || 'allocation';
       this.useTemplateDialogVisible = true;
-    },
-    handleDelete(template) {
-      this.$confirm(`确定要删除模板 "${template.name}" 吗?`, '提示', {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }).then(async () => {
-        try {
-          await this.$store.dispatch('strategy/deleteTemplate', template.id);
-          this.$message.success('删除成功');
-          this.fetchData();
-        } catch (error) {
-          this.$message.error('删除失败：' + (error.response?.data?.detail || error.message));
-        }
-      }).catch(() => {});
     },
     formatDate(date) {
       return date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-';
@@ -353,6 +432,14 @@ export default {
       };
       return typeMap[type] || type;
     },
+    getCategoryLabel(category) {
+      const map = { allocation: '配置', selection: '选择', control: '控制' };
+      return map[category] || category;
+    },
+    getCategoryTagType(category) {
+      const map = { allocation: '', selection: 'success', control: 'warning' };
+      return map[category] || 'info';
+    },
     getParamTypeTag(type) {
       const tagMap = {
         'number': '',
@@ -366,10 +453,7 @@ export default {
     }
   },
   beforeDestroy() {
-    // 清理 CodeMirror 实例
-    if (this.detailCodeEditor) {
-      this.detailCodeEditor.toTextArea();
-    }
+    // 无需额外清理
   }
 };
 </script>
@@ -380,20 +464,49 @@ export default {
   margin-bottom: 20px;
 }
 
-/* 使用 CSS Grid 布局实现等高卡片 */
+/* 分类区域标题 */
+.category-section {
+  margin-bottom: 30px;
+}
+
+.category-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 16px 0;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #e4e7ed;
+  display: flex;
+  align-items: center;
+}
+
+.category-title i {
+  margin-right: 8px;
+  color: #409eff;
+}
+
+.category-count {
+  font-size: 14px;
+  font-weight: normal;
+  color: #909399;
+}
+
+/* 使用 CSS Grid 布局实现等高卡片；minmax(0,1fr) 防止长描述撑破列宽，auto-fill 按可用宽度自适应列数 */
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);  /* 每行 3 个 */
-  gap: 20px;  /* 间距 */
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+  gap: 20px;
   margin-bottom: 20px;
 }
 
 .template-grid-item {
   display: flex;  /* 关键：让卡片填满高度 */
+  min-width: 0;   /* 允许收缩，避免长内容撑破网格列 */
 }
 
 .template-card {
   width: 100%;  /* 占满宽度 */
+  min-width: 0;
   transition: all 0.3s;
   display: flex;
   flex-direction: column;  /* 垂直布局 */
@@ -415,7 +528,8 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  min-height: 56px;  /* 固定最小高度 */
+  min-height: 56px;
+  gap: 8px;
 }
 
 .template-name {
@@ -443,19 +557,16 @@ export default {
 .template-desc {
   color: #606266;
   line-height: 1.6;
-  margin-bottom: 15px;
-  /* 限制描述固定三行 */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  margin-bottom: 10px;
+  /* 单行截断，全文悬浮展示 */
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  height: 4.8em;  /* 固定高度：3行 */
-  word-break: break-word;  /* 允许换行 */
+  word-break: break-word;
 }
 
 .template-info {
-  margin: 15px 0;
+  margin: 8px 0;
   flex-shrink: 0;  /* 不被压缩 */
 }
 
@@ -501,52 +612,128 @@ export default {
   flex-shrink: 0;  /* 不被压缩 */
 }
 
-/* 响应式布局 */
-@media (max-width: 1400px) {
-  .template-grid {
-    grid-template-columns: repeat(2, 1fr);  /* 中屏每行 2 个 */
-  }
+/* 列数由 auto-fill 按宽度自适应，无需媒体查询断点 */
+
+/* PDF 查看器样式 */
+.pdf-viewer-wrapper {
+  position: relative;
+  height: 70vh;
+  max-height: 800px;
 }
 
-@media (max-width: 768px) {
-  .template-grid {
-    grid-template-columns: 1fr;  /* 小屏每行 1 个 */
-  }
+.pdf-viewer-wrapper.pdf-fullscreen {
+  flex: 1;
+  min-height: 0;
+  height: auto;
 }
 
-/* CodeMirror 编辑器样式 */
-.codemirror-wrapper {
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
+.pdf-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #909399;
+  gap: 8px;
+}
+
+.pdf-loading i {
+  font-size: 32px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.pdf-empty-state {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  background: #f5f7fa;
+  border-radius: 6px;
+}
+
+/* 空态拖拽上传区 */
+.pdf-empty-upload ::v-deep .el-upload-dragger {
+  width: 420px;
+  height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+}
+.pdf-empty-upload ::v-deep .el-icon-upload {
+  margin: 0 0 12px;
+  font-size: 44px;
+  line-height: 1;
+}
+</style>
+
+<style>
+/* PDF详情弹窗标题栏 */
+.pdf-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.pdf-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
   overflow: hidden;
-  margin-top: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 16px;
+}
+.pdf-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+/* 标题栏内联上传按钮：去除 el-upload 默认块级布局，与同行按钮对齐 */
+.pdf-upload-inline {
+  display: inline-flex;
+  line-height: 1;
 }
 
-.codemirror-wrapper >>> .CodeMirror {
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 13px;  /* 字体大小调小 */
-  line-height: 1.4; /* 行高调小 */
-  height: 400px;
+/* PDF详情弹窗全屏模式下的 body 高度自适应 */
+.pdf-detail-dialog.is-fullscreen .el-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pdf-detail-dialog.is-fullscreen {
+  display: flex;
+  flex-direction: column;
+  margin: 0 !important;
+}
+.pdf-detail-dialog.is-fullscreen .el-dialog__header {
+  padding: 8px 16px;
+  border-bottom: 1px solid #ebeef5;
+  flex-shrink: 0;
 }
 
-.codemirror-wrapper >>> .CodeMirror-gutters {
-  background-color: #272822;
-  border-right: 1px solid #3e3d32;
+/* 非全屏模式也紧凑 header */
+.pdf-detail-dialog .el-dialog__header {
+  padding: 12px 20px;
+}
+.pdf-detail-dialog .el-dialog__body {
+  padding: 12px 20px;
 }
 
-.codemirror-wrapper >>> .CodeMirror-linenumber {
-  color: #75715e;
-  font-size: 12px;  /* 行号字体更小 */
-  padding: 0 5px;
-}
-
-/* 代码行样式 */
-.codemirror-wrapper >>> .CodeMirror-line {
-  padding: 0 4px;  /* 减少行内边距 */
-}
-
-/* 只读模式样式 */
-.codemirror-wrapper >>> .CodeMirror-cursor {
-  display: none !important;
+/* 隐藏不需要的 footer */
+.pdf-detail-dialog .el-dialog__footer {
+  display: none;
 }
 </style>

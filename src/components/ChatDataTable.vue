@@ -691,7 +691,7 @@ export default {
       const keys = Object.keys(firstRow)
 
       // JOIN 来源检测：右表字段以 "{collection}." 前缀命名（见 domain_tools.py join 合并逻辑）
-      const JOIN_PREFIX_RE = /^(dwd_\w+|[a-z]\w+)\.([\w]+)$/
+      const JOIN_PREFIX_RE = /^([a-z]\w+)\.([\w]+)$/
       const hasJoinColumns = keys.some(k => JOIN_PREFIX_RE.test(k))
 
       // 预取样：每列只取前 20 条非空值用于类型检测，避免大表全量 map

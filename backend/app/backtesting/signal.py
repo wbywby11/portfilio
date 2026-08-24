@@ -1,3 +1,7 @@
+"""TargetWeightSignal：目标权重信号原语（计算内核层，模式无关）.
+
+策略层（CompositionPipeline）与执行/风控层之间的统一交接结构。
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass

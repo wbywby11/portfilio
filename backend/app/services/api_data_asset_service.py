@@ -1,63 +1,40 @@
 """
-API 数据资产服务层
+数据资产服务 - 基于 MongoDB 实际集合的元数据注册表
 
-提供数据资产全生命周期管理：CRUD、同步、统计、种子初始化。
+扫描数据库中所有实际存在的集合，实时采集统计信息。
 """
-
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import httpx
 from loguru import logger
 from pymongo import ASCENDING, DESCENDING
 
 from app.config.database import Database
 from app.models.api_data_asset import (
-    ApiDataAssetCreate,
-    ApiDataAssetUpdate,
     AssetStatus,
-    DataAssetType,
-    SyncStatus,
+    CollectionAsset,
+    CollectionAssetUpdate,
 )
-from app.models.data_connector import CONNECTOR_REGISTRY
 
-# ─── 本地导入型资产种子定义 ─────────────────────────────────────────────────────
+# 系统集合前缀/名称（不展示给用户）
+SYSTEM_COLLECTIONS = {
+    "system.views", "system.profile", "system.js",
+}
+SYSTEM_PREFIXES = ("system.",)
 
-LOCAL_ASSETS: List[Dict[str, Any]] = [
-    {
-        "name": "资产基础数据",
-        "asset_type": "local_import",
-        "target_collection": "assets",
-        "description": "通过Excel模板导入的基金/ETF/指数等资产基础信息",
-        "primary_key": ["code"],
-        "tags": ["资产", "基础数据"],
-    },
-    {
-        "name": "资产行情数据",
-        "asset_type": "local_import",
-        "target_collection": "asset_prices",
-        "description": "资产日频K线行情数据（开高低收量额规模）",
-        "primary_key": ["asset_code", "date"],
-        "tags": ["行情", "价格"],
-    },
-    {
-        "name": "外汇汇率数据",
-        "asset_type": "local_import",
-        "target_collection": "fx_rates",
-        "description": "EUR/USD/HKD/CNH对人民币汇率日频数据",
-        "primary_key": ["date"],
-        "tags": ["汇率", "FX"],
-    },
+# 常见日期字段名（按优先级探测）
+DATE_FIELD_CANDIDATES = [
+    "date", "biz_date", "trade_date", "data_date",
+    "created_at", "updated_at", "timestamp", "day",
 ]
 
 
 class ApiDataAssetService:
-    """API 数据资产 CRUD 服务"""
+    """数据资产服务 - 扫描 MongoDB 实际集合"""
 
-    COLLECTION = "api_data_assets"
+    COLLECTION = "_data_asset_registry"
 
     def __init__(self) -> None:
         self._db = None
@@ -68,409 +45,279 @@ class ApiDataAssetService:
             self._db = Database.get_database()
         return self._db
 
-    def _coll(self):
+    def _registry(self):
+        """人工编辑信息注册表（存储 description/tags/owner 等）"""
         return self.db[self.COLLECTION]
 
-    # ─── 列表查询 ─────────────────────────────────────────────────────────────
+    # ─── 扫描数据库 ──────────────────────────────────────────────────────────
 
-    async def list_assets(
-        self,
-        filters: Optional[Dict[str, Any]] = None,
-        page: int = 1,
-        page_size: int = 20,
-    ) -> Dict[str, Any]:
-        """分页查询资产列表，支持 asset_type/status/tags/keyword 筛选"""
-        query: Dict[str, Any] = {}
-        if filters:
-            if filters.get("asset_type"):
-                query["asset_type"] = filters["asset_type"]
-            if filters.get("status"):
-                query["status"] = filters["status"]
-            if filters.get("tags"):
-                query["tags"] = {"$in": filters["tags"] if isinstance(filters["tags"], list) else [filters["tags"]]}
-            if filters.get("keyword"):
-                kw = filters["keyword"].strip()
-                query["$or"] = [
-                    {"name": {"$regex": kw, "$options": "i"}},
-                    {"description": {"$regex": kw, "$options": "i"}},
-                    {"target_collection": {"$regex": kw, "$options": "i"}},
-                ]
+    async def scan_database(self) -> Dict[str, Any]:
+        """扫描 MongoDB 所有实际集合，返回统计信息
 
-        col = self._coll()
-        total = await col.count_documents(query)
-        skip = (page - 1) * page_size
-        cursor = col.find(query, {"_id": 0}).sort("created_at", DESCENDING).skip(skip).limit(page_size)
-        items = [doc async for doc in cursor]
+        对每个集合：
+        - count_documents({}) 获取记录数
+        - collStats 获取存储大小
+        - 采样第 1 条记录推断字段列表
+        - 自动探测日期字段并获取 min/max
+        """
+        collection_names = await self.db.list_collection_names()
+        # 过滤系统集合
+        collection_names = [
+            name for name in collection_names
+            if name not in SYSTEM_COLLECTIONS
+            and not any(name.startswith(p) for p in SYSTEM_PREFIXES)
+        ]
+        collection_names.sort()
+
+        scanned = []
+        total_records = 0
+        total_storage = 0
+
+        for name in collection_names:
+            try:
+                asset = await self._scan_single_collection(name)
+                scanned.append(asset)
+                total_records += asset.record_count
+                total_storage += asset.storage_size_bytes
+            except Exception as e:
+                logger.warning("[data-asset] 扫描集合 {} 失败: {}", name, e)
+                scanned.append(CollectionAsset(
+                    collection_name=name,
+                    record_count=0,
+                    storage_size_bytes=0,
+                    fields=[],
+                    field_count=0,
+                ))
+
+        # 更新注册表中的扫描时间
+        now = datetime.utcnow().isoformat()
+        for asset in scanned:
+            asset.last_scanned_at = now
+            # 合并人工编辑信息
+            existing = await self._registry().find_one(
+                {"collection_name": asset.collection_name}, {"_id": 0}
+            )
+            if existing:
+                asset.description = existing.get("description", "")
+                asset.tags = existing.get("tags", [])
+                asset.owner = existing.get("owner", "")
+                asset.status = AssetStatus(existing.get("status", "active"))
+
+        logger.info(
+            "[data-asset] 扫描完成: {} 个集合, {} 条记录, {} 字节",
+            len(scanned), total_records, total_storage,
+        )
 
         return {
-            "items": items,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "pages": (total + page_size - 1) // page_size if page_size else 0,
+            "collections": [a.model_dump() for a in scanned],
+            "total": len(scanned),
+            "total_records": total_records,
+            "total_storage_bytes": total_storage,
+            "scanned_at": now,
         }
 
-    # ─── 获取单个 ─────────────────────────────────────────────────────────────
+    async def _scan_single_collection(self, name: str) -> CollectionAsset:
+        """扫描单个集合的实际统计信息"""
+        coll = self.db[name]
 
-    async def get_asset(self, asset_id: str) -> Optional[Dict[str, Any]]:
-        """获取单个资产详情"""
-        doc = await self._coll().find_one({"asset_id": asset_id}, {"_id": 0})
-        return doc
+        # 记录数
+        record_count = await coll.count_documents({})
 
-    # ─── 创建 ─────────────────────────────────────────────────────────────────
+        # 存储大小
+        storage_size = 0
+        try:
+            stats = await self.db.command("collStats", name)
+            storage_size = stats.get("size", 0)
+        except Exception:
+            pass
 
-    async def create_asset(self, data: ApiDataAssetCreate) -> Dict[str, Any]:
-        """创建资产记录，自动生成 asset_id 和时间戳"""
-        now = datetime.utcnow()
-        asset_id = uuid.uuid4().hex[:12]
+        # 字段采样（取第 1 条）
+        fields = []
+        sample = await coll.find_one({}, {"_id": 0})
+        if sample:
+            fields = list(sample.keys())
 
-        doc: Dict[str, Any] = data.model_dump(mode="json")
-        doc["asset_id"] = asset_id
-        doc["created_at"] = now.isoformat()
-        doc["updated_at"] = now.isoformat()
-        doc["last_sync_at"] = None
-        doc["last_sync_status"] = SyncStatus.never.value
-        doc["last_sync_count"] = 0
-        doc["total_records"] = doc.get("total_records", 0)
+        # 日期字段探测
+        date_field = None
+        date_range = None
+        for candidate in DATE_FIELD_CANDIDATES:
+            if candidate in fields:
+                date_field = candidate
+                try:
+                    earliest = await coll.find_one(
+                        {candidate: {"$exists": True, "$ne": None}},
+                        {candidate: 1, "_id": 0},
+                        sort=[(candidate, ASCENDING)],
+                    )
+                    latest = await coll.find_one(
+                        {candidate: {"$exists": True, "$ne": None}},
+                        {candidate: 1, "_id": 0},
+                        sort=[(candidate, DESCENDING)],
+                    )
+                    if earliest and latest:
+                        date_range = {
+                            "min": str(earliest[candidate]),
+                            "max": str(latest[candidate]),
+                        }
+                except Exception:
+                    pass
+                break
 
-        await self._coll().insert_one(doc)
-        doc.pop("_id", None)
-        logger.info("[api-data-asset] 创建资产 asset_id={} name={}", asset_id, data.name)
-        return doc
+        return CollectionAsset(
+            collection_name=name,
+            record_count=record_count,
+            storage_size_bytes=storage_size,
+            fields=fields,
+            field_count=len(fields),
+            date_field=date_field,
+            date_range=date_range,
+        )
 
-    # ─── 更新 ─────────────────────────────────────────────────────────────────
+    # ─── 刷新单个资产 ────────────────────────────────────────────────────────
 
-    async def update_asset(self, asset_id: str, data: ApiDataAssetUpdate) -> Optional[Dict[str, Any]]:
-        """更新资产信息"""
+    async def refresh_asset(self, collection_name: str) -> Dict[str, Any]:
+        """刷新单个集合的实时统计信息"""
+        if collection_name not in await self.db.list_collection_names():
+            return {"status": "error", "message": f"集合不存在: {collection_name}"}
+
+        asset = await self._scan_single_collection(collection_name)
+        asset.last_scanned_at = datetime.utcnow().isoformat()
+
+        # 合并人工编辑信息
+        existing = await self._registry().find_one(
+            {"collection_name": collection_name}, {"_id": 0}
+        )
+        if existing:
+            asset.description = existing.get("description", "")
+            asset.tags = existing.get("tags", [])
+            asset.owner = existing.get("owner", "")
+            asset.status = AssetStatus(existing.get("status", "active"))
+
+        return {"status": "success", "asset": asset.model_dump()}
+
+    # ─── 数据预览 ────────────────────────────────────────────────────────────
+
+    async def preview_collection(self, collection_name: str, limit: int = 10) -> Dict[str, Any]:
+        """预览集合的前 N 条数据"""
+        coll = self.db[collection_name]
+        total = await coll.count_documents({})
+        cursor = coll.find({}, {"_id": 0}).limit(limit)
+        records = await cursor.to_list(length=limit)
+
+        # 序列化特殊类型
+        def _serialize(doc):
+            if not isinstance(doc, dict):
+                return doc
+            result = {}
+            for k, v in doc.items():
+                if hasattr(v, "isoformat"):
+                    result[k] = v.isoformat()
+                elif isinstance(v, dict):
+                    result[k] = _serialize(v)
+                else:
+                    result[k] = v
+            return result
+
+        return {
+            "collection_name": collection_name,
+            "total": total,
+            "records": [_serialize(r) for r in records],
+        }
+
+    # ─── 更新人工编辑信息 ──────────────────────────────────────────────────────
+
+    async def update_asset(self, collection_name: str, data: CollectionAssetUpdate) -> Optional[Dict[str, Any]]:
+        """更新人工编辑信息（description/tags/owner/status）"""
         update_fields = data.model_dump(mode="json", exclude_none=True)
         if not update_fields:
-            return await self.get_asset(asset_id)
+            return await self.get_asset(collection_name)
 
         update_fields["updated_at"] = datetime.utcnow().isoformat()
 
-        result = await self._coll().update_one(
-            {"asset_id": asset_id},
-            {"$set": update_fields},
+        await self._registry().update_one(
+            {"collection_name": collection_name},
+            {"$set": update_fields, "$setOnInsert": {"collection_name": collection_name, "created_at": datetime.utcnow().isoformat()}},
+            upsert=True,
         )
-        if result.matched_count == 0:
+        return await self.get_asset(collection_name)
+
+    # ─── 获取单个 ────────────────────────────────────────────────────────────
+
+    async def get_asset(self, collection_name: str) -> Optional[Dict[str, Any]]:
+        """获取单个集合的完整信息（实时统计 + 人工编辑）"""
+        if collection_name not in await self.db.list_collection_names():
             return None
 
-        logger.info("[api-data-asset] 更新资产 asset_id={} fields={}", asset_id, list(update_fields.keys()))
-        return await self.get_asset(asset_id)
+        asset = await self._scan_single_collection(collection_name)
+        asset.last_scanned_at = datetime.utcnow().isoformat()
 
-
-    # ─── 触发同步 ─────────────────────────────────────────────────────────────
-
-    async def sync_asset(self, asset_id: str) -> Dict[str, Any]:
-        """触发数据同步
-
-        对 api_upstream 类型，调用上游 HTTP 拉取逻辑。
-        更新 last_sync_at, last_sync_status, last_sync_count。
-        返回同步结果摘要。
-        """
-        asset = await self.get_asset(asset_id)
-        if not asset:
-            return {"status": "error", "message": f"资产不存在: {asset_id}"}
-
-        asset_type = asset.get("asset_type")
-        if asset_type != DataAssetType.api_upstream.value:
-            return {"status": "skipped", "message": f"资产类型 {asset_type} 不支持主动同步"}
-
-        source_url = asset.get("source_url")
-        source_resource = asset.get("source_resource")
-        source_params = asset.get("source_params") or {}
-        target_collection = asset.get("target_collection")
-
-        if not source_url:
-            return {"status": "error", "message": "资产未配置 source_url"}
-
-        now = datetime.utcnow()
-        sync_count = 0
-        sync_status = SyncStatus.failed.value
-
-        try:
-            # 构造请求体
-            payload: Dict[str, Any] = {
-                "resource": source_resource or "",
-                **source_params,
-            }
-
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    source_url,
-                    json=payload,
-                    headers={"Content-Type": "application/json", "Accept": "application/json"},
-                )
-            resp.raise_for_status()
-            upstream = resp.json()
-
-            # 解析数据列表
-            data_list = upstream.get("data") if isinstance(upstream, dict) else None
-            if not isinstance(data_list, list):
-                data_list = []
-
-            sync_count = len(data_list)
-
-            # 写入目标集合
-            if data_list and target_collection:
-                col = self.db[target_collection]
-                primary_key = asset.get("primary_key") or []
-                imported_at = now.isoformat()
-
-                for record in data_list:
-                    if not isinstance(record, dict):
-                        continue
-                    record["_imported_at"] = imported_at
-                    if primary_key and all(record.get(k) for k in primary_key):
-                        filter_doc = {k: record[k] for k in primary_key}
-                        await col.update_one(filter_doc, {"$set": record}, upsert=True)
-                    else:
-                        await col.insert_one(record)
-
-            sync_status = SyncStatus.success.value
-            logger.info("[api-data-asset] 同步成功 asset_id={} count={}", asset_id, sync_count)
-
-        except httpx.TimeoutException as e:
-            logger.warning("[api-data-asset] 同步超时 asset_id={}: {}", asset_id, e)
-            sync_status = SyncStatus.failed.value
-        except httpx.HTTPStatusError as e:
-            logger.warning("[api-data-asset] 同步HTTP错误 asset_id={}: {}", asset_id, e)
-            sync_status = SyncStatus.failed.value
-        except Exception as e:
-            logger.exception("[api-data-asset] 同步异常 asset_id={}: {}", asset_id, e)
-            sync_status = SyncStatus.failed.value
-
-        # 更新资产同步状态
-        await self._coll().update_one(
-            {"asset_id": asset_id},
-            {"$set": {
-                "last_sync_at": now.isoformat(),
-                "last_sync_status": sync_status,
-                "last_sync_count": sync_count,
-                "updated_at": now.isoformat(),
-            }},
+        # 合并人工编辑信息
+        existing = await self._registry().find_one(
+            {"collection_name": collection_name}, {"_id": 0}
         )
+        if existing:
+            asset.description = existing.get("description", "")
+            asset.tags = existing.get("tags", [])
+            asset.owner = existing.get("owner", "")
+            asset.status = AssetStatus(existing.get("status", "active"))
+            asset.created_at = existing.get("created_at")
+
+        return asset.model_dump()
+
+    # ─── 列表查询 ────────────────────────────────────────────────────────────
+
+    async def list_assets(
+        self,
+        keyword: Optional[str] = None,
+        status: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> Dict[str, Any]:
+        """列出所有集合资产（分页）
+
+        先扫描数据库获取实时统计，再合并注册表中的人工编辑信息。
+        """
+        scan_result = await self.scan_database()
+        items = scan_result["collections"]
+
+        # 筛选
+        if keyword:
+            kw = keyword.lower()
+            items = [
+                i for i in items
+                if kw in i["collection_name"].lower()
+                or kw in (i.get("description") or "").lower()
+                or any(kw in t.lower() for t in (i.get("tags") or []))
+            ]
+        if status:
+            items = [i for i in items if i.get("status") == status]
+
+        total = len(items)
+        start = (page - 1) * page_size
+        end = start + page_size
+        paged_items = items[start:end]
 
         return {
-            "status": sync_status,
-            "asset_id": asset_id,
-            "sync_count": sync_count,
-            "sync_at": now.isoformat(),
+            "items": paged_items,
+            "total": total,
+            "total_records": scan_result["total_records"],
+            "total_storage_bytes": scan_result["total_storage_bytes"],
+            "scanned_at": scan_result["scanned_at"],
         }
 
-    # ─── 刷新统计 ─────────────────────────────────────────────────────────────
-
-    async def refresh_stats(self, asset_id: str) -> Dict[str, Any]:
-        """刷新统计信息
-
-        查询 target_collection 的文档数 -> total_records。
-        如果集合中有日期字段，推断 date_range_start/end。
-        """
-        asset = await self.get_asset(asset_id)
-        if not asset:
-            return {"status": "error", "message": f"资产不存在: {asset_id}"}
-
-        target_collection = asset.get("target_collection")
-        if not target_collection:
-            return {"status": "error", "message": "资产未配置 target_collection"}
-
-        col = self.db[target_collection]
-        total_records = await col.count_documents({})
-
-        update_doc: Dict[str, Any] = {
-            "total_records": total_records,
-            "updated_at": datetime.utcnow().isoformat(),
-        }
-
-        # 尝试推断日期范围（常见日期字段）
-        date_field_candidates = ["date", "biz_date", "trade_date", "data_date"]
-        for date_field in date_field_candidates:
-            sample = await col.find_one({date_field: {"$exists": True, "$ne": None}})
-            if sample:
-                # 找最小值
-                earliest = await col.find_one(
-                    {date_field: {"$exists": True, "$ne": None}},
-                    sort=[(date_field, ASCENDING)],
-                )
-                latest = await col.find_one(
-                    {date_field: {"$exists": True, "$ne": None}},
-                    sort=[(date_field, DESCENDING)],
-                )
-                if earliest and latest:
-                    update_doc["date_range_start"] = str(earliest[date_field])
-                    update_doc["date_range_end"] = str(latest[date_field])
-                break
-
-        await self._coll().update_one({"asset_id": asset_id}, {"$set": update_doc})
-
-        logger.info("[api-data-asset] 刷新统计 asset_id={} total_records={}", asset_id, total_records)
-        return {
-            "status": "success",
-            "asset_id": asset_id,
-            "total_records": total_records,
-            "date_range_start": update_doc.get("date_range_start"),
-            "date_range_end": update_doc.get("date_range_end"),
-        }
-
-    # ─── 从连接器种子初始化 ───────────────────────────────────────────────────
-
-    async def seed_from_connectors(self) -> Dict[str, Any]:
-        """从现有 CONNECTOR_REGISTRY 批量初始化资产记录
-
-        读取 data_connector.py 中的 CONNECTOR_REGISTRY，对每个连接器检查是否已存在对应资产。
-        不存在则创建。同时创建本地导入型资产。
-        返回 {created: N, skipped: N}
-        """
-        created = 0
-        skipped = 0
-        now = datetime.utcnow()
-        col = self._coll()
-
-        # 从连接器注册表创建 api_upstream 型资产
-        for connector_id, conn in CONNECTOR_REGISTRY.items():
-            existing = await col.find_one({"connector_id": connector_id})
-            if existing:
-                skipped += 1
-                continue
-
-            asset_id = uuid.uuid4().hex[:12]
-            doc: Dict[str, Any] = {
-                "asset_id": asset_id,
-                "name": conn.title,
-                "asset_type": DataAssetType.api_upstream.value,
-                "description": conn.description or f"来自连接器 {connector_id}",
-                "source_url": conn.default_upstream_url,
-                "source_resource": conn.resource_default,
-                "source_params": {},
-                "auth_type": "none",
-                "target_collection": conn.records_collection,
-                "primary_key": [conn.primary_key],
-                "schema_fields": [],
-                "sync_strategy": "manual",
-                "sync_cron": None,
-                "last_sync_at": None,
-                "last_sync_status": SyncStatus.never.value,
-                "last_sync_count": 0,
-                "total_records": 0,
-                "date_range_start": None,
-                "date_range_end": None,
-                "connector_id": connector_id,
-                "tags": ["上游接入", connector_id],
-                "owner": "",
-                "status": AssetStatus.active.value,
-                "created_at": now.isoformat(),
-                "updated_at": now.isoformat(),
-            }
-            await col.insert_one(doc)
-            created += 1
-            logger.info("[api-data-asset] seed 创建上游资产 connector_id={} asset_id={}", connector_id, asset_id)
-
-        # 创建本地导入型资产
-        for local_def in LOCAL_ASSETS:
-            existing = await col.find_one({"target_collection": local_def["target_collection"], "asset_type": "local_import"})
-            if existing:
-                skipped += 1
-                continue
-
-            asset_id = uuid.uuid4().hex[:12]
-            doc = {
-                "asset_id": asset_id,
-                "name": local_def["name"],
-                "asset_type": DataAssetType.local_import.value,
-                "description": local_def.get("description", ""),
-                "source_url": None,
-                "source_resource": None,
-                "source_params": {},
-                "auth_type": "none",
-                "target_collection": local_def["target_collection"],
-                "primary_key": local_def.get("primary_key", []),
-                "schema_fields": [],
-                "sync_strategy": "manual",
-                "sync_cron": None,
-                "last_sync_at": None,
-                "last_sync_status": SyncStatus.never.value,
-                "last_sync_count": 0,
-                "total_records": 0,
-                "date_range_start": None,
-                "date_range_end": None,
-                "connector_id": None,
-                "tags": local_def.get("tags", []),
-                "owner": "",
-                "status": AssetStatus.active.value,
-                "created_at": now.isoformat(),
-                "updated_at": now.isoformat(),
-            }
-            await col.insert_one(doc)
-            created += 1
-            logger.info("[api-data-asset] seed 创建本地资产 name={} asset_id={}", local_def["name"], asset_id)
-
-        logger.info("[api-data-asset] seed 完成 created={} skipped={}", created, skipped)
-        return {"created": created, "skipped": skipped}
-
-    # ─── 汇总统计 ─────────────────────────────────────────────────────────────
+    # ─── 汇总统计 ────────────────────────────────────────────────────────────
 
     async def get_summary_stats(self) -> Dict[str, Any]:
-        """汇总统计（扁平结构，匹配前端字段）
+        """汇总统计"""
+        scan_result = await self.scan_database()
+        collections = scan_result["collections"]
 
-        返回:
-        - total: 总资产数
-        - active: 活跃资产数
-        - api_upstream: API上游类型数量
-        - local_import: 本地导入类型数量
-        - computed: 计算衍生类型数量
-        - sync_failed: 最近同步失败的数量
-        - last_sync_at: 最近一次同步时间
-        """
-        col = self._coll()
-        total = await col.count_documents({})
+        active_count = sum(1 for c in collections if c.get("status") == "active")
 
-        # 按类型统计
-        type_pipeline = [
-            {"$group": {"_id": "$asset_type", "count": {"$sum": 1}}},
-        ]
-        type_agg = [item async for item in col.aggregate(type_pipeline)]
-        by_type: Dict[str, int] = {
-            DataAssetType.api_upstream.value: 0,
-            DataAssetType.local_import.value: 0,
-            DataAssetType.computed.value: 0,
-        }
-        for item in type_agg:
-            key = item.get("_id")
-            if key in by_type:
-                by_type[key] = item.get("count", 0)
-
-        # 按状态统计
-        status_pipeline = [
-            {"$group": {"_id": "$status", "count": {"$sum": 1}}},
-        ]
-        status_agg = [item async for item in col.aggregate(status_pipeline)]
-        by_status: Dict[str, int] = {
-            AssetStatus.active.value: 0,
-            AssetStatus.deprecated.value: 0,
-        }
-        for item in status_agg:
-            key = item.get("_id")
-            if key in by_status:
-                by_status[key] = item.get("count", 0)
-
-        # 最近同步失败数
-        sync_failed = await col.count_documents({"last_sync_status": SyncStatus.failed.value})
-
-        # 最近一次同步时间
-        latest_synced = await col.find_one(
-            {"last_sync_at": {"$ne": None}},
-            {"last_sync_at": 1},
-            sort=[("last_sync_at", DESCENDING)],
-        )
-        last_sync_at = latest_synced.get("last_sync_at") if latest_synced else None
-
-        # 返回扁平结构，直接匹配前端字段名
         return {
-            "total": total,
-            "active": by_status.get(AssetStatus.active.value, 0),
-            "api_upstream": by_type.get(DataAssetType.api_upstream.value, 0),
-            "local_import": by_type.get(DataAssetType.local_import.value, 0),
-            "computed": by_type.get(DataAssetType.computed.value, 0),
-            "sync_failed": sync_failed,
-            "last_sync_at": last_sync_at,
+            "total": len(collections),
+            "active": active_count,
+            "total_records": scan_result["total_records"],
+            "total_storage_bytes": scan_result["total_storage_bytes"],
+            "scanned_at": scan_result["scanned_at"],
         }

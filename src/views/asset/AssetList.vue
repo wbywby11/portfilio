@@ -31,15 +31,25 @@
               <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
             </el-tooltip>
           </span>
-          <el-input v-model="searchForm.code" placeholder="请输入资产代码" clearable></el-input>
+          <el-input v-model="searchForm.code" placeholder="请输入资产代码" clearable style="width: 140px;"></el-input>
         </el-form-item>
         <el-form-item label="资产名称">
-          <el-input v-model="searchForm.name" placeholder="请输入资产名称" clearable></el-input>
+          <el-input v-model="searchForm.name" placeholder="请输入资产名称" clearable style="width: 140px;"></el-input>
         </el-form-item>
-        <el-form-item label="资产分类">
-          <el-select v-model="searchForm.category" placeholder="请选择" clearable>
+        <el-form-item label="工具形态">
+          <el-select v-model="searchForm.instrument_type" placeholder="请选择" clearable style="width: 120px;">
             <el-option
-              v-for="item in assetCategories"
+              v-for="item in instrumentTypes"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            ></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="资产大类">
+          <el-select v-model="searchForm.asset_class" placeholder="请选择" clearable style="width: 120px;">
+            <el-option
+              v-for="item in assetClasses"
               :key="item.value"
               :label="item.label"
               :value="item.value"
@@ -62,37 +72,50 @@
         :scroll-y="{enabled: true, gt: 0}"
         show-overflow="title"
       >
-        <vxe-column field="code" title="资产代码" width="120"></vxe-column>
-        <vxe-column field="name" title="资产名称" width="150"></vxe-column>
-        <vxe-column field="asset_type" title="资产分类" width="120">
+        <vxe-column field="code" title="资产代码" width="110"></vxe-column>
+        <vxe-column field="name" title="资产名称" min-width="130" show-overflow="title"></vxe-column>
+        <vxe-column field="instrument_type" title="工具形态" width="90">
           <template #default="{ row }">
-            <el-tag size="small">{{ row.asset_type }}</el-tag>
+            <el-tag size="small">{{ row.instrument_type || '-' }}</el-tag>
           </template>
         </vxe-column>
-        <vxe-column field="exchange" title="交易所" width="120"></vxe-column>
-        <vxe-column field="substitute_code" title="替代标的" width="120">
+        <vxe-column field="asset_class" title="资产大类" width="90">
+          <template #default="{ row }">
+            <el-tag size="small" type="info">{{ row.asset_class || '-' }}</el-tag>
+          </template>
+        </vxe-column>
+        <vxe-column field="security_type" title="证券细分" width="80">
+          <template #default="{ row }">
+            <span>{{ row.security_type || '-' }}</span>
+          </template>
+        </vxe-column>
+        <vxe-column field="exchange" title="交易所" width="90"></vxe-column>
+        <vxe-column field="substitute_code" title="替代标的" width="100">
           <template #default="{ row }">
             {{ row.substitute_code || '-' }}
           </template>
         </vxe-column>
-        <vxe-column field="description" title="描述" min-width="150" show-overflow="title"></vxe-column>
-        <vxe-column field="is_active" title="状态" width="100">
+        <vxe-column field="description" title="描述" min-width="120" show-overflow="title"></vxe-column>
+        <vxe-column field="is_active" title="状态" width="70">
           <template #default="{ row }">
             <el-tag :type="row.is_active ? 'success' : 'info'" size="small">
               {{ row.is_active ? '启用' : '禁用' }}
             </el-tag>
           </template>
         </vxe-column>
-        <vxe-column title="操作" width="220" fixed="right">
+        <vxe-column title="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button type="text" size="small" @click="handleViewQuote(row)">行情</el-button>
             <el-button type="text" size="small" @click="handleView(row)">查看</el-button>
-            <el-tooltip content="后端暂未实现更新接口" placement="top">
-              <el-button type="text" size="small" @click="handleEdit(row)">编辑</el-button>
-            </el-tooltip>
-            <el-button type="text" size="small" @click="handleDelete(row)" style="color: #f56c6c;">
-              删除
-            </el-button>
+            <el-dropdown trigger="click" @command="cmd => handleRowCommand(cmd, row)">
+              <el-button type="text" size="small">
+                更多<i class="el-icon-arrow-down el-icon--right"></i>
+              </el-button>
+              <el-dropdown-menu slot="dropdown">
+                <el-dropdown-item command="edit">编辑</el-dropdown-item>
+                <el-dropdown-item command="delete" divided style="color: #f56c6c;">删除</el-dropdown-item>
+              </el-dropdown-menu>
+            </el-dropdown>
           </template>
         </vxe-column>
       </vxe-table>
@@ -178,9 +201,9 @@ export default {
       searchForm: {
         code: '',
         name: '',
-        category: ''
+        instrument_type: '',
+        asset_class: ''
       },
-      loading: false,
       tableData: [],
       pagination: {
         current: 1,
@@ -196,7 +219,7 @@ export default {
     };
   },
   computed: {
-    ...mapState('asset', ['assetList', 'assetCategories', 'loading'])
+    ...mapState('asset', ['assetList', 'instrumentTypes', 'assetClasses', 'loading'])
   },
   created() {
     this.fetchData();
@@ -205,7 +228,8 @@ export default {
     async fetchData() {
       try {
         await this.$store.dispatch('asset/fetchAssetList', {
-          category: this.searchForm.category,
+          instrument_type: this.searchForm.instrument_type || undefined,
+          asset_class: this.searchForm.asset_class || undefined,
           code: this.searchForm.code || undefined,
           name: this.searchForm.name || undefined,
           page: this.pagination.current,
@@ -225,13 +249,18 @@ export default {
       this.searchForm = {
         code: '',
         name: '',
-        category: ''
+        instrument_type: '',
+        asset_class: ''
       };
       this.fetchData();
     },
     handleView(row) {
       this.currentDetailAsset = row;
       this.detailVisible = true;
+    },
+    handleRowCommand(cmd, row) {
+      if (cmd === 'edit') this.handleEdit(row);
+      else if (cmd === 'delete') this.handleDelete(row);
     },
     handleViewQuote(row) {
       this.currentQuoteAsset = row;
@@ -305,11 +334,21 @@ export default {
       try {
         const result = await importAssetsFromExcel(file.raw);
         const data = result.data || result;
-        
-        this.$message.success(
-          `导入完成！成功: ${data.success_count || 0}条，失败: ${data.error_count || 0}条`
-        );
-        
+        // 后端返回 inserted_count/updated_count/error_count（无 success_count 字段）
+        const inserted = data.inserted_count || 0;
+        const updated = data.updated_count || 0;
+        const failed = data.error_count || 0;
+
+        if (inserted + updated > 0) {
+          this.$message.success(
+            `导入完成！新增: ${inserted}条，更新: ${updated}条，失败: ${failed}条`
+          );
+        } else {
+          this.$message.warning(
+            `导入未写入任何数据（失败: ${failed}条），请查看错误明细或检查文件列名`
+          );
+        }
+
         if (data.errors && data.errors.length > 0) {
           this.$alert(
             data.errors.join('\n'),

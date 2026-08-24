@@ -14,6 +14,11 @@ import pandas as pd
 from typing import Dict, List, Optional
 
 from app.monitor import config
+from app.monitor.monitor_runtime import (
+    resolve_asset_class_for_monitor,
+    resolve_asset_currency_for_monitor,
+    resolve_monitor_asset_display_label,
+)
 from app.monitor.types import (
     PortfolioState, DailyResult, ReportData, PerformanceMetrics,
     RebalanceSignal, VolResetSignal, DeviationInfo, TradeOrder
@@ -70,109 +75,77 @@ class ReportGenerator:
         """
         从 nav_history 计算绩效指标
 
-        年化采用与回测一致的口径：基于实际交易日数 / 252 的 CAGR 公式，
-        并以 nav_history 首条记录的净值与日期为起点（而非配置中的指数起始日 BASE_DATE）。
+        指标公式全部委托统一内核 `app.analysis.performance`（年化因子 260、CAGR、
+        回撤基于净值本身、夏普为几何口径），确保监控与回测口径完全一致。
+        起点取 nav_history 首条记录（而非配置中的指数起始日 BASE_DATE）。
 
         Returns:
             PerformanceMetrics: 绩效指标（百分点形式）
         """
-        nav_history = state.nav_history
+        from app.analysis.performance import compute_performance
 
-        # 优先使用 nav_history 的首条记录作为组合实际起点；
-        # 若 nav_history 为空，则回退到 BASE_VALUE / BASE_DATE。
-        if nav_history:
-            first_nav = float(nav_history[0].get('nav', config.BASE_VALUE)) or config.BASE_VALUE
-            first_date_str = nav_history[0].get('date') or config.BASE_DATE
-        else:
-            first_nav = config.BASE_VALUE
-            first_date_str = config.BASE_DATE
+        nav_history = state.nav_history or []
+        nav_series = self._build_nav_series(state, nav_history)
 
-        # 累计收益（百分点）：last_nav / first_nav - 1
+        if len(nav_series) >= 2:
+            metrics = compute_performance(
+                nav_series, risk_free_rate=config.RISK_FREE_RATE
+            )
+            return PerformanceMetrics(
+                cumulative_return=metrics.total_return * 100,
+                annual_return=metrics.annual_return * 100,
+                annual_vol=metrics.annual_volatility * 100,
+                max_drawdown=metrics.max_drawdown * 100,
+                sharpe_ratio=metrics.sharpe_ratio,
+            )
+
+        # 净值序列不足 2 点：无法年化波动/回撤，仅给出累计收益与日历年化估算
+        first_nav = float(nav_history[0].get("nav", config.BASE_VALUE)) if nav_history else config.BASE_VALUE
+        first_nav = first_nav or config.BASE_VALUE
+        first_date_str = (nav_history[0].get("date") if nav_history else None) or config.BASE_DATE
         cum_ret_decimal = (state.nav / first_nav - 1.0) if first_nav > 1e-12 else 0.0
-        cumulative_return = cum_ret_decimal * 100
 
-        # 年化收益：与回测一致，使用交易日数 / 252 的 CAGR 公式。
-        # 交易日数 = 日收益率序列长度（即 nav_history 长度 - 1，去除首日）。
-        periods_per_year = 252
-        n_trading_days = max(len(nav_history) - 1, 0)
+        annual_return = 0.0
+        try:
+            calendar_days = (pd.Timestamp(state.date) - pd.Timestamp(first_date_str)).days
+            years = calendar_days / 365.0
+        except (TypeError, ValueError):
+            years = 0.0
+        if years > 0 and cum_ret_decimal > -1.0:
+            annual_return = ((1 + cum_ret_decimal) ** (1.0 / years) - 1) * 100
 
-        if n_trading_days > 0 and cum_ret_decimal > -1.0:
-            annual_return = ((1.0 + cum_ret_decimal) ** (periods_per_year / n_trading_days) - 1.0) * 100
-        else:
-            # 兜底：若无有效交易日序列，使用日历天数 / 365 估算
-            try:
-                first_date = pd.Timestamp(first_date_str)
-                last_date = pd.Timestamp(state.date)
-                calendar_days = (last_date - first_date).days
-                years = calendar_days / 365.0
-            except Exception:
-                years = 0.0
-            if years > 0 and cum_ret_decimal > -1.0:
-                annual_return = ((1 + cum_ret_decimal) ** (1.0 / years) - 1) * 100
-            else:
-                annual_return = 0.0
-
-        if len(nav_history) >= 2:
-            # 计算日收益率
-            nav_series = pd.Series([h['nav'] for h in nav_history])
-            returns = nav_series.pct_change().dropna()
-
-            # 年化波动率：使用 √252 年化（与回测口径保持一致）
-            if len(returns) > 0:
-                daily_vol = returns.std()
-                annual_vol = daily_vol * np.sqrt(periods_per_year) * 100
-            else:
-                annual_vol = 0.0
-
-            # 最大回撤
-            max_drawdown = self._calc_max_drawdown(nav_history)
-        else:
-            annual_vol = 0.0
-            max_drawdown = 0.0
-        
-        # 夏普比率
-        risk_free = config.RISK_FREE_RATE * 100  # 转为百分比
-        if annual_vol > 0:
-            sharpe_ratio = (annual_return - risk_free) / annual_vol
-        else:
-            sharpe_ratio = 0.0
-        
         return PerformanceMetrics(
-            cumulative_return=cumulative_return,
+            cumulative_return=cum_ret_decimal * 100,
             annual_return=annual_return,
-            annual_vol=annual_vol,
-            max_drawdown=max_drawdown,
-            sharpe_ratio=sharpe_ratio,
+            annual_vol=0.0,
+            max_drawdown=0.0,
+            sharpe_ratio=0.0,
         )
-    
-    def _calc_max_drawdown(self, nav_history: List[Dict]) -> float:
-        """
-        计算最大回撤
-        
-        max_dd = min((nav - peak) / peak) * 100
-        
-        Args:
-            nav_history: 净值历史列表 [{'date': date, 'nav': nav}, ...]
-            
-        Returns:
-            最大回撤（负数百分比）
-        """
-        if len(nav_history) < 2:
-            return 0.0
-        
-        navs = [h['nav'] for h in nav_history]
-        
-        peak = navs[0]
-        max_dd = 0.0
-        
-        for nav in navs:
-            if nav > peak:
-                peak = nav
-            dd = (nav - peak) / peak
-            if dd < max_dd:
-                max_dd = dd
-        
-        return max_dd * 100
+
+    @staticmethod
+    def _build_nav_series(state: PortfolioState, nav_history: List[Dict]) -> pd.Series:
+        """nav_history → 净值序列（DatetimeIndex），末尾补上当前状态净值。"""
+        records = []
+        for h in nav_history:
+            try:
+                d = pd.Timestamp(h.get("date"))
+                v = float(h.get("nav"))
+            except (TypeError, ValueError):
+                continue
+            if pd.notna(d):
+                records.append((d, v))
+        if not records:
+            return pd.Series(dtype=float)
+
+        try:
+            state_date = pd.Timestamp(state.date)
+        except (TypeError, ValueError):
+            state_date = None
+        if state_date is not None and state_date > records[-1][0]:
+            records.append((state_date, float(state.nav)))
+
+        idx = pd.DatetimeIndex([r[0] for r in records])
+        return pd.Series([r[1] for r in records], index=idx).sort_index()
     
     def calc_performance_dict(self, state: PortfolioState) -> Dict:
         """
@@ -188,6 +161,102 @@ class ReportGenerator:
             'annual_vol': perf.annual_vol,
             'max_drawdown': perf.max_drawdown,
             'sharpe_ratio': perf.sharpe_ratio,
+        }
+    
+    def calc_performance_api_dict(self, state: PortfolioState) -> Dict:
+        """
+        绩效指标 API 字典（含 calmar_ratio），监控绩效查询与暂停快照共用。
+        
+        Returns:
+            包含 cumulative_return, annual_return, annual_volatility,
+            max_drawdown, sharpe_ratio, calmar_ratio 的字典（百分点形式）
+        """
+        perf = self.calc_performance(state)
+        calmar = (
+            perf.annual_return / abs(perf.max_drawdown)
+            if perf.max_drawdown != 0
+            else 0.0
+        )
+        return {
+            'cumulative_return': perf.cumulative_return,
+            'annual_return': perf.annual_return,
+            'annual_volatility': perf.annual_vol,
+            'max_drawdown': perf.max_drawdown,
+            'sharpe_ratio': perf.sharpe_ratio,
+            'calmar_ratio': calmar,
+        }
+    
+    def calc_daily_attribution(self,
+                               target_date: str,
+                               prev_nav: float,
+                               current_nav: float,
+                               weights: Dict,
+                               positions_cny: Dict,
+                               nav_live: float,
+                               asset_list: List[str],
+                               daily_changes: Dict,
+                               names_lookup: Dict) -> Dict:
+        """
+        资产损益归因分解（从监控服务层下沉的领域计算）
+        
+        每个资产贡献 = 该资产持仓权重 × 该资产当日涨跌% / 100 × 前一日组合净值
+        
+        Args:
+            target_date: 目标日期 YYYY-MM-DD
+            prev_nav: 前一日净值
+            current_nav: 当日净值
+            weights: 目标权重字典（小数形式）
+            positions_cny: 人民币持仓市值字典（目标权重缺失时回退用）
+            nav_live: 当前实时净值（回退权重计算的分母）
+            asset_list: 参与归因的资产键列表
+            daily_changes: {资产键: 当日涨跌幅%}
+            names_lookup: 资产展示名查找表
+            
+        Returns:
+            {date, attributions, total_pnl, prev_nav, current_nav}
+        """
+        total_pnl = current_nav - prev_nav
+        
+        attributions = []
+        
+        for asset_name in asset_list:
+            try:
+                weight = float(weights.get(asset_name, 0) or 0)
+            except (TypeError, ValueError):
+                weight = 0.0
+            if abs(weight) < 1e-15 and nav_live > 0:
+                weight = float(positions_cny.get(asset_name, 0) or 0) / nav_live
+            
+            daily_change = daily_changes.get(asset_name)
+            if daily_change is None:
+                daily_change = 0.0
+            
+            contribution = weight * daily_change / 100 * prev_nav
+            
+            ac = resolve_asset_class_for_monitor(asset_name)
+            asset_class = ac if ac else '其他'
+            currency = resolve_asset_currency_for_monitor(asset_name)
+            display_name = resolve_monitor_asset_display_label(asset_name, names_lookup)
+            
+            attributions.append({
+                "name": display_name,
+                "code": asset_name,
+                "asset_class": asset_class,
+                "weight": round(weight * 100, 4),
+                "daily_change": round(daily_change, 4),
+                "contribution": round(contribution, 2),
+                "currency": currency
+            })
+        
+        # 按贡献绝对值降序排列
+        attributions.sort(key=lambda x: abs(x['contribution']), reverse=True)
+        
+        return {
+            "date": target_date,
+            "attributions": attributions,
+            "total_pnl": round(total_pnl, 2),
+            "prev_nav": round(prev_nav, 2),
+            "current_nav": round(current_nav, 2)
         }
     
     # =========================================================================

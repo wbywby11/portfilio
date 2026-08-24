@@ -1,58 +1,53 @@
 /**
  * 数据资产管理 API（/api/v1/data-assets）
+ * 基于 MongoDB 实际集合的元数据注册表
  */
 
 import request from '@/utils/request';
 
 const BASE = '/api/v1/data-assets';
 
-/** 获取数据资产列表 */
-export function listDataAssets(params) {
-  return request({ url: BASE, method: 'get', params });
+/** 扫描数据库所有集合 */
+export function scanDatabase() {
+  return request({ url: BASE + '/scan', method: 'post', timeout: 120000 });
 }
 
 /** 获取汇总统计 */
 export function getDataAssetSummary() {
-  return request({ url: `${BASE}/summary`, method: 'get' });
+  return request({ url: BASE + '/summary', method: 'get' });
 }
 
-/** 获取单个资产详情 */
-export function getDataAsset(assetId) {
-  return request({ url: `${BASE}/${encodeURIComponent(assetId)}`, method: 'get' });
+/** 列出所有集合资产（分页） */
+export function listDataAssets(params) {
+  return request({ url: BASE, method: 'get', params });
 }
 
-/** 创建数据资产 */
-export function createDataAsset(data) {
-  return request({ url: BASE, method: 'post', data });
+/** 获取单个集合详情 */
+export function getDataAsset(collectionName) {
+  return request({ url: BASE + '/' + encodeURIComponent(collectionName), method: 'get' });
 }
 
-/** 更新数据资产 */
-export function updateDataAsset(assetId, data) {
-  return request({ url: `${BASE}/${encodeURIComponent(assetId)}`, method: 'put', data });
+/** 更新集合描述/标签 */
+export function updateDataAsset(collectionName, data) {
+  return request({ url: BASE + '/' + encodeURIComponent(collectionName), method: 'put', data });
 }
 
-/** 触发数据同步 */
-export function syncDataAsset(assetId) {
-  return request({ url: `${BASE}/${encodeURIComponent(assetId)}/sync`, method: 'post', timeout: 120000 });
+/** 刷新单个集合统计 */
+export function refreshDataAsset(collectionName) {
+  return request({ url: BASE + '/' + encodeURIComponent(collectionName) + '/refresh', method: 'post' });
 }
 
-/** 刷新统计信息 */
-export function refreshDataAssetStats(assetId) {
-  return request({ url: `${BASE}/${encodeURIComponent(assetId)}/refresh-stats`, method: 'post' });
-}
-
-/** 从连接器初始化 */
-export function seedDataAssets() {
-  return request({ url: `${BASE}/seed`, method: 'post', timeout: 120000 });
+/** 数据预览 */
+export function previewDataAsset(collectionName, limit) {
+  return request({ url: BASE + '/' + encodeURIComponent(collectionName) + '/preview', method: 'get', params: { limit: limit || 10 } });
 }
 
 export default {
-  listDataAssets,
+  scanDatabase,
   getDataAssetSummary,
+  listDataAssets,
   getDataAsset,
-  createDataAsset,
   updateDataAsset,
-  syncDataAsset,
-  refreshDataAssetStats,
-  seedDataAssets
+  refreshDataAsset,
+  previewDataAsset
 };

@@ -1,9 +1,34 @@
 """
 loguru 日志配置：启动时调用一次，配置控制台 + 文件切分存储
+
+包含 InterceptHandler：将标准库 logging 的所有消息转发到 loguru，
+确保使用 logging.getLogger(__name__) 的模块日志不会丢失。
 """
+import logging
 import os
 import sys
 from loguru import logger
+
+
+class InterceptHandler(logging.Handler):
+    """将标准库 logging 消息桥接到 loguru。"""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # 获取对应的 loguru level
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        # 找到真正的 caller frame
+        frame, depth = logging.currentframe(), 2
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+
+        logger.opt(depth=depth, exception=record.exc_info).log(
+            level, record.getMessage()
+        )
 
 
 def setup_logging(
@@ -28,3 +53,6 @@ def setup_logging(
         encoding="utf-8",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
     )
+
+    # 桥接标准库 logging → loguru
+    logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)

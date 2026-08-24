@@ -1,3 +1,11 @@
+"""BacktestEngine：计算引擎的逐日推进主循环（计算内核层，模式无关）.
+
+按价格日历逐日推进：信号时点（execution_bar）→ 调仓调度（ScheduleResolver）
+→ 三层权重编排（CompositionPipeline / IStrategy）→ 撮合（ExecutionEngine）
+→ 风控约束（RiskManager）→ NAV 累计。全量回测、监控推演、模拟交易等
+计算模式均经此主循环，模式差异（费率、区间）由 BacktestConfig / 调用参数表达，
+不在策略逻辑内分叉。
+"""
 from __future__ import annotations
 
 import logging
@@ -5,6 +13,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Dict, Any, Tuple
 
 import pandas as pd
+import numpy as np
 
 from app.backtesting.config import BacktestConfig
 from app.backtesting.data_feed import DataFeed
@@ -12,7 +21,11 @@ from app.backtesting.strategy_api import IStrategy
 from app.backtesting.risk import RiskManager
 from app.backtesting.execution import ExecutionEngine, ExecutionResult
 from app.backtesting.types import Position, PortfolioSnapshot, Bar, Trade
-from app.backtesting.index_nav import IndexNavCalculator, IndexNavConfig
+from app.backtesting.schedule import (
+    ExecutionSchedule,
+    ScheduleResolver,
+    resolve_execution_schedule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,18 +58,53 @@ class BacktestEngine:
         self._strategy = strategy
         self._risk = risk_manager
         self._exec = execution_engine
-        
-        # 初始化指数净值计算器（如果启用）
-        self._index_nav_calculator: Optional[IndexNavCalculator] = None
-        self._tr_series = config.tr_series or None  # {asset_code: Series(TR)}
-        if config.use_index_nav:
-            nav_config = IndexNavConfig(
-                initial_nav=config.index_nav_initial,
-                fx_rates=config.fx_rates or {},
-                transaction_costs=config.transaction_costs or {},
-                replication_costs=config.replication_costs or {},
-            )
-            self._index_nav_calculator = IndexNavCalculator(nav_config)
+
+        # 执行调度：从策略声明读取调度规则，构建 ScheduleResolver
+        # （解析口径与 Step1 generate_targets 同源，见 schedule.resolve_execution_schedule）
+        self._schedule_resolver: Optional[ScheduleResolver] = None
+        self._execute_to_signal: Dict[pd.Timestamp, pd.Timestamp] = {}
+        schedule = resolve_execution_schedule(self._strategy, config)
+        trade_dates = list(data_feed.prices.index)
+        self._schedule_resolver = ScheduleResolver(schedule, trade_dates)
+
+        # 行情日历注入：声明 set_price_calendar 的策略可获得完整价格日历，
+        # 用于信号时序的精确判定（如月末锁定选择器判断自定义信号日历上
+        # 计数的生效日是否为窗口末行的下一价格交易日）
+        if hasattr(self._strategy, "set_price_calendar"):
+            try:
+                self._strategy.set_price_calendar(trade_dates)
+            except Exception as exc:
+                logger.warning("[引擎] set_price_calendar 注入失败，策略退回近似时序判定: %s", exc)
+
+        # 缺日保真：策略声明 preserve_price_gaps 时，信号计算用保留缺日 NaN 的
+        # strategy_prices（对齐原型品种缺日→窗口 NaN 传播口径）；逐日估值仍用 prices。
+        self._preserve_price_gaps = bool(
+            self._get_strategy_data_feed_options().get("preserve_price_gaps", False)
+        )
+
+    def _get_strategy_data_feed_options(self) -> dict:
+        """从策略实例读取数据源选项声明（如 preserve_price_gaps）."""
+        strategy = self._strategy
+        if hasattr(strategy, '_base_strategy'):
+            strategy = strategy._base_strategy
+        if hasattr(strategy, 'get_data_feed_options'):
+            try:
+                return dict(strategy.get_data_feed_options() or {})
+            except Exception as exc:  # 声明异常不应阻断回测，回退默认行为
+                logger.warning("[引擎] get_data_feed_options 调用失败，使用默认数据源选项: %s", exc)
+        return {}
+
+    def _build_schedule_maps(self, start: pd.Timestamp, end: pd.Timestamp) -> None:
+        """构建执行日→信号日映射表（在 run() 开始时调用）."""
+        if self._schedule_resolver:
+            self._execute_to_signal = self._schedule_resolver.build_execute_to_signal_map(start, end)
+        else:
+            self._execute_to_signal = {}
+
+    def _is_execute_day(self, time: pd.Timestamp) -> bool:
+        """判断当前时点是否为某个信号的执行日."""
+        time_norm = pd.Timestamp(time.date()) if hasattr(time, 'date') else time.normalize()
+        return time_norm in self._execute_to_signal
 
     def _compute_total_value(self, position: Position, bar: Bar) -> float:
         """根据当前持仓和最新价格计算组合总市值."""
@@ -71,109 +119,111 @@ class BacktestEngine:
             for code, qty in position.quantity.items()
         )
 
-    def _get_tr_values_for_date(self, date: pd.Timestamp, codes, bar: Bar) -> dict:
-        """根据TR序列获取指定日期的样本点位，若缺失则回退到收盘价.
+    def _compute_traditional_value_and_weights(
+        self, position: Position, bar: Bar
+    ) -> Tuple[float, pd.Series]:
+        """传统市值模式：计算组合总市值与当前权重（run/run_step 公共逻辑）."""
+        total_value = self._compute_total_value(position, bar)
+        current_weights = pd.Series({
+            code: (qty * bar.close.get(code, 0.0) / total_value) if total_value > 0 else 0.0
+            for code, qty in position.quantity.items()
+        })
+        return total_value, current_weights
 
-        当配置了tr_series时优先使用TR样本点位；
-        对于缺失TR的资产或日期，则使用当日收盘价近似作为样本点位，
-        保证指数净值模式在TR不完整时仍可运行。
-        """
-        # 防御性检查：确保 bar.close 是字典
-        if not isinstance(bar.close, dict):
-            raise TypeError(
-                f"bar.close 必须是字典类型，实际类型为 {type(bar.close)}。"
-                f"可能是数据格式问题，请检查数据源。"
-            )
-        
-        if not getattr(self, "_tr_series", None):
-            return {code: bar.close.get(code, 0.0) for code in codes if code in bar.close}
-
-        tr_values = {}
-        for code in codes:
-            series = self._tr_series.get(code) if self._tr_series else None
-            if series is not None:
-                try:
-                    if date in series.index:
-                        tr_values[code] = float(series.loc[date])
-                        continue
-                except Exception:
-                    # 任意异常都回退到收盘价
-                    pass
-            # 使用 get 方法安全访问，避免 KeyError
-            if code in bar.close:
-                tr_values[code] = bar.close.get(code, 0.0)
-        return tr_values
-
-    def _execute_rebalance_index_nav(
+    def _recalc_post_rebalance_vol(
         self,
         time: pd.Timestamp,
         bar: Bar,
-        target_signal,
-        trades_all: List[Trade],
-    ) -> tuple[float, Position]:
-        """指数净值模式下的调仓执行."""
-        if self._index_nav_calculator is None:
-            raise RuntimeError("Index NAV calculator is not initialized.")
-        tr_values = self._get_tr_values_for_date(time, target_signal.target_weights.keys(), bar)
-        
-        # 在调仓之前保存当前权重（用于生成交易记录）
-        current_weights_before_rebalance = self._index_nav_calculator.get_current_weights()
-        
-        # 执行调仓（这会更新内部的权重）
-        adjusted_nav = self._index_nav_calculator.on_rebalance(
-            date=time,
-            target_weights=target_signal.target_weights,
-            tr_values=tr_values,
+        weights: Dict[str, float],
+        portfolio_vol: float | None,
+        monitoring_metrics: Dict[str, Any],
+    ) -> Tuple[float | None, Dict[str, Any]]:
+        """调仓日用调仓后权重重算波动率，使监控图展示正确的「调仓后预期波动率」（run/run_step 公共逻辑）."""
+        if not weights:
+            return portfolio_vol, monitoring_metrics
+        try:
+            hist = self._data_feed.get_history_window(time)
+            if not hist.empty:
+                w_new = pd.Series({k: float(v or 0) for k, v in weights.items()})
+                if w_new.abs().sum() > 0:
+                    metrics_post = self._strategy.compute_monitoring_metrics(
+                        current_weights=w_new, history_prices=hist,
+                    )
+                    vol_post = metrics_post.get("portfolio_volatility")
+                    if vol_post is not None:
+                        portfolio_vol = vol_post
+                        monitoring_metrics["portfolio_volatility"] = vol_post
+        except Exception as exc:
+            logger.warning(
+                "[波动率监控] %s 调仓后波动率重算失败，保留调仓前取值：%s",
+                pd.Timestamp(time).strftime("%Y-%m-%d"), exc,
+            )
+        return portfolio_vol, monitoring_metrics
+
+    def _build_snapshot(
+        self,
+        time: pd.Timestamp,
+        total_value: float,
+        cash_value: float,
+        holdings_value: float,
+        weights: Dict[str, float],
+        is_rebalance_day: bool,
+        rebalance_type: str | None,
+        rebalance_reason: str | None,
+        portfolio_vol: float | None,
+        monitoring_metrics: Dict[str, Any],
+        signal_date: pd.Timestamp | None = None,
+        execution_delay_days: int = 0,
+    ) -> PortfolioSnapshot:
+        """构建每日组合快照（run/run_step 公共逻辑）."""
+        return PortfolioSnapshot(
+            time=time,
+            total_value=total_value,
+            cash=cash_value,
+            holdings_value=holdings_value,
+            weights=weights,
+            is_rebalance_day=is_rebalance_day,
+            rebalance_type=rebalance_type if is_rebalance_day else None,
+            portfolio_volatility=portfolio_vol,
+            monitoring_metrics=monitoring_metrics,
+            rebalance_reason=rebalance_reason if is_rebalance_day else None,
+            signal_date=signal_date if is_rebalance_day else None,
+            execution_delay_days=execution_delay_days if is_rebalance_day else 0,
         )
-        
-        # 生成模拟交易记录（用于前端展示）
-        # 注意：这些是模拟的交易，实际指数净值计算不依赖这些记录
-        
-        # 调试信息：打印当前权重和目标权重
-        print(f"[指数净值调仓] 时间={time.strftime('%Y-%m-%d')}, 调仓前权重={current_weights_before_rebalance}")
-        print(f"[指数净值调仓] 目标权重={target_signal.target_weights}")
-        
-        trades_count = 0
-        for thscode, target_weight in target_signal.target_weights.items():
-            current_weight = current_weights_before_rebalance.get(thscode, 0.0)
-            weight_change = target_weight - current_weight
-            
-            # 如果权重有变化，生成交易记录
-            if abs(weight_change) > 1e-6:  # 忽略极小的权重变化
-                # 使用TR值或收盘价作为交易价格
-                price = tr_values.get(thscode, bar.close.get(thscode, 0.0))
-                if price > 0:
-                    # 计算模拟的交易数量（基于当前净值和权重变化）
-                    # quantity = (净值 × 权重变化) / 价格
-                    quantity = (adjusted_nav * weight_change) / price
-                    
-                    # 确定交易方向
-                    side = "buy" if weight_change > 0 else "sell"
-                    
-                    # 计算手续费（基于权重变化的绝对值）
-                    tc_rate = self._config.transaction_costs.get(thscode, 0.0) if self._config.transaction_costs else 0.0
-                    commission = abs(adjusted_nav * weight_change) * tc_rate
-                    
-                    # 滑点成本（使用配置的滑点率）
-                    slippage_cost = abs(quantity * price * self._config.slippage)
-                    
-                    trades_all.append(Trade(
-                        time=time,
-                        thscode=thscode,
-                        side=side,
-                        quantity=abs(quantity),  # 数量取绝对值，方向由side表示
-                        price=price,
-                        commission=commission,
-                        slippage_cost=slippage_cost
-                    ))
-                    trades_count += 1
-                    print(f"  生成交易: {thscode}, 方向={side}, 权重变化={weight_change:.4f}, 数量={abs(quantity):.2f}, 价格={price:.4f}")
-        
-        print(f"[指数净值调仓] 本次生成 {trades_count} 条交易记录")
-        
-        # 指数净值模式下，Position仅作为占位对象
-        position = Position(quantity={}, cash=0.0)
-        return adjusted_nav, position
+
+    def _run_daily_settle(
+        self,
+        time: pd.Timestamp,
+        position: Position,
+        total_value: float,
+        bar_extra=None,
+    ) -> tuple[Position, float]:
+        """每日结算钩子，在快照构建后调用。
+
+        若策略模型实现了 on_daily_settle(time, position, total_value, bar_extra) 方法，
+        则调用它执行每日结算逻辑（如闲置资金利息、GC001 回购利息等）。
+        返回更新后的 position 和 total_value。
+        未实现该方法的策略自动跳过，零侵入。
+        """
+        settle_fn = getattr(self._strategy, "on_daily_settle", None)
+        if settle_fn is None or not callable(settle_fn):
+            return position, total_value
+        try:
+            result = settle_fn(time, position, total_value, bar_extra=bar_extra)
+            if result is None:
+                return position, total_value
+            # on_daily_settle 可返回 (new_position, new_total_value) 或仅 new_position
+            if isinstance(result, tuple) and len(result) == 2:
+                return result[0], result[1]
+            if isinstance(result, Position):
+                new_val = result.cash + sum(
+                    qty * (total_value / max(total_value, 1e-12))
+                    for qty in result.quantity.values()
+                )
+                return result, result.cash + (total_value - position.cash)
+        except Exception as e:
+            logger.warning(f"on_daily_settle 执行失败: {e}")
+        return position, total_value
 
     def _execute_rebalance_traditional(
         self,
@@ -193,27 +243,6 @@ class BacktestEngine:
         total_value = self._compute_total_value(position, bar)
         return total_value, position
 
-    def _update_nav_and_weights_index_mode(
-        self,
-        time: pd.Timestamp,
-        bar: Bar,
-        do_rebalance: bool,
-        total_value: float,
-    ):
-        """指数净值模式下的净值与权重更新."""
-        if self._index_nav_calculator is None:
-            raise RuntimeError("Index NAV calculator is not initialized.")
-        if not do_rebalance:
-            tr_values = self._get_tr_values_for_date(time, self._index_nav_calculator.ledgers.keys(), bar)
-            total_value = self._index_nav_calculator.compute_nav(
-                date=time,
-                tr_values=tr_values,
-            )
-        weights = self._index_nav_calculator.get_current_weights()
-        holdings_value = total_value
-        cash_value = 0.0
-        return total_value, holdings_value, cash_value, weights
-
     def _update_nav_and_weights_traditional_mode(
         self,
         bar: Bar,
@@ -229,73 +258,91 @@ class BacktestEngine:
         }
         return total_value, holdings_value, cash_value, weights
 
-    def _apply_traditional_replication_cost(
-        self,
-        time: pd.Timestamp,
-        bar: Bar,
-        position: Position,
-        last_rc_date: Optional[pd.Timestamp],
-    ) -> Tuple[Position, pd.Timestamp]:
-        """传统市值模式下每日复制费拖拽（与监控引擎对齐）。
+    def _resolve_snapshot_weight_source(self) -> str:
+        """读取策略声明的快照权重口径（actual / target）.
 
-        只在未启用指数净值计算器（主观策略路径）且 config.replication_costs 非空
-        时生效；IndexNavCalculator 路径已在其内部处理复制费，不需重复扣减。
-
-        费用公式与监控 portfolio_tracker.update_daily_pnl 一致：
-            daily_rc = sum_assets( |qty * close| * rc_rate / 365 * days_between )
-        拖拽仅从 position.cash 中扣减，并不改变持仓 quantity，使后续 total_value
-        = cash + sum(qty*price) 自然反映复制费。
+        杠杆类策略的目标权重和可 >1，按市值归一化的实际权重会抹平杠杆，
+        因此需用目标权重展示。引擎只读策略能力声明，不得按策略类名分支。
         """
-        rc_map = getattr(self._config, "replication_costs", None) or {}
-        if not rc_map or not position.quantity:
-            return position, last_rc_date if last_rc_date is not None else time
-        if last_rc_date is None:
-            return position, time
-        days_between = (time - last_rc_date).days
-        if days_between <= 0:
-            return position, last_rc_date
-        if not isinstance(bar.close, dict):
-            return position, time
-        daily_rc_total = 0.0
-        for code, qty in position.quantity.items():
-            if not qty:
-                continue
-            rc_rate = float(rc_map.get(code, 0.0) or 0.0)
-            if rc_rate <= 0:
-                continue
-            price = float(bar.close.get(code, 0.0) or 0.0)
-            if price <= 0:
-                continue
-            pos_value = abs(qty * price)
-            daily_rc_total += pos_value * (rc_rate / 365.0) * days_between
-        if daily_rc_total > 0:
-            position.cash -= daily_rc_total
-            logger.info(
-                "[主观回测][RC] %s 扣除复制费 %.4f（跨 %d 天），现金余额=%.4f",
-                pd.Timestamp(time).strftime("%Y-%m-%d"),
-                daily_rc_total,
-                days_between,
-                position.cash,
-            )
-        return position, time
+        strategy = getattr(self._strategy, "_base_strategy", self._strategy)
+        getter = getattr(strategy, "get_capabilities", None)
+        if not callable(getter):
+            return "actual"
+        try:
+            capabilities = getter() or {}
+        except Exception as exc:
+            logger.warning("[能力声明] 读取失败，快照回退到实际权重：%s", exc)
+            return "actual"
+        return str(capabilities.get("snapshot_weight_source") or "actual")
 
-    def _is_hybrid_momentum_risk_budget(self) -> bool:
-        """判断是否为 risk_budget_target_vol 的混合动量策略（需用目标权重展示，支持杠杆>1时权重和超过100%）。"""
-        if not hasattr(self._strategy, "_base_strategy"):
-            return False  # 混合动量需启用资产选择（StrategyAdapterWithSelection）
-        impl = getattr(self._strategy._base_strategy, "_impl", None)
-        return impl is not None and type(impl).__name__ == "RiskBudgetTargetVolStrategy"
+    # ------------------------------------------------------------------
+    # return-level 波动率定标（对齐 GMSI 2.0 原型 raw_ret × leverage.shift(1)）
+    # ------------------------------------------------------------------
+
+    def _get_return_targeting_params(self) -> Optional[Dict[str, Any]]:
+        """读取策略声明的 return-level 波动率定标参数；未声明时返回 None.
+
+        触发条件：策略参数 vol_targeting_enabled 为真（由分配器 schema 声明、
+        前端策略建模界面配置，随模型 parameters 持久化）。定标是策略自身
+        收益流计算的一部分（GMSI 2.0 口径 raw_ret × leverage.shift(1)），
+        不经过控制器；引擎基于「未缩放组合收益序列」逐日重算 leverage。
+        """
+        sp = getattr(self._strategy, "_strategy_params", None)
+        if not isinstance(sp, dict):
+            # 兼容包装策略（如研究员策略适配器）：从内层 Pipeline 读取
+            inner = getattr(self._strategy, "_base_strategy", None)
+            sp = getattr(inner, "_strategy_params", None) if inner is not None else None
+        if not isinstance(sp, dict):
+            return None
+        enabled = sp.get("vol_targeting_enabled", False)
+        if isinstance(enabled, str):
+            enabled = enabled.strip().lower() in ("1", "true", "yes", "on")
+        if not enabled:
+            return None
+        return {
+            "target_vol": float(sp.get("vol_targeting_target", 0.03)),
+            "vc_short": int(sp.get("vol_targeting_short_window", 20)),
+            "vc_long": int(sp.get("vol_targeting_long_window", 60)),
+            "annualization_factor": int(sp.get("vol_targeting_annualization", 260)),
+            "vol_method": str(sp.get("vol_targeting_method", "rolling")).lower(),
+            "leverage_min": float(sp.get("vol_targeting_leverage_min", 0.1)),
+            "leverage_max": float(sp.get("vol_targeting_leverage_max", 5.0)),
+        }
+
+    @staticmethod
+    def _compute_return_level_leverage(raw_returns: List[float], p: Dict[str, Any]) -> float:
+        """从未缩放收益序列计算 leverage = clip(target/vol_est, lb, ub).
+
+        vol_est = (短期 + 长期) / 2，口径与 DualWindowVolMonitor 一致：
+        ewma 用 span=窗口、min_periods=max(窗口一半, 下限)；历史不足时返回 1.0。
+        """
+        n = len(raw_returns)
+        if n < 10:
+            return 1.0
+        s = pd.Series(raw_returns)
+        af = p["annualization_factor"]
+        if p["vol_method"] == "ewma":
+            vol_short = s.ewm(span=p["vc_short"], min_periods=max(5, p["vc_short"] // 2)).std().iloc[-1]
+            vol_long = s.ewm(span=p["vc_long"], min_periods=max(10, p["vc_long"] // 2)).std().iloc[-1]
+        else:
+            vol_short = s.rolling(p["vc_short"], min_periods=max(5, p["vc_short"] // 2)).std().iloc[-1]
+            vol_long = s.rolling(p["vc_long"], min_periods=max(10, p["vc_long"] // 2)).std().iloc[-1]
+        if pd.isna(vol_short) or pd.isna(vol_long):
+            return 1.0
+        vol_est = (vol_short + vol_long) / 2.0 * np.sqrt(af)
+        if not (vol_est > 0):
+            return 1.0
+        return float(np.clip(p["target_vol"] / vol_est, p["leverage_min"], p["leverage_max"]))
 
     def run(self) -> BacktestResult:
         """执行回测.
         
         交易逻辑:
         - T日: 用T-1日收盘价计算权重, T日收盘价成交
-        - T日没有收益(资金调整中)
-        - T+1日开始享受收益
+        - T日按当日收盘价估值新持仓，调仓收益从T+1日开始体现
         
         波动率重置逻辑:
-        - 每日检查组合波动率；超过阈值时记录「信号日」（仅当该日不是常规调仓日时才记录）
+        - 每日检查组合波动率；超过阈值时记录「信号日」
         - 执行日 = 信号日后第2个交易日（故信号日当天不会调仓）
         - 若执行日同时也是常规调仓日，优先执行波动率重置并标记为 vol_reset
         """
@@ -304,29 +351,40 @@ class BacktestEngine:
         trades_all: List[Trade] = []
         last_rebalance_date = None  # 记录上次调仓日期
         last_target_weights = {}  # 最近一次调仓的目标权重（仅 risk_budget_target_vol 混合动量策略时用于持仓权重图展示）
-        use_target_weights_for_snapshot = self._is_hybrid_momentum_risk_budget()
+        use_target_weights_for_snapshot = self._resolve_snapshot_weight_source() == "target"
 
         # 波动率重置相关状态
         vol_reset_signal_date = None  # 波动率重置信号日
         vol_reset_trigger_value = None  # 触发时的波动率值
-        trading_days_count = 0  # 交易日计数器
+        vol_reset_execute_date = None  # 波动率重置执行日（由 ScheduleResolver 计算）
 
-        # month_end 模式：预计算月末最后一个交易日（与编制规则 step1/step2/trade_dates 一致）
-        if self._config.rebalance_freq == "month_end":
-            prices_idx = self._data_feed.prices.index
-            start_dt = pd.to_datetime(self._config.start_date)
-            end_dt = pd.to_datetime(self._config.end_date)
-            in_range = prices_idx[(prices_idx >= start_dt) & (prices_idx <= end_dt)]
-            # 按年月分组，取每月最后一个日期（价格数据日历的月末 = 月末最后一个交易日）
-            month_ends = in_range.to_series().groupby(in_range.to_period("M")).last().values
-            self._month_end_dates_set = set(pd.Timestamp(d) for d in month_ends)
-            # 编制规则：2015-01-05 为元旦后第1个交易日，永不调仓（执行日=月末后第2个交易日）
-            self._month_end_dates_set.discard(pd.Timestamp("2015-01-05"))
-        else:
-            self._month_end_dates_set = set()
+        # 构建调度映射表（执行日 → 信号日）
+        start_dt = pd.to_datetime(self._config.start_date)
+        end_dt = pd.to_datetime(self._config.end_date)
+        self._build_schedule_maps(start_dt, end_dt)
+        self._month_end_dates_set = set()
 
         first_bar_in_range = True  # 用于期初建仓：首日按策略权重建仓
-        last_rc_date: Optional[pd.Timestamp] = None  # 传统模式复制费上一计算日
+        # 信号时点能力：signal_timing="execution_bar" 表示策略用执行日当日收盘价做信号
+        # （如类雪球 Delta 对冲，对齐四象限原型“当日收盘定价+调仓”语义）；
+        # 默认 T-1 信号（用前一日收盘算权重，当日收盘成交），避免前视偏差。
+        _signal_uses_execution_bar = False
+        try:
+            _caps = self._strategy.get_capabilities() if hasattr(self._strategy, "get_capabilities") else {}
+            _signal_uses_execution_bar = (_caps or {}).get("signal_timing") == "execution_bar"
+        except Exception:
+            _signal_uses_execution_bar = False
+
+        # return-level 波动率定标状态（对齐 GMSI 2.0 原型 raw_ret × leverage.shift(1)）：
+        # 策略声明 vol_targeting_enabled 后，Pipeline 输出未缩放权重，
+        # 引擎从实际净值收益反推未缩放收益序列，逐日重算 leverage，
+        # 每日快照后按 leverage 变化无成本调整仓位敞口（指数级缩放）。
+        rt_params = self._get_return_targeting_params()
+        rt_raw_returns: List[float] = []
+        rt_leverage = 1.0            # 最新计算的 leverage（lev_t）
+        rt_applied_leverage = 1.0    # 当前持仓内嵌的缩放倍数（lev_{t-1}）
+        rt_prev_total_value: Optional[float] = None
+
         for time, bar in self._data_feed.iter_bars():
             # 仅在回测设置的区间内进行模拟
             if time < pd.to_datetime(self._config.start_date):
@@ -334,34 +392,18 @@ class BacktestEngine:
             if time > pd.to_datetime(self._config.end_date):
                 break
 
-            # 传统市值模式：每日开始时扣除与监控对齐的复制费拖拽
-            # 仅在 IndexNavCalculator 未启用且 replication_costs 配置非空时生效（主观策略）
-            if self._index_nav_calculator is None:
-                position, last_rc_date = self._apply_traditional_replication_cost(
-                    time=time, bar=bar, position=position, last_rc_date=last_rc_date,
-                )
-
             # 当前组合总市值与权重（用于波动率监控与净值更新）
-            if self._index_nav_calculator is not None:
-                # 指数净值模式：从计算器取当前权重与净值，保证每日监控到真实持仓
-                codes = list(self._index_nav_calculator.ledgers.keys()) if self._index_nav_calculator.ledgers else list(bar.close.keys())
-                tr_values = self._get_tr_values_for_date(time, codes, bar)
-                if self._index_nav_calculator.ledgers:
-                    total_value = self._index_nav_calculator.compute_nav(
-                        date=time, tr_values=tr_values
-                    )
-                    current_weights = pd.Series(
-                        self._index_nav_calculator.get_current_weights()
-                    )
+            total_value, current_weights = self._compute_traditional_value_and_weights(position, bar)
+
+            # return-level 定标：从已实现净值收益反推未缩放收益，重算当日 leverage
+            if rt_params is not None and rt_prev_total_value and rt_prev_total_value > 0:
+                realized_ret = total_value / rt_prev_total_value - 1.0
+                if rt_applied_leverage > 1e-12:
+                    raw_ret = realized_ret / rt_applied_leverage
                 else:
-                    total_value = self._config.initial_cash
-                    current_weights = pd.Series(dtype=float)
-            else:
-                total_value = self._compute_total_value(position, bar)
-                current_weights = pd.Series({
-                    code: (qty * bar.close.get(code, 0.0) / total_value) if total_value > 0 else 0.0
-                    for code, qty in position.quantity.items()
-                })
+                    raw_ret = realized_ret
+                rt_raw_returns.append(float(raw_ret))
+                rt_leverage = self._compute_return_level_leverage(rt_raw_returns, rt_params)
 
             # 每日监控指标（仅当有持仓时）
             portfolio_vol = None
@@ -377,42 +419,47 @@ class BacktestEngine:
                         )
                         portfolio_vol = monitoring_metrics.get("portfolio_volatility")
                         
-                        # 2. 检查是否触发波动率重置（支持特定策略逻辑）
+                        # 2. 检查是否触发波动率重置（触发参数均来自策略参数，回测配置不参与）
                         if hasattr(self._strategy, 'check_volatility_trigger'):
                             is_triggered, vol_value = self._strategy.check_volatility_trigger(
                                 current_weights=current_weights,
                                 prices=history,
-                                **self._config.__dict__  # 传递配置参数
                             )
                             
                             # 如果策略没在 monitoring_metrics 中返回波动率，则使用 vol_value
                             if portfolio_vol is None and vol_value is not None:
                                 portfolio_vol = vol_value
-                            # 如果触发且当前没有待处理的重置信号：始终记录信号（含常规调仓日），T+2 再执行重置
+                            # 如果触发且当前没有待处理的重置信号：始终记录信号（含常规调仓日），通过 ScheduleResolver 计算执行日
                             if is_triggered and vol_reset_signal_date is None and vol_value is not None:
                                 vol_reset_signal_date = time
                                 vol_reset_trigger_value = vol_value
-                                trading_days_count = 0
-                                if self._should_rebalance(time):
-                                    print(f"[波动率重置] 信号日记录(同日常规调仓): {time.date()} 组合波动率={vol_value:.4%}，T+2 执行重置")
+                                # 用 ScheduleResolver 计算执行日（+delay 并处理 skip_dates）
+                                time_norm = pd.Timestamp(time.date()) if hasattr(time, 'date') else time.normalize()
+                                vol_reset_execute_date = self._schedule_resolver.resolve_execute_date(time_norm) if self._schedule_resolver else None
+                                if self._is_execute_day(time):
+                                    logger.info(f"[波动率重置] 信号日记录(同日常规调仓): {time.date()} 组合波动率={vol_value:.4%}，执行日={vol_reset_execute_date.date() if vol_reset_execute_date else 'N/A'}")
                                 else:
-                                    print(f"[波动率重置] 信号日记录: {time.date()} 组合波动率={vol_value:.4%}，T+2 执行重置")
+                                    logger.info(f"[波动率重置] 信号日记录: {time.date()} 组合波动率={vol_value:.4%}，执行日={vol_reset_execute_date.date() if vol_reset_execute_date else 'N/A'}")
                         
-                        # 3. 兜底：仍无波动率时由引擎统一计算（保证步进/单策略均有有效波动率）
+                        # 3. 波动率公式属于策略/控制层：策略未给出时引擎不自行计算，
+                        #    仅记录为空（快照会如实上报 None，前端跳过该点）。
                         if portfolio_vol is None:
-                            from app.strategies.models.base import _default_portfolio_vol
-                            portfolio_vol = _default_portfolio_vol(current_weights, history)
+                            logger.debug(
+                                "[波动率监控] %s 策略未返回组合波动率，快照记为空",
+                                pd.Timestamp(time).strftime("%Y-%m-%d"),
+                            )
                     except Exception as e:
-                        # 波动率监控/触发计算失败时打印，便于排查“未触发重置”问题
-                        import traceback
-                        print(f"[波动率重置] 监控计算异常 {time.date()}: {e}")
-                        traceback.print_exc()
+                        # 波动率监控/触发计算失败时记录，便于排查“未触发重置”问题
+                        logger.warning(f"[波动率重置] 监控计算异常 {time.date()}: {e}")
+                        logger.debug(f"[波动率重置] 异常详情", exc_info=True)
 
             # 是否在该时点调仓
             # 优先级：期初建仓 > 交互式权重调整 > 波动率重置 > 常规调仓
             do_rebalance = False
             rebalance_type = None
             rebalance_reason = None
+            _signal_date: pd.Timestamp | None = None  # 本次调仓的原始信号日
+            _exec_delay_days: int = 0  # 本次调仓的延迟交易日数
 
             manual_adjustments = getattr(self._config, "manual_weight_adjustments", None) or {}
             date_str = time.strftime("%Y%m%d")
@@ -422,8 +469,6 @@ class BacktestEngine:
             # 期初建仓：若配置了 initial_weights 且当前无持仓，则在首日按该权重建仓（主观策略）
             if initial_weights and sum((v or 0) for v in initial_weights.values()) > 0:
                 has_position = bool(position.quantity)
-                if self._index_nav_calculator is not None:
-                    has_position = bool(self._index_nav_calculator.ledgers)
                 if not has_position:
                     do_rebalance = True
                     rebalance_type = "manual_adjustment"
@@ -433,8 +478,6 @@ class BacktestEngine:
             # 与常规调仓一致，调用 generate_target_weights；risk_budget_target_vol 混合动量会执行资产选择（7+1 动量/反转）
             if not do_rebalance and first_bar_in_range:
                 has_position = bool(position.quantity)
-                if self._index_nav_calculator is not None:
-                    has_position = bool(self._index_nav_calculator.ledgers)
                 init_sum = sum((v or 0) for v in (initial_weights or {}).values())
                 if not has_position and init_sum == 0:
                     do_rebalance = True
@@ -452,42 +495,84 @@ class BacktestEngine:
             # 主观策略仅按预设日期调仓：不执行周期性调仓与波动率阈值重置
             if not rebalance_only_preset:
                 if not do_rebalance and vol_reset_signal_date is not None:
-                    trading_days_count += 1
-                    if trading_days_count >= 2:
+                    # 通过 ScheduleResolver 计算的执行日判断是否到达执行日
+                    time_norm = pd.Timestamp(time.date()) if hasattr(time, 'date') else time.normalize()
+                    if vol_reset_execute_date is not None and time_norm >= vol_reset_execute_date:
                         do_rebalance = True
                         rebalance_type = "vol_reset"
                         _vol_signal_date = vol_reset_signal_date
                         _vol_trigger_val = vol_reset_trigger_value
-                        if _vol_trigger_val is not None:
+                        # 记录延迟信息
+                        _signal_date = _vol_signal_date
+                        if _vol_signal_date is not None and vol_reset_execute_date is not None:
+                            # 计算交易日延迟数
                             try:
-                                rebalance_reason = f"波动率重置触发（信号日年化波动率={_vol_trigger_val:.4%}）"
-                            except Exception:
-                                rebalance_reason = "波动率重置触发"
+                                td = self._schedule_resolver._trade_dates
+                                sig_idx = np.searchsorted(td, _vol_signal_date)
+                                exec_idx = np.searchsorted(td, time_norm)
+                                _exec_delay_days = max(exec_idx - sig_idx, 0)
+                            except (AttributeError, TypeError, ValueError) as exc:
+                                logger.warning(
+                                    "[波动率重置] %s 无法推算信号日到执行日的交易日延迟，记为 0：%s",
+                                    time_norm.strftime("%Y-%m-%d"), exc,
+                                )
+                                _exec_delay_days = 0
+                        if _vol_trigger_val is not None:
+                            rebalance_reason = f"波动率重置触发（信号日年化波动率={_vol_trigger_val:.4%}）"
                         else:
                             rebalance_reason = "波动率重置触发"
+                        logger.info(f"[波动率重置] 执行日: {time.date()} (信号日={_vol_signal_date.date() if hasattr(_vol_signal_date, 'date') else _vol_signal_date})")
                         vol_reset_signal_date = None
                         vol_reset_trigger_value = None
-                        trading_days_count = 0
-                        # 暂存供执行时写入 vol_reset_events_collector
-                        setattr(self, "_pending_vol_reset_info", {"signal_date": _vol_signal_date, "vol_trigger": _vol_trigger_val})
-                        print(f"[波动率重置] 执行日: {time.date()} (信号日后第2个交易日)")
-                    elif self._should_rebalance(time):
+                        vol_reset_execute_date = None
+                    elif self._is_execute_day(time):
                         # 信号日或 T+1：若今日也是常规调仓日，照常执行常规调仓，保留 T+2 波动率重置
                         do_rebalance = True
                         rebalance_type = "regular"
                         rebalance_reason = "周期性调仓"
-                elif self._should_rebalance(time):
+                elif not do_rebalance and self._is_execute_day(time):
                     do_rebalance = True
                     rebalance_type = "regular"
                     rebalance_reason = "周期性调仓"
+                    # 记录延迟信息：从 execute_to_signal 映射获取信号日
+                    time_norm = pd.Timestamp(time.date()) if hasattr(time, 'date') else time.normalize()
+                    _signal_date = self._execute_to_signal.get(time_norm)
+                    if _signal_date is not None and _signal_date != time_norm:
+                        try:
+                            td = self._schedule_resolver._trade_dates
+                            sig_idx = np.searchsorted(td, _signal_date)
+                            exec_idx = np.searchsorted(td, time_norm)
+                            _exec_delay_days = max(exec_idx - sig_idx, 0)
+                        except (AttributeError, TypeError, ValueError) as exc:
+                            logger.warning(
+                                "[调仓] %s 无法推算信号日到执行日的交易日延迟，记为 0：%s",
+                                time_norm.strftime("%Y-%m-%d"), exc,
+                            )
+                            _exec_delay_days = 0
 
             if do_rebalance:
                 # 历史窗口（不含未来，避免前视偏差）；交互式权重调整不依赖历史数据
-                history = self._data_feed.get_history_window(time)
+                # 缺日保真策略使用保留缺日 NaN 的 strategy_prices，其余策略用 ffill 后的 prices
+                if self._preserve_price_gaps and self._data_feed.strategy_prices is not None:
+                    _hist_src = self._data_feed.strategy_prices
+                    history = _hist_src.loc[_hist_src.index < time]
+                else:
+                    _hist_src = self._data_feed.prices
+                    history = self._data_feed.get_history_window(time)
+                # 声明 execution_bar 的策略：信号窗口包含当日 bar（当日收盘决策、当日收盘成交）
+                if _signal_uses_execution_bar and time in _hist_src.index:
+                    history = pd.concat([history, _hist_src.loc[[time]]])
+                elif _signal_date is not None:
+                    # prev_close 口径：信号在信号日收盘计算，延迟执行时
+                    # 成交日的历史窗口会含信号日之后的行情（前视），
+                    # 必须截断到信号日（对齐原型 signal_dates_in_dates 口径）
+                    sig_ts = pd.Timestamp(_signal_date)
+                    if not history.empty and history.index[-1] > sig_ts:
+                        history = history.loc[history.index <= sig_ts]
 
                 if history.empty and rebalance_type != "manual_adjustment":
                     if rebalance_type == "vol_reset":
-                        print(f"[波动率重置] 跳过执行(历史数据为空): {time.date()}")
+                        logger.debug(f"[波动率重置] 跳过执行(历史数据为空): {time.date()}")
                     continue
 
                 # 根据调仓类型生成目标权重
@@ -519,11 +604,13 @@ class BacktestEngine:
                     target_signal = TargetWeightSignal(time=time, target_weights=weights_dict)
                 elif rebalance_type == "vol_reset" and hasattr(self._strategy, 'compute_volatility_reset_weights'):
                     # 使用信号日记录的 VolTrigger 进行等比例缩放，避免执行日重算波动率导致不缩放（编制规则 4.3.4）
-                    pending = getattr(self, "_pending_vol_reset_info", {})
-                    vol_trigger_signal = pending.get("vol_trigger")
-                    params_for_reset = dict(self._config.__dict__)
-                    if vol_trigger_signal is not None:
-                        params_for_reset["_vol_trigger"] = vol_trigger_signal
+                    # 只传回测层真正拥有的变量：信号日波动率与显式配置的目标波动率；
+                    # 其余参数由策略自己提供（全量透传 config 会用 None 覆盖策略参数）。
+                    params_for_reset: Dict[str, Any] = {}
+                    if getattr(self._config, "target_vol", None) is not None:
+                        params_for_reset["target_vol"] = self._config.target_vol
+                    if _vol_trigger_val is not None:
+                        params_for_reset["_vol_trigger"] = _vol_trigger_val
                     reset_weights = self._strategy.compute_volatility_reset_weights(
                         current_weights=current_weights,
                         prices=history,
@@ -533,483 +620,143 @@ class BacktestEngine:
                     if reset_weights is not None:
                         from app.backtesting.signal import TargetWeightSignal
                         target_signal = TargetWeightSignal(time=time, target_weights=reset_weights.to_dict())
-                        # 混合动量导出：记录波动率重置事件
-                        collector = getattr(self._config, "vol_reset_events_collector", None)
-                        if collector is not None:
-                            pending = getattr(self, "_pending_vol_reset_info", {})
-                            trigger_w = current_weights.to_dict() if hasattr(current_weights, "to_dict") else dict(current_weights)
-                            reset_w = reset_weights.to_dict() if hasattr(reset_weights, "to_dict") else dict(reset_weights)
-                            # 从策略参数获取（config 可能不含）
-                            sp = {}
-                            if hasattr(self._strategy, "_base_strategy"):
-                                sp = getattr(self._strategy._base_strategy, "_params", {}) or {}
-                            threshold_val = float(sp.get("vol_reset_threshold") or getattr(self._config, "vol_reset_threshold", 0.06) or 0.06)
-                            target_vol_val = float(sp.get("target_vol") or getattr(self._config, "target_vol", 0.05) or 0.05)
-                            vol_trig = pending.get("vol_trigger") or 0.0
-                            scale_f = target_vol_val / vol_trig if vol_trig > 0 else 1.0
-                            collector.append({
-                                "signal_date": pending.get("signal_date"),
-                                "execute_date": time,
-                                "vol_trigger": vol_trig,
-                                "threshold": threshold_val,
-                                "target_vol": target_vol_val,
-                                "scale_factor": scale_f,
-                                "trigger_weights": trigger_w,
-                                "reset_weights": reset_w,
-                            })
-                        if hasattr(self, "_pending_vol_reset_info"):
-                            delattr(self, "_pending_vol_reset_info")
                     else:
-                        print(f"[波动率重置] 跳过执行(compute_volatility_reset_weights 返回空): {time.date()}")
+                        logger.debug(f"[波动率重置] 跳过执行(compute_volatility_reset_weights 返回空): {time.date()}")
                         continue
                 else:
                     # 常规调仓：策略生成目标权重
-                    target_signal = self._strategy.generate_target_weights(history, as_of=time)
+                    try:
+                        target_signal = self._strategy.generate_target_weights(history, as_of=time)
+                    except ValueError as exc:
+                        # 对齐四象限原型：子策略起点早于数据覆盖时（如多资产 2017-01-03 起跑、
+                        # 数据库行情自 2017-01-04 起），早期调仓历史不足导致选择器报
+                        # 「没有资产满足最小历史数据要求/未选出任何资产」。
+                        # 原型语义为空仓持有现金（select_assets 无合格资产返回零权重），
+                        # 此处跳过本次调仓（维持空仓），待历史累积足够后自然恢复。
+                        _msg = str(exc)
+                        _is_insufficient_history = (
+                            "最小历史数据" in _msg
+                            or "历史数据不足" in _msg
+                            or "未选出任何资产" in _msg
+                            # 预热期信号窗口未满时复合信号为空（如趋势-截面复合
+                            # 前 tf_lookback/cs_lookback 日），与原型预热期零收益语义一致：
+                            # 空仓持有现金，待历史累积足够后自然恢复
+                            or "未收到复合信号" in _msg
+                            # 分配器预热期数据不足（如反方差预算需要 vol 窗口）
+                            or "预算模式数据不足" in _msg
+                            or "1/σ² 之和 <= 0" in _msg
+                        )
+                        if _is_insufficient_history:
+                            logger.info(
+                                "[调仓] %s 历史数据不足，本次调仓跳过（空仓持有现金，对齐原型预热语义）：%s",
+                                pd.Timestamp(time).strftime("%Y-%m-%d"), exc,
+                            )
+                            do_rebalance = False
+                            continue
+                        raise
 
                 # 风控调整
                 target_signal = self._risk.apply_risk_checks(target_signal, history)
                 
-                # 常规调仓时：若新权重预期波动率仍超阈值，先做波动率缩放，避免月度调仓撤销波动率重置导致「快速回弹」
-                if rebalance_type == "regular" and hasattr(self._strategy, "compute_monitoring_metrics"):
-                    try:
-                        sp = getattr(getattr(self._strategy, "_base_strategy", self._strategy), "_params", {}) or {}
-                        enable_vr = sp.get("enable_vol_reset", True) and getattr(self._config, "enable_vol_reset", True)
-                        if enable_vr and not history.empty:
-                            w_new = pd.Series({k: float(v or 0) for k, v in target_signal.target_weights.items()})
-                            if w_new.abs().sum() > 0:
-                                m = self._strategy.compute_monitoring_metrics(
-                                    current_weights=w_new, history_prices=history, **{**sp, **self._config.__dict__}
-                                )
-                                vol_new = m.get("portfolio_volatility")
-                                thresh = float(sp.get("vol_reset_threshold") or getattr(self._config, "vol_reset_threshold", 0.06) or 0.06)
-                                tvol = float(sp.get("target_vol") or getattr(self._config, "target_vol", 0.05) or 0.05)
-                                if vol_new is not None and vol_new > thresh:
-                                    scale = tvol / vol_new
-                                    scaled = {k: float(v or 0) * scale for k, v in target_signal.target_weights.items()}
-                                    from app.backtesting.signal import TargetWeightSignal
-                                    target_signal = TargetWeightSignal(time=time, target_weights=scaled)
-                    except Exception:
-                        pass
-                
+                # 说明：此处原有一段「常规调仓后再做波动率缩放」逻辑，其开关依赖
+                # config.enable_vol_reset（BacktestConfig 并无此字段），恰好永不生效；
+                # 且它在引擎内重写了 w × target_vol / vol 的缩放公式。波动率缩放属于
+                # 控制层（compute_volatility_reset_weights），故此处已删除，不在引擎重建公式。
+
                 # 记录目标权重供快照展示（支持杠杆>1时权重和超过100%）
                 last_target_weights = {}
                 for code in self._config.thscodes:
                     last_target_weights[code] = float(target_signal.target_weights.get(code, 0.0))
 
-                # 根据净值计算模式执行调仓
-                if self._index_nav_calculator is not None:
-                    # 指数净值模式：直接通知计算器调仓，内部自动扣除交易费用
-                    total_value, position = self._execute_rebalance_index_nav(
-                        time=time,
-                        bar=bar,
-                        target_signal=target_signal,
-                        trades_all=trades_all,
-                    )
-                else:
-                    # 传统模式：使用ExecutionEngine执行调仓
-                    total_value, position = self._execute_rebalance_traditional(
-                        bar=bar,
-                        position=position,
-                        target_signal=target_signal,
-                        trades_all=trades_all,
-                    )
-                
-                last_rebalance_date = time
-
-            # 计算当日净值（根据模式）
-            if self._index_nav_calculator is not None:
-                total_value, holdings_value, cash_value, weights = self._update_nav_and_weights_index_mode(
-                    time=time,
-                    bar=bar,
-                    do_rebalance=do_rebalance,
-                    total_value=total_value,
-                )
-            else:
-                total_value, holdings_value, cash_value, weights = self._update_nav_and_weights_traditional_mode(
+                # 执行调仓：使用ExecutionEngine（手续费 + 滑点在其内部扣减）
+                total_value, position = self._execute_rebalance_traditional(
                     bar=bar,
                     position=position,
-                    total_value=total_value,
+                    target_signal=target_signal,
+                    trades_all=trades_all,
                 )
+
+                # return-level 定标：调仓后持仓为未缩放权重，内嵌缩放倍数重置为 1.0，
+                # 快照后的无成本调整步骤会按当日 leverage 重新上缩放
+                if rt_params is not None:
+                    rt_applied_leverage = 1.0
+
+                last_rebalance_date = time
+
+            # 计算当日净值
+            total_value, holdings_value, cash_value, weights = self._update_nav_and_weights_traditional_mode(
+                bar=bar,
+                position=position,
+                total_value=total_value,
+            )
             
             # 调仓日：用调仓后权重重算波动率，使监控图展示正确的「调仓后预期波动率」（编制规则 4.3.4）
-            if do_rebalance and last_target_weights and not history.empty:
-                try:
-                    w_new = pd.Series({k: float(v or 0) for k, v in last_target_weights.items()})
-                    if len(w_new) > 0 and w_new.abs().sum() > 0:
-                        metrics_post = self._strategy.compute_monitoring_metrics(
-                            current_weights=w_new,
-                            history_prices=history,
-                        )
-                        vol_post = metrics_post.get("portfolio_volatility")
-                        if vol_post is not None:
-                            portfolio_vol = vol_post
-                            monitoring_metrics["portfolio_volatility"] = vol_post
-                except Exception:
-                    pass
+            if do_rebalance and last_target_weights:
+                portfolio_vol, monitoring_metrics = self._recalc_post_rebalance_vol(
+                    time, bar, last_target_weights, portfolio_vol, monitoring_metrics,
+                )
             
             # 记录组合快照(每天都记录)
-            # 标记是否为调仓日(调仓日无收益)
             is_rebalance_day = (last_rebalance_date == time)
-            # 指数净值模式 + 混合动量：调仓日使用计算器 get_target_weights（未归一化，与交易一致）
-            # 非调仓日用 last_target_weights，解决「波动率调仓后净值权重未更新」问题
-            if self._index_nav_calculator is not None and use_target_weights_for_snapshot:
-                if is_rebalance_day:
-                    calc_tw = self._index_nav_calculator.get_target_weights()
-                    if calc_tw:
-                        snapshot_weights = {code: float(calc_tw.get(code, 0.0)) for code in self._config.thscodes}
-                    else:
-                        snapshot_weights = last_target_weights if last_target_weights else weights
-                else:
-                    snapshot_weights = last_target_weights if last_target_weights else weights
-            else:
-                snapshot_weights = (last_target_weights if last_target_weights else weights) if use_target_weights_for_snapshot else weights
+            # 杠杆类策略按能力声明使用目标权重展示（权重和可 >1），否则用市值归一化的实际权重
+            snapshot_weights = (last_target_weights if last_target_weights else weights) if use_target_weights_for_snapshot else weights
 
-            snapshots.append(
-                PortfolioSnapshot(
-                    time=time,
-                    total_value=total_value,
-                    cash=cash_value,
-                    holdings_value=holdings_value,
-                    weights=snapshot_weights,
-                    is_rebalance_day=is_rebalance_day,  # 标记调仓日
-                    rebalance_type=rebalance_type if is_rebalance_day else None,  # 调仓类型
-                    portfolio_volatility=portfolio_vol,  # 组合波动率
-                    monitoring_metrics=monitoring_metrics,  # 所有监控指标
-                    rebalance_reason=rebalance_reason if is_rebalance_day else None,  # 调仓原因
-                )
-            )
+            snapshots.append(self._build_snapshot(
+                time=time,
+                total_value=total_value,
+                cash_value=cash_value,
+                holdings_value=holdings_value,
+                weights=snapshot_weights,
+                is_rebalance_day=is_rebalance_day,
+                rebalance_type=rebalance_type,
+                rebalance_reason=rebalance_reason,
+                portfolio_vol=portfolio_vol,
+                monitoring_metrics=monitoring_metrics,
+                signal_date=_signal_date,
+                execution_delay_days=_exec_delay_days,
+            ))
+
+            # 每日结算钩子：策略可执行闲置资金利息、GC001回购利息等每日调整
+            position, total_value = self._run_daily_settle(time, position, total_value, bar.extra)
+
+            # return-level 定标：快照已记录当日净值，此处按 leverage 变化无成本调整
+            # 仓位敞口（持仓数量×k、现金反向补偿，净值不变），使次日收益体现 lev_t
+            if (
+                rt_params is not None
+                and position.quantity
+                and abs(rt_leverage - rt_applied_leverage) > 1e-12
+            ):
+                if rt_applied_leverage > 1e-12:
+                    k = rt_leverage / rt_applied_leverage
+                else:
+                    k = rt_leverage
+                if abs(k - 1.0) > 1e-12:
+                    holdings_val = sum(
+                        qty * bar.close.get(code, 0.0)
+                        for code, qty in position.quantity.items()
+                    )
+                    position = Position(
+                        quantity={c: q * k for c, q in position.quantity.items()},
+                        cash=position.cash + holdings_val * (1.0 - k),
+                    )
+                rt_applied_leverage = rt_leverage
+
+            rt_prev_total_value = total_value
 
             first_bar_in_range = False  # 首日已处理，后续不再触发期初建仓
 
-        print(f"\n=== 回测结束 ===")
-        print(f"快照数量: {len(snapshots)}")
-        print(f"交易记录数量: {len(trades_all)}")
+        logger.info(f"回测结束: 快照={len(snapshots)}, 交易={len(trades_all)}")
         if trades_all:
-            print(f"首条交易: {trades_all[0].time.strftime('%Y-%m-%d')} {trades_all[0].thscode} {trades_all[0].quantity:.2f}")
-            print(f"末条交易: {trades_all[-1].time.strftime('%Y-%m-%d')} {trades_all[-1].thscode} {trades_all[-1].quantity:.2f}")
+            logger.debug(f"首条交易: {trades_all[0].time.strftime('%Y-%m-%d')} {trades_all[0].thscode} {trades_all[0].quantity:.2f}")
+            logger.debug(f"末条交易: {trades_all[-1].time.strftime('%Y-%m-%d')} {trades_all[-1].thscode} {trades_all[-1].quantity:.2f}")
         else:
-            print("警告: 没有生成任何交易记录！")
+            logger.warning("没有生成任何交易记录")
         if len(snapshots) == 0:
             prices_len = len(self._data_feed.prices) if self._data_feed.prices is not None else 0
-            print(
-                f"提示: 回测无数据。可能原因：1) 建仓日晚于今日；2) 回测区间 [{self._config.start_date}~{self._config.end_date}] "
+            logger.warning(
+                f"回测无数据。可能原因：1) 建仓日晚于今日；2) 回测区间 [{self._config.start_date}~{self._config.end_date}] "
                 f"与行情数据无交集（已加载 {prices_len} 行）；3) 日期配置错误。请核查。"
             )
-        print("===============\n")
         
         return BacktestResult(snapshots=snapshots, trades=trades_all, config=self._config)
 
-    def run_step(
-        self,
-        stop_before_date: Optional[str] = None,
-        initial_state: Optional[Dict[str, Any]] = None,
-        override_decision: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[List[PortfolioSnapshot], List[Trade], Optional[Dict[str, Any]], Optional[str]]:
-        """
-        步进回测：可运行到指定日期前停止并返回状态，或从给定状态恢复并用 override_decision 处理当日。
-        仅支持传统市值模式（use_index_nav=False）。
-        返回 (snapshots, trades, state_at_last_day, stopped_at_date)。
-        stopped_at_date 不为 None 表示在该日期前暂停；为 None 表示已跑完整个区间。
-        """
-        if self._index_nav_calculator is not None:
-            raise ValueError("步进回测暂仅支持传统市值模式，请关闭指数净值计算")
-        position = Position(quantity={}, cash=self._config.initial_cash)
-        snapshots: List[PortfolioSnapshot] = []
-        trades_all: List[Trade] = []
-        last_rebalance_date = None
-        vol_reset_signal_date = None
-        vol_reset_trigger_value = None
-        trading_days_count = 0
-        last_state: Optional[Dict[str, Any]] = None
-        stopped_at: Optional[str] = None
-        manual_adjustments = getattr(self._config, "manual_weight_adjustments", None) or {}
-        rebalance_only_preset = getattr(self._config, "rebalance_only_on_preset_dates", False)
-        initial_weights = getattr(self._config, "initial_weights", None) or {}
-        override_date = override_decision.get("date") if override_decision else None
-        override_action = override_decision.get("action") if override_decision else None
-        override_weights = override_decision.get("weights") if override_decision else None
-        override_auto_norm = override_decision.get("auto_normalize", False) if override_decision else False
-        restored = False
-        last_rc_date: Optional[pd.Timestamp] = None  # 传统模式复制费上一计算日
-
-        for time, bar in self._data_feed.iter_bars():
-            if time < pd.to_datetime(self._config.start_date):
-                continue
-            if time > pd.to_datetime(self._config.end_date):
-                break
-
-            date_str = time.strftime("%Y%m%d")
-            if initial_state and date_str <= initial_state.get("date", ""):
-                continue
-            if initial_state and not restored and date_str > initial_state.get("date", ""):
-                pos = initial_state.get("position", {})
-                position = Position(
-                    quantity=dict(pos.get("quantity", {})),
-                    cash=float(pos.get("cash", 0)),
-                )
-                restored = True
-
-            if stop_before_date and date_str >= stop_before_date:
-                stopped_at = stop_before_date
-                break
-
-            # 传统市值模式：每日开始时扣除与监控对齐的复制费拖拽。
-            # run_step 仅主观策略使用，始终为传统模式；config.replication_costs 由
-            # API 层 _build_manual_replication_costs 注入。
-            position, last_rc_date = self._apply_traditional_replication_cost(
-                time=time, bar=bar, position=position, last_rc_date=last_rc_date,
-            )
-
-            total_value = self._compute_total_value(position, bar)
-            current_weights = pd.Series({
-                code: (qty * bar.close.get(code, 0.0) / total_value) if total_value > 0 else 0.0
-                for code, qty in position.quantity.items()
-            })
-
-            portfolio_vol = None
-            monitoring_metrics = {}
-            if len(current_weights) > 0:
-                history = self._data_feed.get_history_window(time)
-                if not history.empty:
-                    try:
-                        monitoring_metrics = self._strategy.compute_monitoring_metrics(
-                            current_weights=current_weights, history_prices=history
-                        )
-                        portfolio_vol = monitoring_metrics.get("portfolio_volatility")
-                        if hasattr(self._strategy, "check_volatility_trigger"):
-                            is_triggered, vol_value = self._strategy.check_volatility_trigger(
-                                current_weights=current_weights, prices=history, **self._config.__dict__
-                            )
-                            if portfolio_vol is None and vol_value is not None:
-                                portfolio_vol = vol_value
-                            if is_triggered and vol_reset_signal_date is None and vol_value is not None:
-                                vol_reset_signal_date = time
-                                vol_reset_trigger_value = vol_value
-                                trading_days_count = 0
-                                print(f"[步进] 波动率重置信号日: {time.date()} 组合波动率={vol_value:.4%}，T+2 执行重置")
-                        if portfolio_vol is None:
-                            from app.strategies.models.base import _default_portfolio_vol
-                            portfolio_vol = _default_portfolio_vol(current_weights, history)
-                    except Exception as e:
-                        import traceback
-                        print(f"[步进] 波动率计算异常 {time.date()}: {e}")
-                        traceback.print_exc()
-
-            do_rebalance = False
-            rebalance_type = None
-            rebalance_reason = None
-
-            # 期初建仓（仅首段、无 initial_state 时）：无持仓则按 initial_weights 建仓
-            if not initial_state and initial_weights and not position.quantity and sum((v or 0) for v in initial_weights.values()) > 0:
-                do_rebalance = True
-                rebalance_type = "manual_adjustment"
-                rebalance_reason = "期初建仓"
-
-            if override_date and date_str == override_date:
-                if override_action == "rebalance" and override_weights and any((v or 0) != 0 for v in (override_weights or {}).values()):
-                    do_rebalance = True
-                    rebalance_type = "manual_adjustment"
-                    rebalance_reason = "交互式调仓"
-            elif date_str in manual_adjustments and not (override_date and date_str == override_date):
-                do_rebalance = True
-                rebalance_type = "manual_adjustment"
-                rebalance_reason = "预设调仓"
-
-            # 波动率阈值重置：无论 rebalance_only_preset 与否均执行，与单策略一致
-            _vol_trigger_for_reset = None
-            if not do_rebalance and vol_reset_signal_date is not None:
-                trading_days_count += 1
-                if trading_days_count >= 2:
-                    do_rebalance = True
-                    rebalance_type = "vol_reset"
-                    _vol_trigger_for_reset = vol_reset_trigger_value
-                    rebalance_reason = f"波动率重置触发（信号日年化波动率={vol_reset_trigger_value:.4%}）" if vol_reset_trigger_value is not None else "波动率重置触发"
-                    vol_reset_signal_date = None
-                    vol_reset_trigger_value = None
-                    trading_days_count = 0
-                    print(f"[步进] 波动率重置执行日: {time.date()} (信号日后第2个交易日)")
-
-            if not rebalance_only_preset and not do_rebalance:
-                if self._should_rebalance(time):
-                    do_rebalance = True
-                    rebalance_type = "regular"
-                    rebalance_reason = "周期性调仓"
-
-            if do_rebalance:
-                history = self._data_feed.get_history_window(time)
-                if history.empty and rebalance_type != "manual_adjustment":
-                    if rebalance_type == "vol_reset":
-                        pass
-                    pass
-                else:
-                    if rebalance_type == "manual_adjustment":
-                        if rebalance_reason == "期初建仓":
-                            weights_dict = {k: float(v or 0) for k, v in initial_weights.items() if k in self._config.thscodes}
-                            for code in self._config.thscodes:
-                                if code not in weights_dict:
-                                    weights_dict[code] = 0.0
-                            if getattr(self._config, "initial_weights_auto_normalize", False) and weights_dict:
-                                total = sum(weights_dict.values())
-                                if total > 0:
-                                    weights_dict = {k: v / total for k, v in weights_dict.items()}
-                        elif override_date and date_str == override_date and override_weights is not None:
-                            weights_dict = dict(override_weights)
-                            auto_norm = override_auto_norm
-                        else:
-                            adj_item = manual_adjustments.get(date_str, {})
-                            weights_dict = dict(adj_item.get("weights", {}))
-                            auto_norm = adj_item.get("auto_normalize", False)
-                        if rebalance_reason != "期初建仓":
-                            if auto_norm and weights_dict:
-                                total = sum(weights_dict.values())
-                                if total > 0:
-                                    weights_dict = {k: v / total for k, v in weights_dict.items()}
-                        for code in self._config.thscodes:
-                            if code not in weights_dict:
-                                weights_dict[code] = 0.0
-                        weights_dict = {k: v for k, v in weights_dict.items() if k in self._config.thscodes}
-                        from app.backtesting.signal import TargetWeightSignal
-                        target_signal = TargetWeightSignal(time=time, target_weights=weights_dict)
-                    elif rebalance_type == "vol_reset" and hasattr(self._strategy, "compute_volatility_reset_weights"):
-                        params_reset = dict(self._config.__dict__)
-                        if _vol_trigger_for_reset is not None:
-                            params_reset["_vol_trigger"] = _vol_trigger_for_reset
-                        reset_weights = self._strategy.compute_volatility_reset_weights(
-                            current_weights=current_weights, prices=history, **params_reset
-                        )
-                        if reset_weights is not None:
-                            from app.backtesting.signal import TargetWeightSignal
-                            target_signal = TargetWeightSignal(time=time, target_weights=reset_weights.to_dict())
-                        else:
-                            target_signal = None
-                    else:
-                        target_signal = self._strategy.generate_target_weights(history, as_of=time)
-                    if target_signal is not None:
-                        target_signal = self._risk.apply_risk_checks(target_signal, history)
-                        # 常规调仓：若新权重预期波动率超阈值，先做波动率缩放
-                        if rebalance_type == "regular" and hasattr(self._strategy, "compute_monitoring_metrics"):
-                            try:
-                                sp = getattr(getattr(self._strategy, "_base_strategy", self._strategy), "_params", {}) or {}
-                                if sp.get("enable_vol_reset", True) and getattr(self._config, "enable_vol_reset", True) and not history.empty:
-                                    w_new = pd.Series({k: float(v or 0) for k, v in target_signal.target_weights.items()})
-                                    if w_new.abs().sum() > 0:
-                                        m = self._strategy.compute_monitoring_metrics(
-                                            current_weights=w_new, history_prices=history, **{**sp, **self._config.__dict__}
-                                        )
-                                        vol_new = m.get("portfolio_volatility")
-                                        thresh = float(sp.get("vol_reset_threshold") or 0.06)
-                                        tvol = float(sp.get("target_vol") or 0.05)
-                                        if vol_new is not None and vol_new > thresh:
-                                            scale = tvol / vol_new
-                                            scaled = {k: float(v or 0) * scale for k, v in target_signal.target_weights.items()}
-                                            from app.backtesting.signal import TargetWeightSignal
-                                            target_signal = TargetWeightSignal(time=time, target_weights=scaled)
-                            except Exception:
-                                pass
-                        total_value, position = self._execute_rebalance_traditional(
-                            bar=bar, position=position, target_signal=target_signal, trades_all=trades_all
-                        )
-                        last_rebalance_date = time
-
-            total_value = self._compute_total_value(position, bar)
-            holdings_value = total_value - position.cash
-            cash_value = position.cash
-            weights = {
-                code: (qty * bar.close.get(code, 0.0) / total_value) if total_value > 0 else 0.0
-                for code, qty in position.quantity.items()
-            }
-            is_rebalance_day = last_rebalance_date == time
-            # 调仓日：用调仓后权重重算波动率，使监控图展示正确的「调仓后预期波动率」
-            if is_rebalance_day and len(weights) > 0:
-                try:
-                    hist = self._data_feed.get_history_window(time)
-                    if not hist.empty:
-                        w_new = pd.Series(weights)
-                        if w_new.abs().sum() > 0:
-                            metrics_post = self._strategy.compute_monitoring_metrics(
-                                current_weights=w_new, history_prices=hist
-                            )
-                            vol_post = metrics_post.get("portfolio_volatility")
-                            if vol_post is not None:
-                                portfolio_vol = vol_post
-                                monitoring_metrics["portfolio_volatility"] = vol_post
-                except Exception:
-                    pass
-            snapshots.append(
-                PortfolioSnapshot(
-                    time=time,
-                    total_value=total_value,
-                    cash=cash_value,
-                    holdings_value=holdings_value,
-                    weights=weights,
-                    is_rebalance_day=is_rebalance_day,
-                    rebalance_type=rebalance_type if is_rebalance_day else None,
-                    portfolio_volatility=portfolio_vol,
-                    monitoring_metrics=monitoring_metrics,
-                    rebalance_reason=rebalance_reason if is_rebalance_day else None,
-                )
-            )
-            last_state = {
-                "date": date_str,
-                "position": {"quantity": dict(position.quantity), "cash": position.cash},
-                "total_value": total_value,
-                "weights": weights,
-            }
-
-        return (snapshots, trades_all, last_state, stopped_at)
-
-    def _should_rebalance(self, time: pd.Timestamp) -> bool:
-        """根据配置判断当前时点是否需要调仓.
-
-        支持六种调仓频率：
-        - daily: 每个交易日都调仓
-        - weekly: 每周一调仓
-        - monthly: 每月第一个交易日调仓
-        - month_end: 每月最后一个交易日调仓（与编制规则 step1/step2/trade_dates 一致）
-        - quarterly: 每季度第一个交易日调仓
-        - yearly: 每年第一个交易日调仓
-
-        编制规则：执行日=月末后第2个交易日，2015-01-05 为元旦后第1个交易日，永不调仓
-        """
-        if time == pd.Timestamp("2015-01-05"):
-            return False
-        if self._config.rebalance_freq == "daily":
-            return True
-        elif self._config.rebalance_freq == "month_end":
-            return time in getattr(self, "_month_end_dates_set", set())
-        elif self._config.rebalance_freq == "weekly":
-            # 每周一调仓（weekday() 返回 0=周一）
-            return time.weekday() == 0
-        elif self._config.rebalance_freq == "monthly":
-            # 每月第一个交易日调仓
-            if not hasattr(self, '_last_rebalance_month'):
-                self._last_rebalance_month = None
-            
-            current_month = time.month
-            if self._last_rebalance_month != current_month:
-                self._last_rebalance_month = current_month
-                return True
-            return False
-        elif self._config.rebalance_freq == "quarterly":
-            # 每季度第一个交易日调仓（1月、4月、7月、10月）
-            if not hasattr(self, '_last_rebalance_quarter'):
-                self._last_rebalance_quarter = None
-            
-            current_quarter = (time.month - 1) // 3  # 0=Q1, 1=Q2, 2=Q3, 3=Q4
-            if self._last_rebalance_quarter != current_quarter:
-                self._last_rebalance_quarter = current_quarter
-                return True
-            return False
-        elif self._config.rebalance_freq == "yearly":
-            # 每年第一个交易日调仓
-            if not hasattr(self, '_last_rebalance_year'):
-                self._last_rebalance_year = None
-            
-            current_year = time.year
-            if self._last_rebalance_year != current_year:
-                self._last_rebalance_year = current_year
-                return True
-            return False
-        else:
-            # 默认每日调仓
-            return True

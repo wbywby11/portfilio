@@ -28,7 +28,6 @@
             <div class="tl-header">
               <el-tag :type="statusTagType(b.status)" size="small" effect="dark">{{ statusLabel(b.status) }}</el-tag>
               <span v-if="importParamStyle === 'date_range'" class="tl-params">{{ getParamMapField(b, 'startDate', '?') }} ~ {{ getParamMapField(b, 'endDate', '?') }}</span>
-              <span v-else class="tl-params">PROD_CDS {{ getParamMapField(b, 'PROD_CDS', '-') || '（空/全量）' }}</span>
               <span class="batch-id muted">#{{ shortId(b.batch_id) }}</span>
             </div>
             <div v-if="b.upstream_page_msg" class="tl-page-msg muted"><i class="el-icon-warning-outline"></i> {{ shorten(b.upstream_page_msg, 120) }}</div>
@@ -55,15 +54,9 @@
         <el-table-column label="状态" width="120" fixed>
           <template v-slot="{ row }"><el-tag :type="statusTagType(row.status)" size="mini" effect="dark">{{ statusLabel(row.status) }}</el-tag></template>
         </el-table-column>
-        <el-table-column :label="importParamStyle === 'date_range' ? '日期区间' : '导入参数'" min-width="220">
+        <el-table-column label="日期区间" min-width="220">
           <template v-slot="{ row }">
-            <template v-if="importParamStyle === 'date_range'">
-              <span>{{ getParamMapField(row, 'startDate', '-') }}</span><span class="muted"> ~ </span><span>{{ getParamMapField(row, 'endDate', '-') }}</span>
-            </template>
-            <template v-else>
-              <div>PROD_CDS：<code>{{ getParamMapField(row, 'PROD_CDS', '-') }}</code></div>
-              <div v-if="row.upstream_page_msg" class="muted tbl-hint">{{ shorten(row.upstream_page_msg, 64) }}</div>
-            </template>
+            <span>{{ getParamMapField(row, 'startDate', '-') }}</span><span class="muted"> ~ </span><span>{{ getParamMapField(row, 'endDate', '-') }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="total_returned" label="返回" width="90" align="right" />
@@ -95,12 +88,7 @@
           <el-descriptions-item label="结束时间">{{ detail.finished_at || '-' }}</el-descriptions-item>
           <el-descriptions-item label="耗时">{{ formatDuration(detail.duration_ms) }}</el-descriptions-item>
           <el-descriptions-item label="上游 code">{{ detail.upstream_code || '-' }}</el-descriptions-item>
-          <el-descriptions-item v-if="importParamStyle === 'date_range'" label="日期区间" :span="2">{{ getParamMapField(detail, 'startDate', '-') }} ~ {{ getParamMapField(detail, 'endDate', '-') }}</el-descriptions-item>
-          <template v-else>
-            <el-descriptions-item label="PROD_CDS" :span="2"><code>{{ getParamMapField(detail, 'PROD_CDS', '-') }}</code></el-descriptions-item>
-            <el-descriptions-item v-if="detail.upstream_page_msg" label="上游 pageMsg" :span="2">{{ detail.upstream_page_msg }}</el-descriptions-item>
-            <el-descriptions-item v-if="detail.upstream_records_count != null" label="上游记录数" :span="2">{{ detail.upstream_records_count }}</el-descriptions-item>
-          </template>
+          <el-descriptions-item label="日期区间" :span="2">{{ getParamMapField(detail, 'startDate', '-') }} ~ {{ getParamMapField(detail, 'endDate', '-') }}</el-descriptions-item>
           <el-descriptions-item label="上游 URL" :span="2"><code style="word-break:break-all;">{{ detail.upstream_url || '-' }}</code></el-descriptions-item>
         </el-descriptions>
         <el-row :gutter="12" class="stat-row">

@@ -36,3 +36,8 @@ jinja2>=3.1.0
 # AI Agent
 openai>=1.0.0
 tiktoken>=0.7.0
+
+# 知识库文档解析（PDF/DOCX 上传录入）
+pdfplumber>=0.11.0
+PyPDF2>=3.0.0
+python-docx>=1.1.0

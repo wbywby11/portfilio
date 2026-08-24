@@ -1,7 +1,7 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h2 class="page-title">信号监测</h2>
+      <h2 class="page-title">信号监控</h2>
       <div>
         <el-button type="primary" icon="el-icon-refresh" @click="refreshData" :loading="loading">
           刷新数据
@@ -213,6 +213,7 @@
             size="small" 
             stripe 
             border 
+            :max-height="400"
             row-key="id"
             :expand-row-keys="expandedRows"
             @expand-change="handleExpandChange">
@@ -537,11 +538,11 @@ export default {
     loadData: async function() {
       this.loading = true;
       try {
-        // 调仓历史现在从 signalStatus 获取，不需要单独 fetchEvents
         await this.$store.dispatch('monitor/fetchSignals');
         this.updateChart();
       } catch (error) {
-        this.$message.error('加载数据失败：' + error.message);
+        // 404 等错误已由 store 统一处理，不重复弹提示
+        console.warn('Signals 加载数据失败:', error.message);
       } finally {
         this.loading = false;
       }
@@ -551,7 +552,7 @@ export default {
       this.$message.success('数据已刷新');
     },
     initChart: function() {
-      if (!this.$refs.volChart) return;
+      if (!this.$refs.volChart || this.$refs.volChart.clientWidth === 0) return;
       this.volChart = echarts.init(this.$refs.volChart);
       this.updateChart();
       

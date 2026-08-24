@@ -15,7 +15,7 @@ from typing import Optional, Dict
 
 import pandas as pd
 
-from app.models.asset import Asset
+from app.models.asset import Asset, InstrumentType
 
 
 def _compute_futures_tr_simple(df: pd.DataFrame) -> pd.Series:
@@ -33,7 +33,7 @@ def _compute_futures_tr_simple(df: pd.DataFrame) -> pd.Series:
         TR序列
     """
     price_col = "settlement" if "settlement" in df.columns else "close"
-    df["daily_return"] = df[price_col].pct_change()
+    df["daily_return"] = df[price_col].pct_change(fill_method=None)
     
     df["F"] = (1 + df["daily_return"]).cumprod()
     df.loc[0, "F"] = 1.0
@@ -328,7 +328,7 @@ def compute_index_tr(
     df = df.sort_values("time").reset_index(drop=True)
     
     # 计算日收益率
-    df["daily_return"] = df["close"].pct_change()
+    df["daily_return"] = df["close"].pct_change(fill_method=None)
     
     # 基日点位为1，通过累积乘法计算后续点位
     df["F"] = (1 + df["daily_return"]).cumprod()
@@ -479,7 +479,7 @@ def _compute_spot_tr_simple(df: pd.DataFrame) -> pd.Series:
     df = df.copy()
     df = df.sort_values("time").reset_index(drop=True)
     
-    df["daily_return"] = df["close"].pct_change()
+    df["daily_return"] = df["close"].pct_change(fill_method=None)
     df["F"] = (1 + df["daily_return"]).cumprod()
     df.loc[0, "F"] = 1.0
     
@@ -505,7 +505,7 @@ def _compute_spot_tr_with_switch(df: pd.DataFrame, switch_date_dt: pd.Timestamp)
     df['use_substitute'] = df['time_dt'] < switch_date_dt
     
     # 计算收益率
-    df["daily_return"] = df["close"].pct_change()
+    df["daily_return"] = df["close"].pct_change(fill_method=None)
     
     # 累积计算TR
     df["F"] = (1 + df["daily_return"]).cumprod()
@@ -617,22 +617,22 @@ def batch_compute_tr(
         try:
             # 获取资产配置
             config = asset_configs.get(thscode)
-            
+
             if config is None:
-                # 未配置的资产默认作为指数类处理
+                # 未配置的资产默认作为指数型处理
                 tr_series = compute_index_tr(price_data, base_date)
-            elif config.asset_type == "index":
-                tr_series = compute_index_tr(price_data, base_date)
-            elif config.asset_type == "futures":
-                tr_series = compute_futures_tr(config, price_data, base_date)
-            elif config.asset_type == "spot":
-                tr_series = compute_spot_tr(config, price_data, base_date)
             else:
-                print(f"未知资产类型: {config.asset_type}，跳过 {thscode}")
-                continue
-            
+                # instrument_type 是 Asset 的必填枚举字段，按工具形态分派
+                it = config.instrument_type
+                if it == InstrumentType.FUTURES_LIKE:
+                    tr_series = compute_futures_tr(config, price_data, base_date)
+                elif it == InstrumentType.SPOT_LIKE:
+                    tr_series = compute_spot_tr(config, price_data, base_date)
+                else:
+                    tr_series = compute_index_tr(price_data, base_date)
+
             results[thscode] = tr_series
-            
+
         except Exception as e:
             print(f"计算 {thscode} 的TR序列失败: {e}")
             continue

@@ -10,7 +10,12 @@ export function getAssetList(params) {
     url: '/api/v1/assets/',
     method: 'get',
     params: {
-      asset_type: params.asset_type,
+      // 三维度正交过滤（新字段，优先）
+      instrument_type: params.instrument_type || undefined,
+      asset_class: params.asset_class || undefined,
+      security_type: params.security_type || undefined,
+      // [已废弃] 旧字段兼容
+      asset_type: params.asset_type || undefined,
       is_active: params.is_active !== undefined ? params.is_active : true,
       code: params.code || undefined,
       name: params.name || undefined,
@@ -21,15 +26,16 @@ export function getAssetList(params) {
 }
 
 // 获取资产下拉选项（精简）
-export function getAssetOptions(assetType) {
-  const params = {};
-  if (assetType) {
-    params.asset_type = assetType;
-  }
+export function getAssetOptions(params = {}) {
+  // 支持新维度过滤 + 旧字段兼容
+  const queryParams = {};
+  if (params.instrument_type) queryParams.instrument_type = params.instrument_type;
+  if (params.asset_class) queryParams.asset_class = params.asset_class;
+  if (params.asset_type) queryParams.asset_type = params.asset_type;
   return request({
     url: '/api/v1/assets/options',
     method: 'get',
-    params
+    params: queryParams
   });
 }
 
@@ -210,32 +216,6 @@ export function getPriceCoverageGaps(params) {
 }
 
 // ========== 多资产行情导入（大类资产底层数据-含插件.xlsx 格式） ==========
-
-// 多资产导入预览（解析冲突信息）
-export function previewMultiAssetImport(file, metric = 'close') {
-  const formData = new FormData();
-  formData.append('file', file);
-  return request({
-    url: '/api/v1/assets/prices/import/multi-asset/preview',
-    method: 'post',
-    data: formData,
-    params: { metric },
-    timeout: 600000
-  });
-}
-
-// 多资产Excel解析（返回完整资产+行情，供逐条导入）
-export function parseMultiAssetExcel(file, metric = 'close') {
-  const formData = new FormData();
-  formData.append('file', file);
-  return request({
-    url: '/api/v1/assets/prices/import/multi-asset/parse',
-    method: 'post',
-    data: formData,
-    params: { metric },
-    timeout: 600000
-  });
-}
 
 /** 多资产分析：匹配类型 + 完整行情（推荐用于向导式导入） */
 export function analyzeMultiAssetImport(file, metric = 'close') {

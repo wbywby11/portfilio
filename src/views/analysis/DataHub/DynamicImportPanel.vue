@@ -1,7 +1,7 @@
 <template>
   <div class="import-panel dyn-import-panel">
-    <el-alert title="导入说明" type="info" :closable="false" class="hint-alert">
-      <div class="hint-body">
+    <el-popover placement="bottom-start" width="460" trigger="click">
+      <div class="hint-body" style="line-height: 1.7;">
         由后端按所选连接器调用上游，
         <span v-if="connector && connector.primary_key">以 <strong>{{ connector.primary_key }}</strong> 为唯一键 upsert。</span>
         <span v-else>按要求写入 Mongo。</span>
@@ -12,7 +12,8 @@
           <code>{{ connector.default_upstream_url }}</code>
         </template>
       </div>
-    </el-alert>
+      <el-button slot="reference" type="text" icon="el-icon-question" class="hint-trigger">导入说明</el-button>
+    </el-popover>
 
     <el-card class="param-card" shadow="never">
       <div slot="header" class="clearfix">
@@ -39,46 +40,6 @@
                   :picker-options="pickerOptions"
                   style="width: 100%;"
                 />
-              </el-form-item>
-            </el-col>
-            <el-col :span="6">
-              <el-form-item label="最大行数" prop="rownum">
-                <el-input-number
-                  v-model="form.rownum"
-                  :min="1"
-                  :max="1000000"
-                  :step="10000"
-                  controls-position="right"
-                  style="width: 100%;"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col :span="6">
-              <el-form-item label="起始行" prop="startrow">
-                <el-input-number
-                  v-model="form.startrow"
-                  :min="1"
-                  :step="1"
-                  controls-position="right"
-                  style="width: 100%;"
-                />
-              </el-form-item>
-            </el-col>
-          </el-row>
-        </template>
-
-        <template v-else-if="importParamStyle === 'ptl_param_maps'">
-          <el-alert
-            title="SYS_ID / 维度树 / 组合树由请求固定为空，不在此填写。"
-            type="info"
-            :closable="false"
-            show-icon
-            style="margin-bottom: 14px;"
-          />
-          <el-row :gutter="20">
-            <el-col :span="12">
-              <el-form-item label="产品代码">
-                <el-input v-model="form.PROD_CDS" clearable placeholder="PROD_CDS（可选）" />
               </el-form-item>
             </el-col>
             <el-col :span="6">
@@ -345,15 +306,10 @@ export default {
         startrow: 1,
         resource: '',
         timeout: 180,
-        upstream_url: '',
-        PROD_CDS: ''
+        upstream_url: ''
       },
       rulesDateRange: {
         dateRange: [{ required: true, message: '请选择日期区间', trigger: 'change' }],
-        rownum: [{ required: true, type: 'number', message: '请输入行数' }],
-        startrow: [{ required: true, type: 'number', message: '请输入起始行' }]
-      },
-      rulesPtl: {
         rownum: [{ required: true, type: 'number', message: '请输入行数' }],
         startrow: [{ required: true, type: 'number', message: '请输入起始行' }]
       },
@@ -395,7 +351,7 @@ export default {
       return (this.connector && this.connector.import_param_style) || 'date_range';
     },
     activeRules() {
-      return this.importParamStyle === 'ptl_param_maps' ? this.rulesPtl : this.rulesDateRange;
+      return this.rulesDateRange;
     },
     stepWriteMongoDesc() {
       var pk = (this.connector && this.connector.primary_key) || 'risk_id';
@@ -444,7 +400,6 @@ export default {
       if (this.connector && this.connector.resource_default) this.form.resource = this.connector.resource_default;
       this.form.timeout = 180;
       this.form.upstream_url = '';
-      this.form.PROD_CDS = '';
       this.stepActive = 0;
       this.stepStatus = 'process';
       this.lastResult = null;
@@ -468,34 +423,21 @@ export default {
       }
       var vm = this;
       var payload;
-      if (this.importParamStyle === 'ptl_param_maps') {
-        payload = {
-          SYS_ID: '',
-          PROD_CDS: (this.form.PROD_CDS || '').trim(),
-          asset_tree: null,
-          port_tree: null,
-          rownum: Number(this.form.rownum) || 100000,
-          startrow: Number(this.form.startrow) || 1,
-          resource: this.form.resource || (this.connector && this.connector.resource_default) || '',
-          timeout: Number(this.form.timeout) || 180
-        };
-      } else {
-        var range = this.form.dateRange || [];
-        var startDate = range[0];
-        var endDate = range[1];
-        if (!startDate || !endDate) {
-          this.$message.warning('请选择完整的日期区间');
-          return;
-        }
-        payload = {
-          startDate: startDate,
-          endDate: endDate,
-          rownum: Number(this.form.rownum) || 100000,
-          startrow: Number(this.form.startrow) || 1,
-          resource: this.form.resource || (this.connector && this.connector.resource_default) || '',
-          timeout: Number(this.form.timeout) || 180
-        };
+      var range = this.form.dateRange || [];
+      var startDate = range[0];
+      var endDate = range[1];
+      if (!startDate || !endDate) {
+        this.$message.warning('请选择完整的日期区间');
+        return;
       }
+      payload = {
+        startDate: startDate,
+        endDate: endDate,
+        rownum: Number(this.form.rownum) || 100000,
+        startrow: Number(this.form.startrow) || 1,
+        resource: this.form.resource || (this.connector && this.connector.resource_default) || '',
+        timeout: Number(this.form.timeout) || 180
+      };
       if (this.form.upstream_url && this.form.upstream_url.trim()) {
         payload.upstream_url = this.form.upstream_url.trim();
       }
@@ -598,8 +540,9 @@ export default {
   font-family: Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
 }
-.hint-alert {
-  margin-bottom: 16px;
+.hint-trigger {
+  padding: 0;
+  margin-bottom: 8px;
 }
 .hint-body {
   line-height: 1.7;

@@ -1,7 +1,10 @@
+"""BacktestConfig：计算引擎的执行级配置（计算内核层）.
+
+仅包含交易相关参数（初始资金、费率、滑点等）；策略口径参数一律存于
+DB 模型文档并经 build_backtest_params 组装，不在此处定义。
+"""
 from dataclasses import dataclass
 from typing import List, Literal, Dict, Optional
-
-import pandas as pd
 
 
 @dataclass
@@ -22,19 +25,12 @@ class BacktestConfig:
     # 初始资金
     initial_cash: float = 10_000_000.0
 
-    # 交易成本参数
+    # 回测起始净值（NAV），用于投资组合和统一回测输出
+    initial_nav: float = 1000.0
+
+    # 交易成本参数（回测唯一的成本模型：手续费 + 滑点，均可设为 0 观察理想状态）
     commission_rate: float = 0.0003  # 手续费率
     slippage: float = 0.0005         # 滑点率
-    
-    # 净值计算模式（新增）
-    use_index_nav: bool = False  # 是否启用指数净值计算（默认使用简单的组合市值法）
-    
-    # 指数净值配置（仅当 use_index_nav=True 时生效）
-    index_nav_initial: float = 1000.0  # 初始净值
-    fx_rates: Optional[Dict[str, pd.Series]] = None  # 汇率数据 {asset_code: Series}
-    transaction_costs: Optional[Dict[str, float]] = None  # 交易费率 {asset_code: rate}
-    replication_costs: Optional[Dict[str, float]] = None  # 复制费率 {asset_code: annual_rate}
-    tr_series: Optional[Dict[str, pd.Series]] = None  # TR样本点位序列 {asset_code: Series(TR)}
 
     # 交互式权重调整（仅 manual_allocation 策略）：指定日期使用用户预设的权重
     # 格式: { "YYYYMMDD": {"weights": {code: w, ...}, "auto_normalize": bool}, ... }
@@ -48,5 +44,10 @@ class BacktestConfig:
     # 期初建仓是否将权重归一化为和 1（默认 False 不归一化；True 时归一化至和 1）
     initial_weights_auto_normalize: bool = False
 
-    # 混合动量导出：波动率重置事件收集器（仅 risk_budget_target_vol 混合动量策略使用）
-    vol_reset_events_collector: Optional[List] = None
+    # 执行延迟（交易日）：覆盖策略声明的 execution_delay
+    # None = 使用策略默认值（如 vol_scaled_budget 默认 T+2）
+    # 0 = 信号日当天执行（T+0），1 = T+1，2 = T+2，...
+    execution_delay: Optional[int] = None
+
+    # 目标波动率（从 control 模块读取，用于前端展示）
+    target_vol: Optional[float] = None

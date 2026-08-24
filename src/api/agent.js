@@ -1,15 +1,5 @@
 import request from '@/utils/request'
 
-// 非流式对话
-export function sendMessage(data) {
-  return request({
-    url: '/api/v1/agent/chat',
-    method: 'post',
-    data,
-    timeout: 300000  // AI 对话可能较慢，5分钟超时
-  })
-}
-
 // 获取对话列表
 export function getConversations(params) {
   return request({
@@ -75,6 +65,32 @@ export function searchMemories(data) {
   })
 }
 
+// 按 token 查询确认记录状态（断连重开后重建卡片）
+export function getConfirmation(token) {
+  return request({
+    url: `/api/v1/agent/confirmations/${token}`,
+    method: 'get'
+  })
+}
+
+// 查询会话的确认记录列表（时间倒序，供历史消息重建终态卡片）
+export function getConversationConfirmations(conversationId, limit = 50) {
+  return request({
+    url: `/api/v1/agent/conversations/${conversationId}/confirmations`,
+    method: 'get',
+    params: { limit }
+  })
+}
+
+// 提交确认决策：decision 为 confirmed（确认执行）或 rejected（取消）
+export function submitConfirmationDecision(token, decision) {
+  return request({
+    url: `/api/v1/agent/confirmations/${token}/decision`,
+    method: 'post',
+    data: { decision }
+  })
+}
+
 // 流式对话 - 使用原生 fetch 处理 SSE
 // data.scene: 场景标识，null 时使用智能匹配
 // options.signal: AbortSignal，切换对话时中止，避免回复串入其他会话
@@ -109,59 +125,4 @@ export function sendMessageStream(data, options = {}) {
       }
       return response
     })
-}
-
-// 报告管理
-export function getReports(params) {
-  return request({ url: '/api/v1/agent/reports', method: 'get', params })
-}
-
-export function getReport(reportId) {
-  return request({ url: `/api/v1/agent/reports/${reportId}`, method: 'get' })
-}
-
-export function deleteReport(reportId) {
-  return request({ url: `/api/v1/agent/reports/${reportId}`, method: 'delete' })
-}
-
-export function exportReport(reportId) {
-  return request({ url: `/api/v1/agent/reports/${reportId}/export`, method: 'get' })
-}
-
-// 分析模板管理
-export function getAnalysisTemplates(params) {
-  return request({ url: '/api/v1/agent/analysis-templates', method: 'get', params })
-}
-
-export function createAnalysisTemplate(data) {
-  return request({ url: '/api/v1/agent/analysis-templates', method: 'post', data })
-}
-
-export function getAnalysisTemplate(templateId) {
-  return request({ url: `/api/v1/agent/analysis-templates/${templateId}`, method: 'get' })
-}
-
-export function updateAnalysisTemplate(templateId, data) {
-  return request({ url: `/api/v1/agent/analysis-templates/${templateId}`, method: 'put', data })
-}
-
-export function deleteAnalysisTemplate(templateId) {
-  return request({ url: `/api/v1/agent/analysis-templates/${templateId}`, method: 'delete' })
-}
-
-export function executeAnalysisTemplate(templateId, params) {
-  return request({ url: `/api/v1/agent/analysis-templates/${templateId}/execute`, method: 'post', data: { params } })
-}
-
-/** 上传对话附件 */
-export function uploadAttachment(file) {
-  const formData = new FormData()
-  formData.append('file', file)
-  return request({
-    url: '/api/v1/agent/upload-attachment',
-    method: 'post',
-    data: formData,
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 60000
-  })
 }

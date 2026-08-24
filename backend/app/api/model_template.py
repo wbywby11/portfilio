@@ -1,15 +1,63 @@
 """模型模板相关路由（支持动态策略创建与注册）"""
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, UploadFile, File
+from fastapi.responses import StreamingResponse
 from bson import ObjectId
+import os
+from pathlib import Path
+from typing import Optional
+
+# GridFS Bucket 导入兼容：motor 3.x 在 motor.motor_asyncio 中提供 AsyncIOMotorGridFSBucket，
+# motor 4.x 改名为 MotorGridFSBucket 并移至顶层 motor 包（motor.motor_gridfs 仅含 Agnostic 基类）
+try:
+    from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+except ImportError:
+    from motor import MotorGridFSBucket as AsyncIOMotorGridFSBucket
 
 from app.schemas.model_template import ModelTemplateCreate, ModelTemplateOut
 from app.schemas.response import Response
 from app.services.model_template_service import ModelTemplateService
 from app.models.model_template import ModelTemplate
+from app.config.database import Database
 
 router = APIRouter()
+
+# PDF 存储：MongoDB GridFS（bucket=template_pdfs → template_pdfs.files / template_pdfs.chunks）
+# 历史文件系统目录仅作存量迁移兜底，不再作为读写路径
+PDF_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "data" / "template_pdfs"
+
+
+def _get_gridfs() -> AsyncIOMotorGridFSBucket:
+    return AsyncIOMotorGridFSBucket(Database.get_database(), bucket_name="template_pdfs")
+
+
+def _gridfs_files_collection():
+    """GridFS 元数据集合（普通文档，可按 filename 查询）。"""
+    return Database.get_database()["template_pdfs.files"]
+
+
+async def _delete_gridfs_by_filename(filename: str) -> None:
+    """删除 GridFS 中指定文件名的所有版本（重复上传时先清旧版）。
+
+    注意：bucket.find() 返回的是 GridOut 流对象而非字典，
+    因此从 files 元数据集合取 _id 再调 bucket.delete()。
+    """
+    fs = _get_gridfs()
+    async for doc in _gridfs_files_collection().find({"filename": filename}, {"_id": 1}):
+        await fs.delete(doc["_id"])
+
+
+async def _find_gridfs_file(filename: str):
+    """按文件名查找 GridFS 文件元数据，不存在返回 None。"""
+    return await _gridfs_files_collection().find_one({"filename": filename})
+
+
+async def _save_pdf_to_gridfs(filename: str, content: bytes) -> None:
+    """保存 PDF 到 GridFS：同名旧版本先删除，保证单文件唯一。"""
+    await _delete_gridfs_by_filename(filename)
+    fs = _get_gridfs()
+    await fs.upload_from_stream(filename, content, metadata={"content_type": "application/pdf"})
 
 
 def validate_object_id(id_str: str) -> str:
@@ -152,6 +200,73 @@ async def create_template(
     template = ModelTemplate(**template_in.dict())
     template_id = await service.create_template(template)
     return Response.success(data=template_id, message="模板创建成功")
+
+
+@router.post("/migrate-pdfs-to-gridfs", response_model=Response[dict], summary="一次性迁移存量PDF到GridFS")
+async def migrate_pdfs_to_gridfs():
+    """
+    将历史文件系统目录中的 PDF 一次性迁移到 MongoDB GridFS。
+    
+    - 幂等：GridFS 中已存在同名文件时跳过
+    - 迁移成功后删除源文件（GridFS 作为唯一存储）
+    """
+    migrated, skipped = [], []
+    if not PDF_DIR.exists():
+        return Response.success(
+            data={"migrated": migrated, "skipped": skipped},
+            message="存量目录不存在，无需迁移",
+        )
+    
+    for file_path in sorted(PDF_DIR.glob("*.pdf")):
+        existing = await _find_gridfs_file(file_path.name)
+        if existing:
+            skipped.append(file_path.name)
+            file_path.unlink()
+            continue
+        content = file_path.read_bytes()
+        await _save_pdf_to_gridfs(file_path.name, content)
+        file_path.unlink()
+        migrated.append(file_path.name)
+    
+    return Response.success(
+        data={"migrated": migrated, "skipped": skipped},
+        message=f"迁移完成：新增 {len(migrated)} 个，已存在跳过 {len(skipped)} 个",
+    )
+
+
+@router.get("/pdf/{filename}", summary="下载策略PDF文档")
+async def download_template_pdf(filename: str):
+    """
+    下载策略模板PDF文档（GridFS 存储）
+    
+    - 优先从 MongoDB GridFS 读取
+    - 存量兜底：尚未迁移的历史文件从目录读取
+    - 文件名仅允许 `xxx.pdf` 形式，文件不存在时返回404
+    """
+    # 安全校验：文件名不允许包含路径分隔符等特殊字符
+    if not filename or filename != os.path.basename(filename) or not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=403, detail="非法的文件名")
+    
+    grid_file = await _find_gridfs_file(filename)
+    if grid_file:
+        fs = _get_gridfs()
+        stream = await fs.open_download_stream(grid_file["_id"])
+        return StreamingResponse(
+            stream,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+    
+    # 存量兜底：尚未迁移到 GridFS 的历史文件仍从目录读取
+    legacy_path = (PDF_DIR / filename).resolve()
+    if PDF_DIR.exists() and str(legacy_path).startswith(str(PDF_DIR.resolve())) and legacy_path.exists():
+        return StreamingResponse(
+            iter([legacy_path.read_bytes()]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+    
+    raise HTTPException(status_code=404, detail=f"PDF文件不存在: {filename}")
 
 
 @router.get("/{code}", response_model=Response[ModelTemplateOut], summary="获取单个模板")
@@ -362,3 +477,104 @@ async def get_template_schema(
     # 转换为策略参数Schema格式
     schema = template.to_strategy_param_schema()
     return Response.success(data=schema.to_dict())
+
+
+@router.post("/{template_id}/upload-pdf", summary="上传策略PDF文档")
+async def upload_template_pdf(
+    template_id: str,
+    file: UploadFile = File(...),
+    service: ModelTemplateService = Depends(get_template_service)
+):
+    """
+    为策略模板上传PDF文档
+    
+    - 支持PDF文件格式
+    - 文件大小限制 50MB
+    - 自动关联到模板 code
+    """
+    validate_object_id(template_id)
+    
+    # 验证模板是否存在
+    template = await service.get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail=f"模板不存在: {template_id}")
+    
+    # 验证文件类型
+    if not file.filename.lower().endswith('.pdf'):
+        raise HTTPException(status_code=400, detail="仅支持PDF文件格式")
+    
+    # 验证文件大小（50MB）
+    content = await file.read()
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="文件大小不能超过50MB")
+    
+    # 文件名：使用模板code作为基础，存储到 MongoDB GridFS
+    safe_filename = f"{template.code}.pdf"
+    await _save_pdf_to_gridfs(safe_filename, content)
+    
+    # 更新模板记录
+    update_data = {"pdf_filename": safe_filename}
+    await service.update_template(template_id, update_data)
+    
+    return Response.success(
+        data={"pdf_filename": safe_filename},
+        message="PDF文档上传成功"
+    )
+
+
+@router.get("/{template_id}/pdf-url", summary="获取策略PDF文档URL")
+async def get_template_pdf_url(
+    template_id: str,
+    service: ModelTemplateService = Depends(get_template_service)
+):
+    """
+    获取策略模板PDF文档的访问URL
+    
+    返回格式：{"pdf_url": "/api/v1/model-templates/pdf/xxx.pdf"}
+    """
+    validate_object_id(template_id)
+    
+    template = await service.get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail=f"模板不存在: {template_id}")
+    
+    if not template.pdf_filename:
+        return Response.success(data={"pdf_url": None}, message="该模板未上传PDF文档")
+    
+    # GridFS 与存量文件系统中都不存在时返回 None，避免前端拿到死链
+    grid_file = await _find_gridfs_file(template.pdf_filename)
+    legacy_path = PDF_DIR / template.pdf_filename
+    if not grid_file and not legacy_path.exists():
+        return Response.success(data={"pdf_url": None}, message="该模板未上传PDF文档")
+    
+    pdf_url = f"/api/v1/model-templates/pdf/{template.pdf_filename}"
+    return Response.success(data={"pdf_url": pdf_url})
+
+
+@router.delete("/{template_id}/pdf", summary="删除策略PDF文档")
+async def delete_template_pdf(
+    template_id: str,
+    service: ModelTemplateService = Depends(get_template_service)
+):
+    """
+    删除策略模板关联的PDF文档
+    
+    - 同时删除 GridFS 文件和清除数据库中的 pdf_filename 字段
+    """
+    validate_object_id(template_id)
+    
+    template = await service.get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail=f"模板不存在: {template_id}")
+    
+    # 删除 GridFS 文件与存量文件系统文件
+    if template.pdf_filename:
+        await _delete_gridfs_by_filename(template.pdf_filename)
+        legacy_path = PDF_DIR / template.pdf_filename
+        if legacy_path.exists():
+            legacy_path.unlink()
+    
+    # 清除数据库记录
+    await service.update_template(template_id, {"pdf_filename": None})
+    
+    return Response.success(message="PDF文档已删除")

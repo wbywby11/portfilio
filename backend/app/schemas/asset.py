@@ -4,32 +4,14 @@ from datetime import datetime, timedelta
 from typing import Any, Optional, List, Union
 import pandas as pd
 from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
-from app.models.asset import AssetType
+from app.models.asset import AssetType, InstrumentType, AssetClass, SecurityType
+from app.schemas.field_mappings import PRICE_COLUMN_MAPPING, PRICE_ALLOWED_FIELDS
 
 
 # 多资产 analyze / Excel 导出等常见列名 → PriceDataPoint 字段名（小写）
-_PRICE_IMPORT_ROW_KEY_CN: dict[str, str] = {
-    "日期": "date",
-    "日期*": "date",
-    "交易日期": "date",
-    "trade_date": "date",
-    "开盘价": "open",
-    "开盘价*": "open",
-    "最高价": "high",
-    "最高价*": "high",
-    "最低价": "low",
-    "最低价*": "low",
-    "收盘价": "close",
-    "收盘价*": "close",
-    "收盘": "close",
-    "成交量": "volume",
-    "成交量*": "volume",
-    "成交额": "amount",
-    "成交额*": "amount",
-    "规模": "scale",
-    "规模*": "scale",
-}
-_PRICE_IMPORT_ALLOWED = frozenset({"date", "open", "high", "low", "close", "volume", "amount", "scale"})
+# 唯一来源：app/schemas/field_mappings.py
+_PRICE_IMPORT_ROW_KEY_CN: dict[str, str] = PRICE_COLUMN_MAPPING
+_PRICE_IMPORT_ALLOWED = PRICE_ALLOWED_FIELDS
 
 
 def normalize_price_import_row_list(v: Any) -> Any:
@@ -89,10 +71,18 @@ class AssetOption(BaseModel):
 
 
 class AssetCreate(BaseModel):
-    """创建资产请求"""
+    """创建资产请求（三维度正交分类）"""
     code: str = Field(..., description="资产代码")
     name: str = Field(..., description="资产名称")
-    asset_type: AssetType = Field(..., description="资产类型")
+
+    # 三维度正交分类（新字段，必填）
+    instrument_type: InstrumentType = Field(..., description="工具形态：指数型/现货型/期货型")
+    asset_class: AssetClass = Field(..., description="资产大类：权益/固收/商品/货币/另类")
+    security_type: Optional[SecurityType] = Field(None, description="证券细分（可选）")
+
+    # [已废弃] 旧字段兼容，前端不再发送，后端不再强制
+    asset_type: Optional[str] = Field(None, description="[已废弃] 旧版混存字段")
+
     exchange: Optional[str] = Field(None, description="交易所")
     description: Optional[str] = Field(None, description="资产描述")
     
@@ -113,10 +103,18 @@ class AssetCreate(BaseModel):
 
 
 class AssetUpdate(BaseModel):
-    """更新资产请求"""
+    """更新资产请求（三维度正交分类）"""
     code: Optional[str] = Field(None, description="资产代码")
     name: Optional[str] = Field(None, description="资产名称")
-    asset_type: Optional[AssetType] = Field(None, description="资产类型")
+
+    # 三维度正交分类（新字段）
+    instrument_type: Optional[InstrumentType] = Field(None, description="工具形态：指数型/现货型/期货型")
+    asset_class: Optional[AssetClass] = Field(None, description="资产大类：权益/固收/商品/货币/另类")
+    security_type: Optional[SecurityType] = Field(None, description="证券细分（可选）")
+
+    # [已废弃] 旧字段兼容
+    asset_type: Optional[str] = Field(None, description="[已废弃] 旧版混存字段")
+
     exchange: Optional[str] = Field(None, description="交易所")
     description: Optional[str] = Field(None, description="资产描述")
     is_active: Optional[bool] = Field(None, description="是否启用")
@@ -138,11 +136,19 @@ class AssetUpdate(BaseModel):
 
 
 class AssetOut(BaseModel):
-    """资产返回模型"""
+    """资产返回模型（三维度正交分类）"""
     id: str = Field(..., description="资产ID")
     code: str = Field(..., description="资产代码")
     name: str = Field(..., description="资产名称")
-    asset_type: AssetType = Field(..., description="资产类型")
+
+    # 三维度正交分类（新字段）
+    instrument_type: Optional[str] = Field(None, description="工具形态：指数型/现货型/期货型")
+    asset_class: Optional[str] = Field(None, description="资产大类：权益/固收/商品/货币/另类")
+    security_type: Optional[str] = Field(None, description="证券细分")
+
+    # [已废弃] 旧字段兼容（迁移完成后可移除）
+    asset_type: Optional[str] = Field(None, description="[已废弃] 旧版混存字段")
+
     exchange: Optional[str] = Field(None, description="交易所")
     description: Optional[str] = Field(None, description="资产描述")
     is_active: bool = Field(..., description="是否启用")

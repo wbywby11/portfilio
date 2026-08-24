@@ -24,6 +24,15 @@ from app.selection.formula.advanced_momentum_factors import (
 logger = logging.getLogger(__name__)
 
 
+def _diag_enabled() -> bool:
+    """选资过程的明细诊断表是否输出到标准输出。
+
+    表格量很大（每个调仓日上百行），仅在本模块日志开到 DEBUG 时输出，
+    避免污染服务端日志与脚本输出。
+    """
+    return logger.isEnabledFor(logging.DEBUG)
+
+
 class MomentumReversalSelector(BaseAssetSelector):
     """动量+反转双模型选择器（7+1），与指数编制规则一致。"""
 
@@ -31,15 +40,75 @@ class MomentumReversalSelector(BaseAssetSelector):
     def get_param_schema(cls):
         return {
             "selector_type": "momentum_reversal",
-            "display_name": "动量+反转双模型选择器（7+1）",
+            "display_name": "动量+反转(7+1)",
             "description": "基于动量因子选7个、反转因子选1个，合并为7～8个资产（浙银理财/申万宏源指数编制规则）",
             "params": [
-                {"name": "min_history_days", "type": "number", "default": 260},
-                {"name": "n_momentum", "type": "number", "default": 7},
-                {"name": "n_reversal", "type": "number", "default": 1},
-                {"name": "momentum_windows", "type": "text", "default": "20,60,120,250"},
-                {"name": "macd_windows", "type": "text", "default": "40,80,120,160"},
-                {"name": "reversal_windows", "type": "text", "default": "10,22"},
+                {
+                    "name": "min_history_days",
+                    "label": "最小历史数据要求",
+                    "type": "number",
+                    "default": 260,
+                    "min_value": 60,
+                    "max_value": 1000,
+                    "step": 10,
+                    "description": "资产进入候选池的最小交易日数（默认260天约1年）",
+                },
+                {
+                    "name": "n_momentum",
+                    "label": "动量选择数量",
+                    "type": "number",
+                    "default": 7,
+                    "min_value": 1,
+                    "max_value": 20,
+                    "step": 1,
+                    "description": "动量因子选择的资产数量（默认7个）",
+                },
+                {
+                    "name": "n_reversal",
+                    "label": "反转选择数量",
+                    "type": "number",
+                    "default": 1,
+                    "min_value": 0,
+                    "max_value": 10,
+                    "step": 1,
+                    "description": "反转因子选择的资产数量（默认1个）",
+                },
+                {
+                    "name": "momentum_windows",
+                    "label": "动量计算窗口",
+                    "type": "text",
+                    "default": "20,60,120,250",
+                    "description": "动量因子计算窗口（交易日），逗号分隔，如 20,60,120,250",
+                    "group": "advanced",
+                },
+                {
+                    "name": "macd_windows",
+                    "label": "MACD计算窗口",
+                    "type": "text",
+                    "default": "40,80,120,160",
+                    "description": "MACD因子计算窗口（交易日），逗号分隔，如 40,80,120,160",
+                    "group": "advanced",
+                },
+                {
+                    "name": "reversal_windows",
+                    "label": "反转计算窗口",
+                    "type": "text",
+                    "default": "10,22",
+                    "description": "反转因子计算窗口（交易日），逗号分隔，如 10,22",
+                    "group": "advanced",
+                },
+                {
+                    "name": "tie_rule",
+                    "label": "同分处理规则",
+                    "type": "select",
+                    "default": "index_rule",
+                    "options": [
+                        {"label": "编制规则（平均排名）", "value": "index_rule"},
+                        {"label": "严格前N名", "value": "strict"},
+                    ],
+                    "description": "编制规则：同分整组入选/剔除，入选数在N附近浮动；严格前N名：动量与反转各恒选N个",
+                    "group": "advanced",
+                },
             ],
         }
 
@@ -109,6 +178,7 @@ class MomentumReversalSelector(BaseAssetSelector):
 
         min_history_reversal = int(params.get("min_history_reversal", 22))
         use_price_skew = params.get("use_price_skew", True)
+        tie_rule = str(params.get("tie_rule") or "index_rule")
 
         momentum_selected, reversal_selected, momentum_df, reversal_df = (
             select_momentum_and_reversal_assets(
@@ -120,6 +190,7 @@ class MomentumReversalSelector(BaseAssetSelector):
                 min_history_days=min_history_days,
                 min_history_reversal=min_history_reversal,
                 use_price_skew=use_price_skew,
+                tie_rule=tie_rule,
             )
         )
 
@@ -206,6 +277,8 @@ class MomentumReversalSelector(BaseAssetSelector):
         rebalance_date_str: str = "—",
     ):
         """打印接收参数、执行参数、默认参数（新因子定义），便于核对前后端与文档一致性."""
+        if not _diag_enabled():
+            return
         # 默认参数（advanced_momentum_factors 新定义）
         default_min_history_days = 260
         default_n_momentum = 7
@@ -295,6 +368,8 @@ class MomentumReversalSelector(BaseAssetSelector):
         rebalance_date_str: str = "—",
     ):
         """打印动量/反转因子完整排名信息及各项指标得分贡献，便于调试。因子与周期采用新定义。"""
+        if not _diag_enabled():
+            return
         if momentum_df.empty and reversal_df.empty:
             return
         # 国债关键词（用于高亮显示）

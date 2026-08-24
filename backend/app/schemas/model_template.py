@@ -1,5 +1,5 @@
 """模型模板API模型"""
-from typing import List, Any, Optional
+from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field, field_serializer, field_validator
 from app.models.model_template import ParameterType
 
@@ -15,6 +15,10 @@ class ModelParameterOut(BaseModel):
     options: Optional[List[Any]] = Field(None, description="可选项列表(用于select类型)")
     min_value: Optional[float] = Field(None, description="最小值(用于number类型)")
     max_value: Optional[float] = Field(None, description="最大值(用于number类型)")
+    step: Optional[float] = Field(None, description="步长(用于number/slider类型)")
+    condition: Optional[Dict[str, Any]] = Field(None, description="条件显示规则")
+    hidden: bool = Field(False, description="前端是否隐藏")
+    group: str = Field("core", description="参数分组: core/advanced")
 
     @field_validator('default_value', mode='before')
     @classmethod
@@ -27,6 +31,24 @@ class ModelParameterOut(BaseModel):
                 return json.loads(v)
             except Exception:
                 return v
+        return v
+
+    @field_validator('options', mode='before')
+    @classmethod
+    def coerce_options(cls, v):
+        """历史脏数据兼容：options 若为字符串则尝试按 JSON 解析，
+        无法还原的损坏值（如被 String() 强转的 '[object Object],...'）置 None，避免 PUT 422"""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            if s.startswith('['):
+                import json
+                try:
+                    return json.loads(s)
+                except Exception:
+                    return None
+            return None
         return v
 
     @field_serializer('default_value')
@@ -43,8 +65,11 @@ class ModelTemplateCreate(BaseModel):
     code: str = Field(..., description="模板代码,如M001")
     name: str = Field(..., description="模板名称")
     description: str = Field(..., description="模板描述")
-    source_code: Optional[str] = Field(None, description="算法源代码")
+    source_code: Optional[str] = Field(None, description="策略源代码")
+    pdf_filename: Optional[str] = Field(None, description="策略PDF文档文件名")
     parameters: List[ModelParameterOut] = Field(default_factory=list, description="参数定义列表")
+    category: Optional[str] = Field("allocation", description="策略分类: allocation/selection/control")
+    composition: Optional[dict] = Field(None, description="三层组合配置")
 
 
 class ModelTemplateOut(ModelTemplateCreate):

@@ -8,6 +8,9 @@
 3. 从 event_log 重建权重变化历史
 """
 
+import warnings
+warnings.filterwarnings('ignore', category=FutureWarning)
+
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
@@ -28,8 +31,21 @@ class VolatilityCalculator:
                                  last_rebalance_fx: Dict[str, float],
                                  nav: float,
                                  current_date: str,
-                                 asset_list: Optional[List[str]] = None) -> Tuple[Optional[float], Dict[str, float]]:
+                                 asset_list: Optional[List[str]] = None,
+                                 w_cny: Optional[Dict[str, float]] = None) -> Tuple[Optional[float], Dict[str, float]]:
         """计算当前实时波动率（使用当前权重 + 资产价格，与 signal_detector 一致）
+        
+        Args:
+            prices_df: 资产价格 DataFrame
+            positions_local: 本币持仓金额（仅在 w_cny 未传时使用，旧公式）
+            last_rebalance_fx: 调仓日汇率（仅在 w_cny 未传时使用）
+            nav: 组合净值
+            current_date: 当前日期
+            asset_list: 资产列表
+            w_cny: 预计算的人民币权重 {asset: weight}。
+                   传入时优先使用，跳过内部权重计算。
+                   推荐使用 signal_detector 公式：
+                   w = (positions_cny_base + apl_local × fx_today) / nav
         
         Returns:
             (current_volatility, vol_windows)
@@ -44,12 +60,14 @@ class VolatilityCalculator:
         
         try:
             assets = asset_list if asset_list is not None else list(config.ASSET_LIST)
-            # 计算当前实际权重 w_cny
-            w_cny = {}
-            for asset in assets:
-                pos_local = positions_local.get(asset, 0.0)
-                fx_rate = last_rebalance_fx.get(asset, 1.0)
-                w_cny[asset] = pos_local * fx_rate / nav
+            
+            if w_cny is None:
+                # 回退：旧公式（仅用于无 positions_cny_base 的场景）
+                w_cny = {}
+                for asset in assets:
+                    pos_local = positions_local.get(asset, 0.0)
+                    fx_rate = last_rebalance_fx.get(asset, 1.0)
+                    w_cny[asset] = pos_local * fx_rate / nav
             
             assets_with_position = [a for a in assets if w_cny.get(a, 0.0) > 1e-8]
             
@@ -60,7 +78,7 @@ class VolatilityCalculator:
             if not use_cols:
                 return current_volatility, vol_windows
             # 计算日收益率
-            daily_ret_df = prices_df[use_cols].pct_change().fillna(0)
+            daily_ret_df = prices_df[use_cols].pct_change(fill_method=None).fillna(0)
             current_date_ts = pd.Timestamp(current_date)
             ytd_ret = daily_ret_df.loc[:current_date_ts, assets_with_position]
             
@@ -125,7 +143,7 @@ class VolatilityCalculator:
             if not use_cols:
                 return []
             # 2. 计算日收益率
-            daily_ret_df = prices_df[use_cols].pct_change().fillna(0)
+            daily_ret_df = prices_df[use_cols].pct_change(fill_method=None).fillna(0)
             current_date_ts = pd.Timestamp(current_date)
             
             # 只取到当前日期的数据
@@ -298,3 +316,58 @@ class VolatilityCalculator:
                 status = 'normal'
         
         return status, distance_to_trigger
+
+    # ------------------------------------------------------------------
+    # 工具方法：原始波动率计算（从 strategy_engine.py 迁移）
+    # ------------------------------------------------------------------
+
+    def calc_asset_volatility_raw(
+        self, prices_df: pd.DataFrame, calc_date, vol_windows=None
+    ) -> Dict[str, float]:
+        """计算各资产波动率（原始值，非百分比）。
+
+        取各窗口年化波动率的最大值。
+        """
+        windows = vol_windows or config.VOL_WINDOWS
+        date_idx = prices_df.index.get_loc(calc_date)
+        returns = prices_df.pct_change(fill_method=None)
+
+        vols: Dict[str, float] = {}
+        for asset in prices_df.columns:
+            asset_vols = []
+            for w in windows:
+                if date_idx >= w:
+                    ret_window = returns[asset].iloc[date_idx - w + 1:date_idx + 1]
+                    vol = ret_window.std() * self.annualize_factor
+                    if not np.isnan(vol):
+                        asset_vols.append(vol)
+            vols[asset] = max(asset_vols) if asset_vols else np.nan
+        return vols
+
+    def calc_portfolio_volatility_raw(
+        self, prices_df: pd.DataFrame, weights: Dict[str, float], calc_date, vol_windows=None
+    ) -> float:
+        """计算组合波动率（原始值，非百分比）。
+
+        使用权重加权的组合收益率，取各窗口年化波动率的最大值。
+        """
+        windows = vol_windows or config.VOL_WINDOWS
+        date_idx = prices_df.index.get_loc(calc_date)
+        returns = prices_df.pct_change(fill_method=None)
+
+        valid_assets = [a for a in weights if weights[a] > 0 and a in returns.columns]
+        if not valid_assets:
+            return 0.0
+
+        port_vols = []
+        for w in windows:
+            if date_idx >= w:
+                port_returns = pd.Series(0.0, index=returns.index)
+                for asset in valid_assets:
+                    port_returns += weights[asset] * returns[asset].fillna(0)
+                ret_window = port_returns.iloc[date_idx - w + 1:date_idx + 1]
+                vol = ret_window.std() * self.annualize_factor
+                if not np.isnan(vol):
+                    port_vols.append(vol)
+
+        return max(port_vols) if port_vols else 0.0

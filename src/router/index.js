@@ -14,7 +14,7 @@ const routes = [
   {
     path: '/',
     component: () => import('@/layout/MainLayout.vue'),
-    redirect: '/dashboard',
+    redirect: { name: 'Dashboard' },
     meta: { requiresAuth: true },
     children: [
       {
@@ -27,7 +27,7 @@ const routes = [
       {
         path: 'asset',
         name: 'Asset',
-        redirect: '/asset/list',
+        redirect: { name: 'AssetList' },
         component: () => import('@/views/asset/Index.vue'),
         meta: { title: '资产库管理', icon: 'el-icon-coin' },
         children: [
@@ -68,7 +68,7 @@ const routes = [
             path: 'template',
             name: 'StrategyTemplate',
             component: () => import('@/views/strategy/TemplateList.vue'),
-            meta: { title: '模型模板库' }
+            meta: { title: '策略库' }
           },
           {
             path: 'template/add',
@@ -107,73 +107,47 @@ const routes = [
             meta: { title: '策略详情', hidden: true }
           },
           {
-            path: 'benchmark',
-            name: 'BenchmarkList',
-            component: () => import('@/views/strategy/BenchmarkList.vue'),
-            meta: { title: '业绩基准管理' }
-          },
-          {
             path: 'backtest',
             name: 'BacktestExecution',
             component: () => import('@/views/strategy/BacktestExecution.vue'),
             meta: { title: '回测执行' }
-          }
-        ]
-      },
-      // 模拟组合模块
-      {
-        path: 'portfolio',
-        name: 'Portfolio',
-        component: () => import('@/views/portfolio/Index.vue'),
-        meta: { title: '模拟组合', icon: 'el-icon-s-data' },
-        children: [
+          },
+          // 组合管理（二级功能）
           {
-            path: 'list',
+            path: 'portfolio',
             name: 'PortfolioList',
             component: () => import('@/views/portfolio/PortfolioList.vue'),
-            meta: { title: '组合列表' }
+            meta: { title: '组合管理' }
           },
           {
-            path: 'create',
+            path: 'portfolio/create',
             name: 'PortfolioCreate',
             component: () => import('@/views/portfolio/PortfolioCreate.vue'),
-            meta: { title: '创建组合' }
+            meta: { title: '创建组合', hidden: true }
           },
           {
-            path: 'detail/:id',
+            path: 'portfolio/edit/:id',
+            name: 'PortfolioEdit',
+            component: () => import('@/views/portfolio/PortfolioCreate.vue'),
+            meta: { title: '编辑组合', hidden: true }
+          },
+          {
+            path: 'portfolio/detail/:id',
             name: 'PortfolioDetail',
             component: () => import('@/views/portfolio/PortfolioDetail.vue'),
-            meta: { title: '组合详情' }
+            meta: { title: '组合详情', hidden: true }
           },
           {
-            path: 'rebalance/:id',
-            name: 'PortfolioRebalance',
-            component: () => import('@/views/portfolio/Rebalance.vue'),
-            meta: { title: '再平衡设置' }
+            path: 'portfolio/sim-trade',
+            name: 'SimTradeSelector',
+            component: () => import('@/views/portfolio/SimTradeSelector.vue'),
+            meta: { title: '模拟交易', hidden: true }
           },
           {
-            path: 'history/:id',
-            name: 'PortfolioHistory',
-            component: () => import('@/views/portfolio/TradeHistory.vue'),
-            meta: { title: '调仓历史' }
-          },
-          {
-            path: 'performance/:id',
-            name: 'PortfolioPerformance',
-            component: () => import('@/views/portfolio/Performance.vue'),
-            meta: { title: '业绩分析' }
-          },
-          {
-            path: 'benchmark/:id',
-            name: 'PortfolioBenchmark',
-            component: () => import('@/views/portfolio/Benchmark.vue'),
-            meta: { title: '基准对比' }
-          },
-          {
-            path: 'compare',
-            name: 'PortfolioCompare',
-            component: () => import('@/views/portfolio/Compare.vue'),
-            meta: { title: '多组合对比' }
+            path: 'portfolio/sim-trade/:id',
+            name: 'SimTradeDashboard',
+            component: () => import('@/views/portfolio/SimTradeDashboard.vue'),
+            meta: { title: '模拟交易', hidden: true }
           }
         ]
       },
@@ -186,35 +160,13 @@ const routes = [
       },
       {
         path: 'analysis/agent',
-        redirect: '/agent/chat'
-      },
-      {
-        path: 'analysis/memories',
-        redirect: '/agent/memories'
-      },
-      {
-        path: 'analysis/asset-index',
-        name: 'AssetIndex',
-        component: () => import('@/views/analysis/AssetIndex.vue'),
-        meta: { title: '大类资产指数', icon: 'el-icon-data-line' }
-      },
-      {
-        path: 'analysis/weight-import',
-        name: 'WeightValuationImport',
-        component: () => import('@/views/analysis/WeightValuationImport.vue'),
-        meta: { title: '权重与持仓估值导入', icon: 'el-icon-upload2' }
+        redirect: { name: 'AgentWorkspace' }
       },
       {
         path: 'analysis/fx-import',
         name: 'FxImport',
         component: () => import('@/views/analysis/FxImport.vue'),
         meta: { title: '汇率与日历管理', icon: 'el-icon-upload2' }
-      },
-      {
-        path: 'analysis/multi-asset-import',
-        name: 'MultiAssetImport',
-        component: () => import('@/views/analysis/MultiAssetImport.vue'),
-        meta: { title: '多资产行情导入', icon: 'el-icon-upload2' }
       },
       {
         path: 'analysis/data-hub',
@@ -229,18 +181,6 @@ const routes = [
         meta: { title: '数据资产管理', icon: 'el-icon-folder-opened' }
       },
       {
-        path: 'analysis/zy-data-domain',
-        name: 'ZyDataDomain',
-        component: () => import('@/views/analysis/ZyDataDomain/Index.vue'),
-        meta: { title: 'ZY数据域管理', icon: 'el-icon-coin' }
-      },
-      {
-        path: 'analysis/data-lineage',
-        name: 'DataLineage',
-        component: () => import('@/views/analysis/DataLineage/Index.vue'),
-        meta: { title: '数据血缘图谱', icon: 'el-icon-connection' }
-      },
-      {
         path: 'analysis/subject-risk',
         redirect: { name: 'DataHubCenter', query: { connector: 'subject_opinion_risk' } }
       },
@@ -249,6 +189,46 @@ const routes = [
         name: 'MonitorCenter',
         component: () => import('@/views/monitor/MonitorCenter.vue'),
         meta: { title: '日常监控', icon: 'el-icon-monitor' }
+      },
+      // 收益凭证估值模块
+      {
+        path: 'options',
+        name: 'Options',
+        component: () => import('@/views/options/Index.vue'),
+        redirect: { name: 'ValuationWorkbench' },
+        meta: { title: '收益凭证估值', icon: 'el-icon-trophy' },
+        children: [
+          {
+            path: 'workbench',
+            name: 'ValuationWorkbench',
+            component: () => import('@/views/options/ValuationWorkbench.vue'),
+            meta: { title: '估值工作台' }
+          },
+          {
+            path: 'history',
+            name: 'ValuationHistory',
+            component: () => import('@/views/options/ValuationHistory.vue'),
+            meta: { title: '估值历史' }
+          },
+          {
+            path: 'accounting',
+            name: 'AccountingAssist',
+            component: () => import('@/views/options/AccountingAssist.vue'),
+            meta: { title: '核算辅助' }
+          },
+          {
+            path: 'products',
+            name: 'OptionsProducts',
+            component: () => import('@/views/options/OptionsProductList.vue'),
+            meta: { title: '产品管理' }
+          },
+          {
+            path: 'valuation-data',
+            name: 'ValuationDataManage',
+            component: () => import('@/views/options/ValuationDataManage.vue'),
+            meta: { title: '估值数据' }
+          }
+        ]
       },
       // 系统管理
       {
@@ -284,7 +264,7 @@ const routes = [
     path: '/agent',
     component: () => import('@/layout/MainLayout.vue'),
     meta: { title: '数智平台AI助手', icon: 'el-icon-s-opportunity', requiresAuth: true },
-    redirect: '/agent/chat',
+    redirect: { name: 'AgentWorkspace' },
     children: [
       {
         path: 'chat',
@@ -300,46 +280,16 @@ const routes = [
         props: true
       },
       {
-        path: 'history',
-        name: 'AgentHistory',
-        component: () => import('@/views/agent/ConversationHistory.vue'),
-        meta: { title: '对话历史', icon: 'el-icon-time' }
-      },
-      {
-        path: 'memories',
-        name: 'MemoryManager',
-        component: () => import('@/views/agent/MemoryManager.vue'),
-        meta: { title: '知识记忆', icon: 'el-icon-notebook-2' }
-      },
-      {
-        path: 'reports',
-        name: 'ReportCenter',
-        component: () => import('@/views/agent/ReportCenter.vue'),
-        meta: { title: '报告中心', icon: 'el-icon-document' }
-      },
-      {
-        path: 'templates',
-        name: 'AnalysisTemplates',
-        component: () => import('@/views/agent/AnalysisTemplates.vue'),
-        meta: { title: '分析模板' }
-      },
-      {
-        path: 'data-templates',
-        name: 'DataTemplates',
-        component: () => import('@/views/agent/DataTemplates.vue'),
-        meta: { title: '数据模板', icon: 'el-icon-data-analysis' }
-      },
-      {
-        path: 'scenes',
-        name: 'AgentScenes',
-        component: () => import('@/views/agent/SceneManager.vue'),
-        meta: { title: '场景管理', icon: 'el-icon-setting', roles: ['admin'] }
+        path: 'knowledge',
+        name: 'KnowledgeBase',
+        component: () => import('@/views/agent/KnowledgeBase.vue'),
+        meta: { title: '知识库', icon: 'el-icon-reading' }
       }
     ]
   },
   {
     path: '*',
-    redirect: '/404'
+    redirect: { name: 'NotFound' }
   },
   {
     path: '/404',
@@ -362,9 +312,9 @@ router.beforeEach((to, from, next) => {
   const token = store.state.user.token;
   
   if (requiresAuth && !token) {
-    next('/login');
+    next({ name: 'Login' });
   } else if (to.path === '/login' && token) {
-    next('/');
+    next({ name: 'Dashboard' });
   } else {
     // 检查角色权限
     if (to.meta.roles) {

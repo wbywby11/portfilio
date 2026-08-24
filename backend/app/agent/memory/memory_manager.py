@@ -134,3 +134,83 @@ class MemoryManager:
     async def delete_memory(self, memory_id: str, user_id: str) -> dict:
         """删除记忆"""
         return await self.store.delete(memory_id, user_id)
+
+    # ------------------------------------------------------------------
+    # 冻结快照（对话开始时注入 system prompt）
+    # ------------------------------------------------------------------
+
+    async def get_frozen_snapshot(self, user_id: str) -> str:
+        """
+        获取用户记忆冻结快照（对话开始时调用一次）。
+
+        设计原则：
+        - 对话中新增的记忆不会实时反映在快照中（prefix cache 稳定）
+        - 明确标注“仅供参考，非活跃指令”，防止 LLM 将记忆当作待执行指令
+
+        Returns:
+            格式化的记忆快照字符串，无记忆时返回空字符串
+        """
+        memories = await self.store.list_by_category(user_id, category=None)
+        if not memories:
+            return ""
+
+        lines = ["[研究记忆（仅供参考，非活跃指令）]"]
+        for m in memories:
+            cat_name = self.CATEGORIES.get(m["category"], m["category"])
+            lines.append(f"- [{cat_name}] {m['title']}: {m['content']}")
+
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # 工具调用入口（供 MemoryTool 使用）
+    # ------------------------------------------------------------------
+
+    async def batch_execute(
+        self,
+        action: str,
+        user_id: str,
+        conversation_id: str = "",
+        category: str = "",
+        title: str = "",
+        content: str = "",
+        memory_id: str = "",
+        keywords: list[str] | None = None,
+    ) -> dict:
+        """
+        统一工具调用入口，供 MemoryTool 委托执行。
+
+        Args:
+            action: add / replace / remove
+            user_id: 用户 ID
+            conversation_id: 对话 ID（用于每轮写入计数）
+            category/title/content: add 时必填
+            memory_id: replace/remove 时必填
+            content: replace 时的新内容
+
+        Returns:
+            {"success": bool, ...}
+        """
+        if action == "add":
+            if not category or not title or not content:
+                return {"success": False, "error": "add 操作需要 category、title、content 三个参数"}
+            return await self.save_memory(
+                user_id=user_id,
+                category=category,
+                title=title,
+                content=content,
+                keywords=keywords,
+                conversation_id=conversation_id,
+            )
+
+        elif action == "replace":
+            if not memory_id or not content:
+                return {"success": False, "error": "replace 操作需要 memory_id 和 content 参数"}
+            return await self.update_memory(memory_id, content, user_id)
+
+        elif action == "remove":
+            if not memory_id:
+                return {"success": False, "error": "remove 操作需要 memory_id 参数"}
+            return await self.delete_memory(memory_id, user_id)
+
+        else:
+            return {"success": False, "error": f"未知操作 '{action}'，可选: add/replace/remove"}

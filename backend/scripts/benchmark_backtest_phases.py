@@ -5,10 +5,7 @@
 """
 from __future__ import annotations
 
-import cProfile
-import io
 import logging
-import pstats
 import sys
 import time
 from pathlib import Path
@@ -38,28 +35,6 @@ def _fake_prices(n_days: int = 3500, n_assets: int = 12) -> pd.DataFrame:
     return pd.DataFrame(levels, index=dates, columns=cols)
 
 
-def bench_hybrid_momentum_cprofile(prices: pd.DataFrame) -> None:
-    from app.backtesting.hybrid_momentum_engine import (
-        HybridMomentumConfig,
-        run_hybrid_momentum_backtest,
-    )
-
-    cfg = HybridMomentumConfig(
-        base_date=pd.Timestamp("2014-02-10"),
-        selection_start_date=pd.Timestamp("2014-01-31"),
-        min_history_days=260,
-        top_momentum=7,
-    )
-    pr = cProfile.Profile()
-    pr.enable()
-    t0 = time.perf_counter()
-    run_hybrid_momentum_backtest(prices, cfg)
-    wall = time.perf_counter() - t0
-    pr.disable()
-    print(f"\n=== 混合动量 run_hybrid_momentum_backtest 墙钟 {wall:.2f}s ===")
-    s = io.StringIO()
-    pstats.Stats(pr, stream=s).sort_stats(pstats.SortKey.CUMULATIVE).print_stats(35)
-    print(s.getvalue())
 
 
 def bench_hybrid_step12_only(prices: pd.DataFrame) -> None:
@@ -113,11 +88,25 @@ def bench_hybrid_step12_only(prices: pd.DataFrame) -> None:
 
 
 def bench_monitor_monthly_map(prices: pd.DataFrame) -> None:
-    """监控 _build_monthly_rebalance_map 等价：每月 run_asset_selection + run_weight_calculation。"""
+    """监控 _build_monthly_rebalance_map 等价：每月通过三层引擎计算权重。"""
     from app.monitor import config as mcfg
-    from app.monitor.strategy_engine import StrategyEngine
+    from app.monitor.engine_adapter import MonitorEngineAdapter
+    from app.backtesting.composition_pipeline import CompositionPipeline
+    from app.allocation.strategy_manifest import resolve_class
+    from app.allocation.builtin_templates import COMPOSITION_DEFAULTS
 
-    engine = StrategyEngine()
+    # 构建一个简单的 pipeline 用于基准测试
+    allocator_cls = resolve_class("vol_scaled_budget")
+    composition = COMPOSITION_DEFAULTS.get("vol_scaled_budget")
+    asset_codes = list(prices.columns)
+    pipeline = CompositionPipeline(
+        allocator=allocator_cls(),
+        thscodes=asset_codes,
+        composition=composition,
+        strategy_params={"target_vol": 0.05, "vol_windows": "22,65,130"},
+    )
+    adapter = MonitorEngineAdapter(pipeline=pipeline, asset_codes=asset_codes)
+
     trade_dates = prices.index.tolist()
     month_end_dates = []
     ds = pd.Series(prices.index, index=prices.index)
@@ -128,13 +117,12 @@ def bench_monitor_monthly_map(prices: pd.DataFrame) -> None:
     t0 = time.perf_counter()
     for calc_date in month_end_dates:
         try:
-            sel = engine.run_asset_selection(prices, calc_date, rt=None)
-            engine.run_weight_calculation(prices, sel, calc_date, rt=None)
+            adapter.compute_weights(prices, calc_date)
         except Exception:
             pass
     elapsed = time.perf_counter() - t0
     print(
-        f"\n=== 监控引擎 月度×2 (selection+weight, rt=None): "
+        f"\n=== 三层引擎 月度权重计算: "
         f"{len(month_end_dates)} 月, 耗时 {elapsed:.2f}s ==="
     )
 
@@ -144,7 +132,6 @@ def main() -> None:
     print(f"模拟行情: {prices.shape[0]} 行 × {prices.shape[1]} 列")
     bench_hybrid_step12_only(prices)
     bench_monitor_monthly_map(prices)
-    bench_hybrid_momentum_cprofile(prices)
 
 
 if __name__ == "__main__":

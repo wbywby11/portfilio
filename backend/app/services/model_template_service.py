@@ -7,11 +7,17 @@ from typing import List, Optional, Dict, Any
 from bson import ObjectId
 from app.config.database import Database
 from app.models.model_template import ModelTemplate
-from app.strategies.dynamic_loader import DynamicStrategyLoader
+from app.allocation.dynamic_loader import DynamicStrategyLoader
 
 
 class ModelTemplateService:
     """模型模板服务"""
+
+    # 内置策略类路径映射（从统一策略清单自动派生，无需手动维护）
+    # 新策略只需在 app/allocation/strategy_manifest.py 中注册即可
+    from app.allocation.strategy_manifest import get_class_paths as _get_manifest_paths
+    _BUILTIN_CLASS_PATHS = _get_manifest_paths()
+    del _get_manifest_paths  # 清理临时引用
     
     def __init__(self):
         self._db = None
@@ -26,7 +32,8 @@ class ModelTemplateService:
     @property
     def collection(self):
         if self._collection is None:
-            self._collection = self.db['model_templates']
+            from app.config.collections import COL_MODEL_TEMPLATES
+            self._collection = self.db[COL_MODEL_TEMPLATES]
         return self._collection
     
     async def create_template(self, template: ModelTemplate) -> str:
@@ -143,6 +150,10 @@ class ModelTemplateService:
         
         return result
     
+    # 非 allocator 类别的模板前缀/名称（selection/controller 由各自注册表管理，不需要进入 strategy_service）
+    _SKIP_STRATEGY_SERVICE_CATEGORIES = frozenset({"selection", "control"})
+    _SKIP_STRATEGY_SERVICE_CODES = frozenset()  # 所有 allocator 均已实现源文件
+
     async def register_template_to_strategy_service(
         self, 
         template: ModelTemplate, 
@@ -151,7 +162,10 @@ class ModelTemplateService:
         """
         将模板注册到策略服务
         
-        内置策略（如 risk_budget_target_vol）优先使用代码中的类，保证修复和迭代生效；
+        仅注册 category=allocation 的模板。selection/control 模板由各自注册表
+        （SELECTION_REGISTRY / CONTROL_REGISTRY）管理，不需要进入 strategy_service。
+        
+        内置策略优先使用代码中的类，保证修复和迭代生效；
         其他模板从数据库 source_code 动态加载。
         
         Args:
@@ -161,15 +175,19 @@ class ModelTemplateService:
         Returns:
             是否注册成功
         """
+        # 非 allocation 类模板直接跳过
+        cat = (template.category or "allocation").strip().lower()
+        if cat in self._SKIP_STRATEGY_SERVICE_CATEGORIES or template.code in self._SKIP_STRATEGY_SERVICE_CODES:
+            return True  # 视为成功（不需要注册，不是失败）
+        
         try:
-            # 1. 验证模板
-            validation = await self.validate_template(template)
-            if not validation["valid"]:
-                raise ValueError(f"模板验证失败: {', '.join(validation['errors'])}")
-            
-            # 2. 内置策略优先使用代码中的类（避免数据库 source_code 旧版本覆盖本地修复）
+            # 1. 内置策略优先使用代码中的类（跳过动态验证，避免 source_code 旧版本干扰）
             strategy_cls = self._get_builtin_strategy_class(template.code)
             if strategy_cls is None:
+                # 2. 非内置模板：验证 + 动态加载
+                validation = await self.validate_template(template)
+                if not validation["valid"]:
+                    raise ValueError(f"模板验证失败: {', '.join(validation['errors'])}")
                 strategy_cls = DynamicStrategyLoader.load_strategy_class_from_template(template)
             
             # 3. 注册到策略服务
@@ -183,17 +201,7 @@ class ModelTemplateService:
 
     def _get_builtin_strategy_class(self, template_code: str):
         """内置策略类型返回代码中的类，否则返回 None（走动态加载）。"""
-        builtins = {
-            "risk_parity": "app.strategies.models.risk_parity.RiskParityStrategy",
-            "cso": "app.strategies.models.enhanced_risk_parity.CovarianceSharpeOptimization",
-            "risk_budget": "app.strategies.models.risk_budget.RiskBudgetStrategy",
-            "factor_rp": "app.strategies.models.factor_risk_parity.FactorRiskParityStrategy",
-            "mean_variance": "app.strategies.models.mean_variance.MeanVarianceOptimization",
-            "risk_budget_target_vol": "app.strategies.models.risk_budget_target_vol.RiskBudgetTargetVolStrategy",
-            "manual_allocation": "app.strategies.models.manual_allocation.ManualAllocationStrategy",
-            "black_litterman": "app.strategies.models.black_litterman.BlackLittermanOptimization",
-        }
-        path = builtins.get(template_code)
+        path = self._BUILTIN_CLASS_PATHS.get(template_code)
         if not path:
             return None
         mod_path, cls_name = path.rsplit(".", 1)

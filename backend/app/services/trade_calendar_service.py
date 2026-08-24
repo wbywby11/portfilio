@@ -1,9 +1,11 @@
 """
 交易日历服务 - 管理 MongoDB trade_dates 集合
 
-集合存储格式：
-    { "date": datetime(...) }
-其中 date 字段为 Python datetime 对象（ISODate），并非字符串。
+集合存储格式:
+    { "date": "YYYY-MM-DD" }  (字符串, 主流)
+    { "date": datetime(...) }  (ISODate, 兼容旧数据)
+
+查询时同时兼容字符串与 datetime 两种存储格式。
 """
 from __future__ import annotations
 
@@ -16,13 +18,8 @@ from loguru import logger
 
 from app.config.database import Database
 
-# 兼容多种日期列名（与 data_import_tool.TRADE_DATES_COLUMN_MAPPING 保持一致）
-_DATE_COLUMN_MAPPING = {
-    "交易日": "date", "交易日期": "date", "交易日期*": "date",
-    "trade_dates": "date", "trade_date": "date", "TradeDate": "date",
-    "TRADE_DATE": "date", "TRADE_DATES": "date",
-    "日期": "date", "日期*": "date", "Date": "date", "DATE": "date", "date": "date",
-}
+# 兼容多种日期列名（唯一来源：app/schemas/field_mappings.py）
+from app.schemas.field_mappings import TRADE_DATES_COLUMN_MAPPING as _DATE_COLUMN_MAPPING
 
 
 class TradeCalendarService:
@@ -41,7 +38,8 @@ class TradeCalendarService:
     @property
     def collection(self):
         if self._collection is None:
-            self._collection = self.db["trade_dates"]
+            from app.config.collections import COL_TRADE_DATES
+            self._collection = self.db[COL_TRADE_DATES]
         return self._collection
 
     # ───────────────────────── 工具方法 ─────────────────────────
@@ -82,7 +80,6 @@ class TradeCalendarService:
         """获取交易日历统计信息"""
         cursor = self.collection.find({}, {"date": 1, "_id": 0}).sort("date", 1)
         date_strs: List[str] = []
-        last_updated: Optional[str] = None
         async for doc in cursor:
             s = self._date_to_str(doc.get("date"))
             if s:
@@ -107,18 +104,35 @@ class TradeCalendarService:
             "start_date": date_strs[0],
             "end_date": date_strs[-1],
             "this_year_count": this_year_count,
+            "this_year": this_year_count,
             "last_updated": last_updated,
         }
 
     async def get_dates_by_year(self, year: Optional[int] = None) -> List[str]:
-        """获取交易日期列表，可按年份过滤"""
-        query: Dict[str, Any] = {}
-        if year is not None:
-            start = datetime(year, 1, 1)
-            end = datetime(year + 1, 1, 1)
-            query["date"] = {"$gte": start, "$lt": end}
+        """获取交易日期列表，可按年份过滤
 
-        cursor = self.collection.find(query, {"date": 1, "_id": 0}).sort("date", 1)
+        兼容 date 字段为字符串("YYYY-MM-DD")或 datetime 两种存储格式。
+        """
+        if year is None:
+            # 全量：$or 同时匹配字符串与 datetime
+            cursor = self.collection.find(
+                {}, {"date": 1, "_id": 0}
+            ).sort("date", 1)
+        else:
+            start_str = f"{year}-01-01"
+            end_str = f"{year + 1}-01-01"
+            start_dt = datetime(year, 1, 1)
+            end_dt = datetime(year + 1, 1, 1)
+            query = {
+                "$or": [
+                    {"date": {"$gte": start_str, "$lt": end_str}},
+                    {"date": {"$gte": start_dt, "$lt": end_dt}},
+                ]
+            }
+            cursor = self.collection.find(
+                query, {"date": 1, "_id": 0}
+            ).sort("date", 1)
+
         result: List[str] = []
         async for doc in cursor:
             s = self._date_to_str(doc.get("date"))
@@ -213,15 +227,37 @@ class TradeCalendarService:
             td_mode, total_in_file, inserted_count, skipped_count,
         )
 
+        # 写入导入审计日志
+        date_range_str = (
+            f"{min(file_date_strs)} ~ {max(file_date_strs)}"
+            if file_date_strs else ""
+        )
+        try:
+            from app.services.import_audit_service import ImportAuditService
+            audit = ImportAuditService(db=self.db)
+            await audit.log_import(
+                target_collection="trade_dates",
+                import_mode=td_mode,
+                source_type="excel",
+                operator="system",
+                stats={
+                    "total_rows": total_in_file,
+                    "inserted": inserted_count,
+                    "updated": 0,
+                    "skipped": skipped_count,
+                    "errors": 0,
+                },
+                date_range=date_range_str,
+            )
+        except Exception:
+            pass  # 审计日志失败不阻断主流程
+
         return {
             "mode": td_mode,
             "inserted_count": inserted_count,
             "skipped_count": skipped_count,
             "total_in_file": total_in_file,
-            "date_range": (
-                f"{min(file_date_strs)} ~ {max(file_date_strs)}"
-                if file_date_strs else ""
-            ),
+            "date_range": date_range_str,
         }
 
     async def add_dates(self, dates: List[str]) -> Dict[str, Any]:
@@ -274,11 +310,15 @@ class TradeCalendarService:
         }
 
     async def delete_date(self, date_str: str) -> Dict[str, Any]:
-        """按日期字符串删除交易日期"""
+        """按日期字符串删除交易日期（兼容 string 与 datetime 存储）"""
         try:
             dt = self._to_datetime(date_str)
         except ValueError as e:
             raise ValueError(str(e))
 
-        result = await self.collection.delete_many({"date": dt})
+        ds = dt.strftime("%Y-%m-%d")
+        # 同时匹配字符串和 datetime 格式
+        result = await self.collection.delete_many(
+            {"$or": [{"date": ds}, {"date": dt}]}
+        )
         return {"deleted_count": int(result.deleted_count)}

@@ -43,16 +43,17 @@ class ModelRouter:
         if not self.models:
             raise ValueError("至少需要配置一个已启用的模型")
 
-        # 为每个模型创建 LLMClient 实例
-        from app.agent.core.config import get_agent_settings
-        _settings = get_agent_settings()
+        # 为每个模型创建 LLMClient 实例（共享同一工具协议实例）
+        from app.agent.core.tool_protocol import get_tool_protocol
+        protocol = get_tool_protocol()
+        self.tool_protocol = protocol
         self._clients: dict[str, LLMClient] = {}
         for model in self.models:
             self._clients[model.name] = LLMClient(
                 api_key=model.api_key,
                 base_url=model.base_url,
                 model=model.name,
-                soft_tools=_settings.LLM_SOFT_TOOLS,
+                protocol=protocol,
             )
 
         # 失败跟踪：模型名 → (失败次数, 最后失败时间)

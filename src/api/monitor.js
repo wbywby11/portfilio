@@ -39,7 +39,8 @@ export function getMonitorEvents(params = {}) {
       monitor_id: (params && params.monitor_id) || 'default',
       type: params && params.type,
       limit: params && params.limit
-    }
+    },
+    skipGlobal404Message: true
   });
 }
 
@@ -48,7 +49,8 @@ export function getMonitorPositions(monitorId = 'default') {
   return request({
     url: '/api/v1/monitor/positions',
     method: 'get',
-    params: { monitor_id: monitorId }
+    params: { monitor_id: monitorId },
+    skipGlobal404Message: true
   });
 }
 
@@ -86,7 +88,8 @@ export function runMonitor(data) {
   return request({
     url: '/api/v1/monitor/run',
     method: 'post',
-    params
+    params,
+    timeout: 600000  // 日常运行可能涉及多日推演，超时设为 10 分钟（与 initMonitor 对齐）
   });
 }
 
@@ -159,7 +162,8 @@ export function getSubjectiveOverrides(params = {}) {
     params: {
       monitor_id: (params && params.monitor_id) || 'default',
       status: params && params.status
-    }
+    },
+    skipGlobal404Message: true
   });
 }
 
@@ -221,6 +225,81 @@ export function getDailyAttribution(params = {}) {
     params: {
       monitor_id: (params && params.monitor_id) || 'default',
       date: params && params.date
+    },
+    skipGlobal404Message: true
+  });
+}
+
+// ========== 监测策略管理 ==========
+
+// 列出监测策略
+export function getMonitoredStrategies(params = {}) {
+  return request({
+    url: '/api/v1/monitor/strategies',
+    method: 'get',
+    params: {
+      status: params.status,
+      source_type: params.source_type
     }
+  });
+}
+
+// 新增监测策略
+export function createMonitoredStrategy(data) {
+  return request({
+    url: '/api/v1/monitor/strategies',
+    method: 'post',
+    data
+  });
+}
+
+// 从研究员策略创建监测策略
+export function createFromResearcher(code) {
+  return request({
+    url: '/api/v1/monitor/strategies/from-researcher',
+    method: 'post',
+    data: { code }
+  });
+}
+
+// 更新监测策略（改名/状态）
+export function updateMonitoredStrategy(strategyId, data) {
+  return request({
+    url: `/api/v1/monitor/strategies/${strategyId}`,
+    method: 'put',
+    data
+  });
+}
+
+// 归档监测策略
+export function archiveMonitoredStrategy(strategyId) {
+  return request({
+    url: `/api/v1/monitor/strategies/${strategyId}`,
+    method: 'delete'
+  });
+}
+
+// 列出可用研究员策略
+export function getResearcherStrategies() {
+  return request({
+    url: '/api/v1/monitor/researcher-strategies',
+    method: 'get'
+  });
+}
+
+// 列出可添加的监控策略（研究员 + 实盘发布）
+export function getAddableStrategies() {
+  return request({
+    url: '/api/v1/monitor/addable-strategies',
+    method: 'get'
+  });
+}
+
+// 从实盘发布策略创建监控条目
+export function createFromLive(data) {
+  return request({
+    url: '/api/v1/monitor/strategies/from-live',
+    method: 'post',
+    data
   });
 }

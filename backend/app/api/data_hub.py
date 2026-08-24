@@ -12,7 +12,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query
 from loguru import logger
 
 from app.models.data_connector import list_connectors_public, get_connector
-from app.models.data_hub import DataHubQueryRequest, PtlInfoImportRequest
+from app.models.data_hub import DataHubQueryRequest
 from app.models.subject_risk import SubjectRiskImportRequest
 from app.schemas.response import Response
 from app.services.data_hub_service import DataHubService
@@ -51,10 +51,7 @@ async def hub_import(
         conn = _connector_or_404(connector_id)
         if conn.family != "get_py_result":
             raise HTTPException(status_code=400, detail="该连接器暂未开放通用导入接口")
-        if getattr(conn, "import_param_style", "date_range") == "ptl_param_maps":
-            payload = PtlInfoImportRequest(**body).model_dump(mode="json")
-        else:
-            payload = SubjectRiskImportRequest(**body).model_dump(mode="json")
+        payload = SubjectRiskImportRequest(**body).model_dump(mode="json")
         result = await hub.import_from_upstream(connector_id, payload)
         status = result.get("status", "unknown")
         if status in ("failed_network", "failed_upstream"):

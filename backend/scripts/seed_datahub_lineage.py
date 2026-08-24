@@ -2,8 +2,8 @@
 数据接入域血缘图谱注入脚本
 
 向 lineage_nodes / lineage_edges 注入 data_hub 域的：
-1. 上游API源节点（3个）
-2. 存储节点（6个集合）
+1. 上游API源节点（1个）
+2. 存储节点（2个集合）
 3. 数据流边（SOURCE_API → STORAGE）
 4. 跨域引用边（data_hub → 9域表）
 
@@ -36,22 +36,6 @@ def main():
             "display_name": "上游·主体观点风险统计接口",
             "metadata": {"resource": "adm_subject_opinion_risk_stats", "protocol": "HTTP POST"},
         },
-        {
-            "node_id": "SOURCE_API:data_hub:ZYSC_DWD_PTL_INFO:1.0",
-            "node_type": "SOURCE_API",
-            "domain": "data_hub",
-            "name": "ZYSC_DWD_PTL_INFO",
-            "display_name": "上游·产品信息表接口",
-            "metadata": {"resource": "ZYSC_DWD_PTL_INFO", "protocol": "HTTP POST"},
-        },
-        {
-            "node_id": "SOURCE_API:data_hub:ZYSC_DWD_PTL_HOLDER_SUMMARY:1.0",
-            "node_type": "SOURCE_API",
-            "domain": "data_hub",
-            "name": "ZYSC_DWD_PTL_HOLDER_SUMMARY",
-            "display_name": "上游·产品持有人汇总接口",
-            "metadata": {"resource": "ZYSC_DWD_PTL_HOLDER_SUMMARY", "protocol": "HTTP POST"},
-        },
     ]
 
     # ── 2. MongoDB 存储节点 ──
@@ -59,10 +43,6 @@ def main():
     for col_name, display in [
         ("subject_risk_records", "主体观点风险记录表"),
         ("subject_risk_import_batches", "主体风险导入批次表"),
-        ("zysc_ptl_info_records", "产品信息记录表"),
-        ("zysc_ptl_info_import_batches", "产品信息导入批次表"),
-        ("zysc_ptl_holder_records", "产品持有人汇总记录表"),
-        ("zysc_ptl_holder_import_batches", "产品持有人导入批次表"),
     ]:
         cnt = db[col_name].count_documents({})
         storage_nodes.append({
@@ -90,34 +70,6 @@ def main():
             "edge_type": "DATA_FLOW",
             "label": "记录批次",
         },
-        {
-            "edge_id": "SOURCE_API:data_hub:ZYSC_DWD_PTL_INFO:1.0--DATA_FLOW-->STORAGE_MONGO:data_hub:zysc_ptl_info_records:1.0",
-            "source_id": "SOURCE_API:data_hub:ZYSC_DWD_PTL_INFO:1.0",
-            "target_id": "STORAGE_MONGO:data_hub:zysc_ptl_info_records:1.0",
-            "edge_type": "DATA_FLOW",
-            "label": "导入产品信息",
-        },
-        {
-            "edge_id": "SOURCE_API:data_hub:ZYSC_DWD_PTL_INFO:1.0--DATA_FLOW-->STORAGE_MONGO:data_hub:zysc_ptl_info_import_batches:1.0",
-            "source_id": "SOURCE_API:data_hub:ZYSC_DWD_PTL_INFO:1.0",
-            "target_id": "STORAGE_MONGO:data_hub:zysc_ptl_info_import_batches:1.0",
-            "edge_type": "DATA_FLOW",
-            "label": "记录批次",
-        },
-        {
-            "edge_id": "SOURCE_API:data_hub:ZYSC_DWD_PTL_HOLDER_SUMMARY:1.0--DATA_FLOW-->STORAGE_MONGO:data_hub:zysc_ptl_holder_records:1.0",
-            "source_id": "SOURCE_API:data_hub:ZYSC_DWD_PTL_HOLDER_SUMMARY:1.0",
-            "target_id": "STORAGE_MONGO:data_hub:zysc_ptl_holder_records:1.0",
-            "edge_type": "DATA_FLOW",
-            "label": "导入持有人数据",
-        },
-        {
-            "edge_id": "SOURCE_API:data_hub:ZYSC_DWD_PTL_HOLDER_SUMMARY:1.0--DATA_FLOW-->STORAGE_MONGO:data_hub:zysc_ptl_holder_import_batches:1.0",
-            "source_id": "SOURCE_API:data_hub:ZYSC_DWD_PTL_HOLDER_SUMMARY:1.0",
-            "target_id": "STORAGE_MONGO:data_hub:zysc_ptl_holder_import_batches:1.0",
-            "edge_type": "DATA_FLOW",
-            "label": "记录批次",
-        },
     ]
 
     # ── 4. 跨域引用边（data_hub → 9域） ──
@@ -137,38 +89,6 @@ def main():
             "target_id": "STORAGE_MONGO:risk:dwd_rsk_sentiment:1.0",
             "edge_type": "REFERENCE",
             "label": "双源舆情融合",
-        },
-        # 产品信息 → 产品域产品表
-        {
-            "edge_id": "STORAGE_MONGO:data_hub:zysc_ptl_info_records:1.0--REFERENCE-->STORAGE_MONGO:product:dwd_ptl_info:1.0",
-            "source_id": "STORAGE_MONGO:data_hub:zysc_ptl_info_records:1.0",
-            "target_id": "STORAGE_MONGO:product:dwd_ptl_info:1.0",
-            "edge_type": "REFERENCE",
-            "label": "产品代码→PORT_ID",
-        },
-        # 产品信息 → 主体域(管理人)
-        {
-            "edge_id": "STORAGE_MONGO:data_hub:zysc_ptl_info_records:1.0--REFERENCE-->STORAGE_MONGO:subject:dwd_isr_institution:1.0",
-            "source_id": "STORAGE_MONGO:data_hub:zysc_ptl_info_records:1.0",
-            "target_id": "STORAGE_MONGO:subject:dwd_isr_institution:1.0",
-            "edge_type": "REFERENCE",
-            "label": "管理人→ISR_NM",
-        },
-        # 持有人 → 产品域持有人汇总表
-        {
-            "edge_id": "STORAGE_MONGO:data_hub:zysc_ptl_holder_records:1.0--REFERENCE-->STORAGE_MONGO:product:dwd_ptl_holder_summary:1.0",
-            "source_id": "STORAGE_MONGO:data_hub:zysc_ptl_holder_records:1.0",
-            "target_id": "STORAGE_MONGO:product:dwd_ptl_holder_summary:1.0",
-            "edge_type": "REFERENCE",
-            "label": "双源持有人融合",
-        },
-        # 持有人 → 产品信息（域内）
-        {
-            "edge_id": "STORAGE_MONGO:data_hub:zysc_ptl_holder_records:1.0--REFERENCE-->STORAGE_MONGO:data_hub:zysc_ptl_info_records:1.0",
-            "source_id": "STORAGE_MONGO:data_hub:zysc_ptl_holder_records:1.0",
-            "target_id": "STORAGE_MONGO:data_hub:zysc_ptl_info_records:1.0",
-            "edge_type": "REFERENCE",
-            "label": "产品代码关联",
         },
     ]
 

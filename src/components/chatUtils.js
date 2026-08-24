@@ -8,127 +8,16 @@ marked.setOptions({
 })
 
 /**
- * 表名 → 中文显示名映射（与后端 semantic_profile_tool 保持一致，覆盖全域）
+ * 表名 → 中文显示名映射（仅收录数据库真实存在的集合）
+ * 新增真实表时在此补充；enhanceRenderedHtml 对未收录表名会优雅降级为普通 <code>。
  */
 export const TABLE_DISPLAY_NAMES = {
   // ─── data_hub 通用数据接入域 ───
   'subject_risk_records': '主体观点风险记录表',
   'subject_risk_import_batches': '主体风险导入批次表',
-  'zysc_ptl_info_records': '产品信息记录表',
-  'zysc_ptl_info_import_batches': '产品信息导入批次表',
-  'zysc_ptl_holder_records': '产品持有人汇总记录表',
-  'zysc_ptl_holder_import_batches': '产品持有人导入批次表',
-  // ─── 资产域 (Asset) ───
-  'dwd_ast_info': '资产基础信息表',
-  'dwd_ast_info_ch': '中债估值表',
-  'dwd_ast_info_zg': '中证估值表',
-  'dwd_ast_yield_info': '收益率信息表',
-  'dwd_ast_cf_plan': '现金流计划表',
-  'dwd_ast_pledge': '质押信息表',
-  'dwd_ast_flow_trade': '流通交易表',
-  'dwd_ast_rating': '信用评级表',
-  'dwd_ast_guarantor': '担保人信息表',
-  'dwd_ast_clause': '条款信息表',
-  'dwd_ast_holder': '资产持有人表',
-  'dwd_ast_event': '生命周期事件表',
+  // ─── 资产行情域 ───
   'assets': '资产列表主数据',
   'asset_prices': '资产日频K线行情',
-  // ─── 主体域 (Subject) ───
-  'dwd_isr_institution': '机构/发行人主表',
-  'dwd_isr_institution_finance': '机构财务信息表',
-  'dwd_isr_trd_cntp': '交易对手表',
-  'dwd_isr_credit_rating': '信用评级表',
-  // ─── 产品域 (Product) ───
-  'dwd_ptl_info': '产品主表',
-  'dwd_ptl_ast_hld': '产品持仓明细',
-  'dwd_ptl_cedetail': '产品分红明细',
-  'dwd_ptl_holder_summary': '产品持有人汇总',
-  // ─── 行情域 (Market) ───
-  'dwd_mkt_bond': '债券行情表',
-  'dwd_mkt_equity': '股票行情表',
-  'dwd_mkt_fund': '基金净值行情表',
-  'dwd_mkt_index': '指数行情表',
-  'dwd_mkt_fx': '外汇行情表',
-  'dwd_mkt_ir': '利率行情表',
-  'dwd_mkt_commodity': '大宗商品行情表',
-  'dwd_mkt_derivative': '衍生品行情表',
-  'dwd_mkt_repo': '回购行情表',
-  'dwd_mkt_abs': 'ABS行情表',
-  'dwd_mkt_convertible': '可转债行情表',
-  'dwd_mkt_curve_point': '收益率曲线点位表',
-  'dwd_mkt_curve_def': '收益率曲线定义表',
-  'dwd_mkt_benchmark': '基准指标表',
-  'dwd_mkt_vol_surface': '波动率曲面表',
-  'dwd_mkt_liquidity': '流动性指标表',
-  'dwd_mkt_credit_spread': '信用利差表',
-  'dwd_mkt_sector_index': '行业指数表',
-  'dwd_mkt_macro': '宏观指标表',
-  'dwd_mkt_calendar': '交易日历表',
-  'dwd_mkt_holiday': '节假日表',
-  'dwd_mkt_exchange_info': '交易所信息表',
-  'dwd_mkt_trading_halt': '停牌信息表',
-  'dwd_mkt_ipo_calendar': 'IPO日历表',
-  'dwd_mkt_rating_action': '评级动作表',
-  // ─── 估值域 (Valuation) ───
-  'dwd_val_valtable': '估值汇总表',
-  'dwd_val_asset_detail': '资产估值明细表',
-  'dwd_val_income': '收入明细表',
-  'dwd_val_expense': '费用明细表',
-  'dwd_val_cash_flow': '现金流明细表',
-  'dwd_val_fx_exposure': '外汇敲口表',
-  'dwd_val_duration_bucket': '久期分桶表',
-  'dwd_val_credit_bucket': '信用分桶表',
-  'dwd_val_sector_bucket': '行业分桶表',
-  'dwd_val_concentration': '集中度表',
-  // ─── 交易域 (Transaction) ───
-  'dwd_trn_order': '委托订单表',
-  'dwd_trn_trade_ast': '资产交易明细表',
-  'dwd_trn_settle': '结算明细表',
-  'dwd_trn_fee': '费用明细表',
-  'dwd_trn_repo': '回购交易表',
-  'dwd_trn_fx': '外汇交易表',
-  'dwd_txn_trade_record': '交易记录',
-  'dwd_txn_settlement': '结算明细',
-  // ─── 风险域 (Risk) ───
-  'dwd_rsk_sentiment': '舆情事件表',
-  'dwd_rsk_credit': '内部信用评级表',
-  'dwd_rsk_guarantee': '担保信息表',
-  'dwd_rsk_limit_usage': '限额使用表',
-  'dwd_rsk_event': '风险事件表',
-  'dwd_rsk_exposure': '风险敲口表',
-  'dwd_rsk_limit': '风险限额表',
-  // ─── 销售域 (Seller) ───
-  'dwd_sale_psn_info': '销售人员信息表',
-  'dwd_sel_channel': '销售渠道表',
-  // ─── 客户域 (Customer) ───
-  'dwd_cst_info': '客户信息表',
-  'dwd_cust_info': '客户主表',
-  'dwd_cust_make_pstn_info': '客户建仓信息表',
-  // ─── 信用域 (Credit) ───
-  'dwd_crtd_main_rela_rela_info': '主体关联关系信息表',
-  'dwd_crtd_agme_info': '增信措施信息表',
-  // ─── 风险扩展 (Risk Extended) ───
-  'dwd_rsk_credit_position': '信用风险持仓表',
-  // ─── 资产扩展 (Asset Extended) ───
-  'dwd_ast_party': '资产参与方表',
-  'dwd_ast_fiveclass': '资产五级分类表',
-  // ─── 其他常见表 ───
-  'dwd_isr_institution_finance': '机构财务信息表',
-  'dwd_isr_trd_cntp': '交易对手表',
-  'dwd_rsk_guarantee': '担保信息表',
-  'dwd_rsk_limit_usage': '限额使用表',
-  'dwd_rsk_event': '风险事件表',
-  'dwd_val_valtable': '估值汇总表',
-  'dwd_val_asset_detail': '资产估值明细表',
-  'dwd_val_income': '收入明细表',
-  'dwd_val_expense': '费用明细表',
-  'dwd_val_cash_flow': '现金流明细表',
-  'dwd_val_fx_exposure': '外汇敲口表',
-  'dwd_val_duration_bucket': '久期分桶表',
-  'dwd_val_concentration': '集中度表',
-  'dwd_trn_order': '委托订单表',
-  'dwd_trn_trade_ast': '资产交易明细表',
-  'dwd_trn_settle': '结算明细表',
 }
 
 /**
@@ -136,52 +25,18 @@ export const TABLE_DISPLAY_NAMES = {
  * role: PK=主键, FK=外键, LINK=关联键, BIZ=业务关键字段
  */
 export const KEY_FIELD_INFO = {
-  // ─── 主体/机构域 ───
-  'ISR_ID':       { zh: '机构/发行人ID',  role: 'PK',   roleClass: 'field-pk' },
-  'ISR_NM':       { zh: '机构名称',        role: 'LINK', roleClass: 'field-link' },
-  // ─── 资产域 ───
-  'AST_CD':       { zh: '证券代码',        role: 'PK',   roleClass: 'field-pk' },
-  'AST_NM':       { zh: '证券名称',        role: 'BIZ',  roleClass: 'field-biz' },
-  'AST_TYPE':     { zh: '资产大类',        role: 'BIZ',  roleClass: 'field-biz' },
-  'AST_SUB_TYPE': { zh: '资产子类',        role: 'BIZ',  roleClass: 'field-biz' },
-  'MATURITY_DT':  { zh: '到期日',          role: 'BIZ',  roleClass: 'field-biz' },
-  'COUPON_RATE':  { zh: '票面利率',        role: 'BIZ',  roleClass: 'field-biz' },
-  'MARKET':       { zh: '上市市场',        role: 'BIZ',  roleClass: 'field-biz' },
-  'RATING':       { zh: '信用评级',        role: 'BIZ',  roleClass: 'field-biz' },
-  'ISSUE_DT':     { zh: '发行日期',        role: 'BIZ',  roleClass: 'field-biz' },
-  'ISSUE_AMT':    { zh: '发行规模',        role: 'BIZ',  roleClass: 'field-biz' },
-  'PAR_VALUE':    { zh: '面值',            role: 'BIZ',  roleClass: 'field-biz' },
-  'BOND_TERM':    { zh: '债券期限',        role: 'BIZ',  roleClass: 'field-biz' },
-  'LIST_DT':      { zh: '上市日期',        role: 'BIZ',  roleClass: 'field-biz' },
-  'CCY':          { zh: '币种',            role: 'BIZ',  roleClass: 'field-biz' },
-  // ─── 行情域 ───
-  'BIZ_DT':       { zh: '业务日期',        role: 'PK',   roleClass: 'field-pk' },
-  'OPEN_PRC':     { zh: '开盘价',          role: 'BIZ',  roleClass: 'field-biz' },
-  'HIGH_PRC':     { zh: '最高价',          role: 'BIZ',  roleClass: 'field-biz' },
-  'LOW_PRC':      { zh: '最低价',          role: 'BIZ',  roleClass: 'field-biz' },
-  'CLOSE_PRC':    { zh: '收盘价',          role: 'BIZ',  roleClass: 'field-biz' },
-  'YTM':          { zh: '到期收益率',      role: 'BIZ',  roleClass: 'field-biz' },
-  'DURATION':     { zh: '久期',            role: 'BIZ',  roleClass: 'field-biz' },
-  'VOL':          { zh: '成交量',          role: 'BIZ',  roleClass: 'field-biz' },
-  'AMT':          { zh: '成交额',          role: 'BIZ',  roleClass: 'field-biz' },
-  'CHG_BP':       { zh: '涨跌基点',        role: 'BIZ',  roleClass: 'field-biz' },
-  // ─── 产品域 ───
-  'PORT_ID':      { zh: '产品/组合ID',     role: 'PK',   roleClass: 'field-pk' },
-  'PORT_NM':      { zh: '产品名称',        role: 'BIZ',  roleClass: 'field-biz' },
-  'PORT_TYPE':    { zh: '产品类型',        role: 'BIZ',  roleClass: 'field-biz' },
-  'WEIGHT':       { zh: '持仓权重',        role: 'BIZ',  roleClass: 'field-biz' },
-  'MKT_VAL':      { zh: '市值',            role: 'BIZ',  roleClass: 'field-biz' },
-  'HLD_QTY':      { zh: '持仓数量',        role: 'BIZ',  roleClass: 'field-biz' },
-  // ─── 风险域 ───
-  'RISK_LVL':     { zh: '风险等级',        role: 'BIZ',  roleClass: 'field-biz' },
-  'RISK_SCORE':   { zh: '风险评分',        role: 'BIZ',  roleClass: 'field-biz' },
-  // ─── 交易域 ───
-  'TRADE_ID':     { zh: '交易编号',        role: 'PK',   roleClass: 'field-pk' },
-  'ORDER_ID':     { zh: '委托编号',        role: 'PK',   roleClass: 'field-pk' },
-  'SETTLE_DT':    { zh: '结算日期',        role: 'BIZ',  roleClass: 'field-biz' },
-  'TRADE_AMT':    { zh: '交易金额',        role: 'BIZ',  roleClass: 'field-biz' },
-  'TRADE_PRC':    { zh: '交易价格',        role: 'BIZ',  roleClass: 'field-biz' },
-  // ─── data-hub ───
+  // ─── 资产行情域（assets / asset_prices 真实字段）───
+  'asset_code':   { zh: '证券代码',        role: 'PK',   roleClass: 'field-pk' },
+  'asset_name':   { zh: '证券名称',        role: 'LINK', roleClass: 'field-link' },
+  'asset_type':   { zh: '资产大类',        role: 'BIZ',  roleClass: 'field-biz' },
+  'date':         { zh: '交易日期',        role: 'PK',   roleClass: 'field-pk' },
+  'open':         { zh: '开盘价',          role: 'BIZ',  roleClass: 'field-biz' },
+  'high':         { zh: '最高价',          role: 'BIZ',  roleClass: 'field-biz' },
+  'low':          { zh: '最低价',          role: 'BIZ',  roleClass: 'field-biz' },
+  'close':        { zh: '收盘价',          role: 'BIZ',  roleClass: 'field-biz' },
+  'volume':       { zh: '成交量',          role: 'BIZ',  roleClass: 'field-biz' },
+  'amount':       { zh: '成交额',          role: 'BIZ',  roleClass: 'field-biz' },
+  // ─── data_hub 通用数据接入域（真实字段）───
   'subject_name': { zh: '主体名称',        role: 'LINK', roleClass: 'field-link' },
   'risk_signal_level': { zh: '风险信号等级', role: 'BIZ', roleClass: 'field-biz' },
   'biz_date':     { zh: '业务日期',        role: 'BIZ',  roleClass: 'field-biz' },
@@ -192,50 +47,6 @@ export const KEY_FIELD_INFO = {
   'enterprise_nature': { zh: '企业性质',   role: 'BIZ',  roleClass: 'field-biz' },
   'industry_classification_gb': { zh: '国标行业分类', role: 'BIZ', roleClass: 'field-biz' },
   'affiliated_province': { zh: '所属省份',  role: 'BIZ',  roleClass: 'field-biz' },
-  // ─── 信用域 (Credit) ───
-  'SRC_ISR_ID':   { zh: '源机构ID',       role: 'FK',   roleClass: 'field-fk' },
-  'TGT_ISR_ID':   { zh: '目标机构ID',     role: 'FK',   roleClass: 'field-fk' },
-  'REL_TYPE':     { zh: '关联类型',       role: 'BIZ',  roleClass: 'field-biz' },
-  'INTERNAL_RATING': { zh: '内部评级',    role: 'BIZ',  roleClass: 'field-biz' },
-  'EXT_RATING':   { zh: '外部评级',       role: 'BIZ',  roleClass: 'field-biz' },
-  'PD_1Y':        { zh: '1年违约概率',    role: 'BIZ',  roleClass: 'field-biz' },
-  'LGD':          { zh: '违约损失率',     role: 'BIZ',  roleClass: 'field-biz' },
-  'EXPECTED_LOSS': { zh: '预期损失',      role: 'BIZ',  roleClass: 'field-biz' },
-  // ─── 持仓/敲口扩展 ───
-  'EXPOSURE':     { zh: '风险敲口',       role: 'BIZ',  roleClass: 'field-biz' },
-  'VAR_99':       { zh: '99%VaR',         role: 'BIZ',  roleClass: 'field-biz' },
-  'LIMIT_FLAG':   { zh: '限额标识',       role: 'BIZ',  roleClass: 'field-biz' },
-  'HLD_SHR':      { zh: '持股比例',       role: 'BIZ',  roleClass: 'field-biz' },
-  'HLD_AMT':      { zh: '持有金额',       role: 'BIZ',  roleClass: 'field-biz' },
-  'UNREAL_PNL':   { zh: '浮动盈亏',       role: 'BIZ',  roleClass: 'field-biz' },
-  'COST_AMT':     { zh: '成本金额',       role: 'BIZ',  roleClass: 'field-biz' },
-  // ─── 参与方/客户域 ───
-  'CUSTOMER_ID':  { zh: '客户ID',         role: 'PK',   roleClass: 'field-pk' },
-  'CUST_NM':      { zh: '客户名称',       role: 'LINK', roleClass: 'field-link' },
-  'CUST_TYPE':    { zh: '客户类型',       role: 'BIZ',  roleClass: 'field-biz' },
-  'CHANNEL':      { zh: '渠道',           role: 'BIZ',  roleClass: 'field-biz' },
-  'SELLER_ID':    { zh: '销售人员ID',     role: 'FK',   roleClass: 'field-fk' },
-  'PARTY_ID':     { zh: '参与方ID',       role: 'PK',   roleClass: 'field-pk' },
-  'PARTY_NM':     { zh: '参与方名称',     role: 'LINK', roleClass: 'field-link' },
-  'PARTY_ROLE':   { zh: '参与方角色',     role: 'BIZ',  roleClass: 'field-biz' },
-  // ─── 机构扩展 ───
-  'ISRS_TYPE':    { zh: '机构类型',       role: 'BIZ',  roleClass: 'field-biz' },
-  'INDUSTRY_CD':  { zh: '行业代码',       role: 'BIZ',  roleClass: 'field-biz' },
-  'REG_PROV':     { zh: '注册省份',       role: 'BIZ',  roleClass: 'field-biz' },
-  'PROVINCE':     { zh: '省份',           role: 'BIZ',  roleClass: 'field-biz' },
-  // ─── 产品扩展 ───
-  'AUM':          { zh: '管理规模',       role: 'BIZ',  roleClass: 'field-biz' },
-  'BENCHMARK':    { zh: '业绩基准',       role: 'BIZ',  roleClass: 'field-biz' },
-  'ESTAB_DT':     { zh: '成立日期',       role: 'BIZ',  roleClass: 'field-biz' },
-  'STATUS':       { zh: '状态',           role: 'BIZ',  roleClass: 'field-biz' },
-}
-
-/** 域代码 → 中文名 */
-const DOMAIN_ZH = {
-  asset: '资产域', subject: '主体域', product: '产品域',
-  valuation: '估值域', transaction: '交易域', seller: '销售域',
-  customer: '客户域', risk: '风险域', market: '行情域',
-  data_hub: '数据接入域'
 }
 
 /**
@@ -253,7 +64,7 @@ function enhanceRenderedHtml(html) {
     return match
   })
 
-  // 2. 裸表名： <code>dwd_xxx</code> / <code>subject_risk_records</code> 等已知表名 → 徽章
+  // 2. 裸表名： <code>subject_risk_records</code> 等已知表名 → 徽章
   html = html.replace(/<code>([a-z][a-z0-9_]{4,})<\/code>/g, (match, name) => {
     if (TABLE_DISPLAY_NAMES[name]) {
       return '<code class="table-ref-badge" title="' + name + '">' + TABLE_DISPLAY_NAMES[name] + '<span class="tbl-en">(' + name + ')</span></code>'
@@ -477,13 +288,34 @@ export function stripToolCallLeaks(text) {
 }
 
 /**
- * 将 Markdown 文本按顺序拆成可渲染片段：html | table。
+ * 将 ```echarts 围栏内的 ECharts option JSON 转为图表渲染契约对象。
+ * 限 line/bar/pie 三类；非法/未知类型降级为 null（由调用方退回代码块展示）。
+ * @param {Object} option 解析后的 ECharts option
+ * @returns {{title:string, chart_type:string, echarts_option:Object}|null}
+ */
+export function buildEchartsChartEntry(option) {
+  if (!option || typeof option !== 'object') return null
+  const series = Array.isArray(option.series) ? option.series : (option.series ? [option.series] : [])
+  const chartType = (series[0] && series[0].type) || ''
+  if (!['line', 'bar', 'pie'].includes(chartType)) return null
+  let title = ''
+  if (option.title) {
+    const t = Array.isArray(option.title) ? option.title[0] : option.title
+    title = (t && t.text) || ''
+  }
+  return { title, chart_type: chartType, echarts_option: option }
+}
+
+/**
+ * 将 Markdown 文本按顺序拆成可渲染片段：html | table | chart。
  * - html: 非表格内容走 marked + DOMPurify，由 v-html 输出
  * - table: 表格转为 { headers, records }，由 ChatDataTable 组件渲染，
  *   以获得查询/排序/导出能力。
+ * - chart: ```echarts 围栏且 JSON 合法时转为图表片段，由 ChatChartRenderer 渲染；
+ *   JSON 非法时降级为普通代码块（纯文本展示，不崩溃）。
  * @param {string} text 原始 Markdown 文本
  * @param {Object} [metadata] 可选元数据（含 traceable_assets 等）
- * @returns {Array<{type:'html',content:string}|{type:'table',headers:string[],records:object[],traceableAssets?:Array}>}
+ * @returns {Array<{type:'html',content:string}|{type:'table',headers:string[],records:object[],traceableAssets?:Array}|{type:'chart',chart:Object}>}
  */
 export function parseMessageSegments(text, metadata) {
   if (!text) return []
@@ -523,6 +355,22 @@ export function parseMessageSegments(text, metadata) {
   }
 
   for (const tok of tokens) {
+    if (tok && tok.type === 'code' && (tok.lang || '').toLowerCase() === 'echarts') {
+      // echarts 围栏：JSON 校验通过转图表片段，失败降级为普通代码块
+      let chartEntry = null
+      try {
+        chartEntry = buildEchartsChartEntry(JSON.parse(tok.text))
+      } catch {
+        chartEntry = null
+      }
+      if (chartEntry) {
+        flushBuffer()
+        segments.push({ type: 'chart', chart: chartEntry })
+      } else {
+        buffer.push(tok)
+      }
+      continue
+    }
     if (tok && tok.type === 'table') {
       flushBuffer()
       const headerCells = Array.isArray(tok.header) ? tok.header : []
@@ -662,7 +510,7 @@ export function getMessageDataTables(msg) {
   const onlyDataQuery = toolNames.length > 0 && toolNames.every(n => n === 'data_query')
 
   // 回测相关工具名集合（用于推断 traceable_backtests）
-  const BACKTEST_TOOLS = ['execute_backtest', 'compare_strategies', 'recommend_strategy']
+  const BACKTEST_TOOLS = ['execute_backtest', 'compare_strategies', 'recommend_strategy', 'run_backtest', 'query_backtests']
 
   for (const tool of msg.tool_calls) {
     // data_query 表格仅在它是唯一工具且所有调用都完成时才展示

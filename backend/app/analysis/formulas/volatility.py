@@ -1,6 +1,8 @@
 """波动率计算公式.
 
-包含日度/年化波动率、滚动波动率等。
+包含滚动波动率等 analysis 独有公式。
+基础波动率已统一由 app.formula.volatility 提供，
+通过 __init__.py 中的薄包装保持 calculate_* 命名兼容。
 """
 
 from __future__ import annotations
@@ -9,41 +11,11 @@ import numpy as np
 import pandas as pd
 
 
-def calculate_volatility(
-    returns: pd.Series,
-    annualize: bool = False,
-    freq_factor: int = 252
-) -> float:
-    """计算波动率（标准差）.
-    
-    公式: 
-        - 日度波动率：std(returns)
-        - 年化波动率：std(returns) * sqrt(252)
-    
-    参数:
-        returns: 收益率序列
-        annualize: 是否年化
-        freq_factor: 年化因子（默认252个交易日）
-    
-    返回:
-        波动率
-    """
-    if returns.empty:
-        return 0.0
-    
-    vol = float(returns.std())
-    
-    if annualize:
-        vol = vol * np.sqrt(freq_factor)
-    
-    return vol
-
-
 def calculate_rolling_volatility(
     returns: pd.Series,
     window: int = 20,
     annualize: bool = False,
-    freq_factor: int = 252
+    freq_factor: int = 260
 ) -> pd.Series:
     """计算滚动波动率.
     

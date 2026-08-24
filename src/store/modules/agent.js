@@ -40,26 +40,12 @@ const mutations = {
       state.messageHasMore = payload.has_more || false
       state.messagePage = payload.page || 1
     }
-    // 性能优化：冻结只读嵌套对象，避免 Vue 深层响应式追踪
-    for (let i = 0; i < msgs.length; i++) {
-      const m = msgs[i]
-      if (m.lineageSummary && !Object.isFrozen(m.lineageSummary)) {
-        Object.freeze(m.lineageSummary)
-      }
-    }
     state.messages = msgs
   },
   PREPEND_MESSAGES(state, { messages, total, has_more, page }) {
     // 向前追加历史消息（去重）
     const existingIds = new Set(state.messages.map(m => m.id))
     const newMessages = messages.filter(m => !existingIds.has(m.id))
-    // 性能优化：冻结只读嵌套对象
-    for (let i = 0; i < newMessages.length; i++) {
-      const m = newMessages[i]
-      if (m.lineageSummary && !Object.isFrozen(m.lineageSummary)) {
-        Object.freeze(m.lineageSummary)
-      }
-    }
     state.messages = [...newMessages, ...state.messages]
     state.messageTotal = total
     state.messageHasMore = has_more

@@ -1,473 +1,405 @@
 """
-组合（Portfolio）类工具 — 原子能力层
+组合域工具 — query_portfolios（读）+ create_portfolio / adjust_portfolio（写，需确认）
 
-提供 4 个组合相关 BaseTool：
-- create_portfolio         创建模拟组合（可从策略模型驱动或手工输入权重）
-- get_portfolio            查询组合持仓详情
-- get_rebalance_history    查询组合调仓历史
-- execute_rebalance        手工执行一次调仓（记录调仓前后权重）
+query_portfolios action:
+- list：组合列表（名称/来源/资金/绩效摘要）
+- detail：单个组合详情（完整配置 + 当前持仓 + 绩效 + 权重分布图）
 
-设计规范：
-- 仅调用 PortfolioService，不做业务编排
-- 不自动触发监控/波动率监测，除非用户显式请求
+写工具边界（M2）：create_portfolio 新建自动打标 created_by=agent；
+adjust_portfolio 仅允许修改 agent 创建的组合，用户手动创建的拒绝并引导到页面。
+
+复用链路：app/portfolio/portfolio_service.PortfolioService
 """
-from __future__ import annotations
-
 from datetime import datetime
-from typing import Any, Dict, List, Optional
 
-from loguru import logger
+from bson import ObjectId
 
-from app.agent.tools.base import BaseTool, ToolResult
-from app.agent.tools.chart_builder import ChartBuilder
-from app.models.portfolio import (
-    Portfolio,
-    PortfolioType,
-    Position,
-    RebalanceAction,
-    RebalanceRecord,
+from app.agent.core.write_guard import (
+    AGENT_CREATED_BY, assert_agent_owned, stamp_agent_origin,
 )
-from app.services.asset_service import AssetService
-from app.services.portfolio_service import PortfolioService
-
-_portfolio_service = PortfolioService()
-_asset_service = AssetService()
+from app.agent.tools._helpers import fmt_datetime, pct, pie_chart
+from app.agent.tools.base import BaseTool, ConfirmableTool
 
 
-def _parse_datetime(date_str: Optional[str]) -> Optional[datetime]:
-    """将 YYYY-MM-DD 字符串转为 datetime；失败返回 None。"""
-    if not date_str:
-        return None
-    try:
-        return datetime.strptime(date_str, "%Y-%m-%d")
-    except ValueError:
-        return None
+class QueryPortfoliosTool(BaseTool):
+    """组合查询工具"""
 
-
-def _serialize_position(pos: Position) -> Dict[str, Any]:
-    return {
-        "asset_code": pos.asset_code,
-        "asset_name": pos.asset_name,
-        "weight": pos.weight,
-        "shares": pos.shares,
-        "market_value": pos.market_value,
-        "price": pos.price,
-    }
-
-
-# ═══════════════════════════════════════════════════════════════
-#  Tool 1: create_portfolio
-# ═══════════════════════════════════════════════════════════════
-
-class CreatePortfolioTool(BaseTool):
-    """创建模拟组合。支持两种方式：
-    1) 模型驱动：传入 model_id，从策略模型追溯生成历史持仓和业绩。
-    2) 手工输入：传入 positions（含资产代码+权重）创建初始持仓。
-    """
-
-    name = "create_portfolio"
+    name = "query_portfolios"
     description = (
-        "创建一个模拟组合。优先使用 model_id（从已有策略模型构建，自动回溯历史业绩）；"
-        "若无 model_id 则使用 positions 手工指定初始权重。返回 portfolio_id。"
+        "查询投资组合。两种模式：\n"
+        "1) action=list：列出所有组合（名称/来源/资金/绩效摘要）\n"
+        "2) action=detail：查单个组合详情（传 portfolio_id），含子策略配置、"
+        "当前持仓、绩效指标与权重分布图"
     )
-    category = "portfolio"
-    tags = ["组合", "创建"]
     parameters = {
         "type": "object",
         "properties": {
-            "name": {"type": "string", "description": "组合名称"},
-            "model_id": {"type": "string", "description": "策略模型 ID（模型驱动模式）"},
+            "action": {
+                "type": "string",
+                "enum": ["list", "detail"],
+                "description": "查询模式",
+            },
+            "portfolio_id": {
+                "type": "string",
+                "description": "detail 模式的组合 ID（必填）",
+            },
+            "status": {
+                "type": "string",
+                "description": "list 模式按状态过滤（可选）",
+            },
+        },
+        "required": ["action"],
+    }
+
+    max_result_chars = 10000
+
+    async def execute(
+        self,
+        action: str = "list",
+        portfolio_id: str = "",
+        status: str = "",
+        **kwargs,
+    ) -> dict:
+        from app.portfolio.portfolio_service import PortfolioService
+
+        service = PortfolioService()
+        if action == "list":
+            return await self._list(service, status)
+        if action == "detail":
+            if not portfolio_id:
+                return {"success": False, "error": "detail 模式需要 portfolio_id"}
+            return await self._detail(service, portfolio_id)
+        return {"success": False, "error": f"未知 action: {action}（可选 list/detail）"}
+
+    # ------------------------------------------------------------------
+
+    async def _list(self, service, status: str) -> dict:
+        portfolios = await service.list_portfolios(status=status or None)
+
+        records = []
+        for p in portfolios:
+            summary = p.latest_backtest_summary or {}
+            records.append({
+                "id": p.id,
+                "name": p.name,
+                "source": getattr(p.source, "value", str(p.source)),
+                "status": getattr(p, "status", "") or "",
+                "initial_capital": p.initial_capital,
+                "current_capital": p.current_capital,
+                "sub_strategy_count": len(p.sub_strategies or []),
+                "position_count": len(p.positions or []),
+                "annual_return_pct": pct(summary.get("annual_return")),
+                "sharpe": summary.get("sharpe"),
+                "max_drawdown_pct": pct(summary.get("max_drawdown")),
+                "created_by": getattr(p, "created_by", None) or "user",
+                "updated_at": fmt_datetime(getattr(p, "updated_at", None)),
+            })
+
+        return {
+            "success": True,
+            "count": len(records),
+            "data": {"records": records},
+            "metadata": {"record_count": len(records)},
+            "summary": f"共 {len(records)} 个组合。" if records else "暂无组合。",
+            "hint": "使用 action=detail 并传 portfolio_id 可查看持仓与权重分布",
+        }
+
+    async def _detail(self, service, portfolio_id: str) -> dict:
+        try:
+            portfolio = await service.get_portfolio(portfolio_id)
+        except Exception:
+            return {"success": False, "error": f"无效的 portfolio_id: {portfolio_id}"}
+        if not portfolio:
+            return {"success": False, "error": f"未找到组合: {portfolio_id}"}
+
+        data = portfolio.dict(by_alias=True, exclude_none=True)
+        data.pop("_id", None)
+        summary = portfolio.latest_backtest_summary or {}
+        metrics = {
+            "annual_return_pct": pct(summary.get("annual_return")),
+            "annual_vol_pct": pct(summary.get("annual_vol")),
+            "sharpe": summary.get("sharpe"),
+            "max_drawdown_pct": pct(summary.get("max_drawdown")),
+        }
+
+        # 权重分布图：按当前持仓市值占比
+        charts = []
+        pie_items = []
+        positions = portfolio.positions or []
+        total_value = sum(float(getattr(pos, "market_value", 0) or 0) for pos in positions)
+        if total_value > 0:
+            for pos in positions:
+                code = getattr(pos, "asset_code", "") or getattr(pos, "code", "")
+                name = getattr(pos, "asset_name", "") or code
+                value = float(getattr(pos, "market_value", 0) or 0)
+                if value > 0:
+                    pie_items.append({"name": name or code, "value": round(value / total_value * 100, 2)})
+            if pie_items:
+                charts.append(pie_chart(f"{portfolio.name} 持仓权重分布", pie_items))
+
+        detail_record = {
+            "id": portfolio.id,
+            "name": portfolio.name,
+            "source": getattr(portfolio.source, "value", str(portfolio.source)),
+            "sub_strategies": [
+                {"model_id": s.get("model_id", ""), "weight": s.get("weight")}
+                for s in (portfolio.sub_strategies or [])
+                if isinstance(s, dict)
+            ],
+            "position_count": len(positions),
+            "metrics": metrics,
+        }
+
+        return {
+            "success": True,
+            "count": 1,
+            "data": {"records": [detail_record]},
+            "charts": charts,
+            "metadata": {"record_count": 1},
+            "summary": (
+                f"组合「{portfolio.name}」：{len(positions)} 项持仓，"
+                f"年化收益 {metrics['annual_return_pct']}%，夏普 {metrics['sharpe']}，"
+                f"最大回撤 {metrics['max_drawdown_pct']}%。"
+            ),
+            "portfolio_full": data,
+        }
+
+
+class CreatePortfolioTool(ConfirmableTool):
+    """创建模拟组合（两阶段确认，新建实体自动打 agent 标记）"""
+
+    name = "create_portfolio"
+    description = (
+        "按权重创建模拟组合（写操作，需用户确认后执行）。"
+        "按各资产最新价格计算份额与市值；权重总和必须为 1。"
+        "创建的组合标记为 agent 创建，后续可由 adjust_portfolio 调整。"
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "组合名称",
+            },
             "positions": {
                 "type": "array",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "asset_code": {"type": "string"},
-                        "weight": {"type": "number"},
+                        "asset_code": {"type": "string", "description": "资产代码"},
+                        "weight": {"type": "number", "description": "权重（0~1，总和为 1）"},
                     },
                     "required": ["asset_code", "weight"],
                 },
-                "description": "手工持仓列表 [{asset_code, weight}]（手工模式）",
-            },
-            "inception_date": {
-                "type": "string",
-                "description": "建仓日期 YYYY-MM-DD，默认今天",
+                "description": "持仓列表（按权重配置）",
             },
             "initial_capital": {
                 "type": "number",
-                "description": "初始资金，默认 1000 万",
+                "description": "初始资金（默认 1000 万）",
             },
-            "description": {"type": "string", "description": "组合描述"},
-        },
-        "required": ["name"],
-    }
-
-    async def execute(self, **kwargs) -> dict:
-        name = (kwargs.get("name") or "").strip()
-        if not name:
-            return ToolResult.error("必须提供 name")
-
-        initial_capital = float(kwargs.get("initial_capital") or 10_000_000.0)
-        inception_dt = _parse_datetime(kwargs.get("inception_date")) or datetime.now()
-        model_id = kwargs.get("model_id")
-        positions_in = kwargs.get("positions") or []
-
-        try:
-            if model_id:
-                portfolio_id = await _portfolio_service.create_from_model(
-                    model_id=model_id,
-                    inception_date=inception_dt,
-                    name=name,
-                    initial_capital=initial_capital,
-                )
-                portfolio = await _portfolio_service.get_portfolio(portfolio_id)
-                return ToolResult.success(
-                    data={
-                        "portfolio_id": portfolio_id,
-                        "name": name,
-                        "model_id": model_id,
-                        "inception_date": inception_dt.strftime("%Y-%m-%d"),
-                        "initial_capital": initial_capital,
-                        "current_capital": portfolio.current_capital if portfolio else initial_capital,
-                        "position_count": len(portfolio.positions) if portfolio else 0,
-                    },
-                    summary=f"模型驱动组合 '{name}' 创建成功，portfolio_id={portfolio_id}",
-                    record_count=1,
-                )
-
-            if not positions_in:
-                return ToolResult.error(
-                    "手工模式必须提供 positions（资产代码+权重），"
-                    "或使用 model_id 从策略模型创建"
-                )
-
-            # 手工模式：解析持仓并补齐资产名称
-            positions: List[Position] = []
-            weight_sum = 0.0
-            for p in positions_in:
-                code = p.get("asset_code")
-                weight = float(p.get("weight") or 0.0)
-                if not code:
-                    continue
-                asset = await _asset_service.get_asset_by_code(code)
-                asset_name = asset.name if asset else code
-                positions.append(Position(
-                    asset_code=code,
-                    asset_name=asset_name,
-                    weight=weight,
-                    market_value=initial_capital * weight,
-                ))
-                weight_sum += weight
-            if not positions:
-                return ToolResult.error("positions 无有效资产")
-            if abs(weight_sum - 1.0) > 0.01:
-                logger.warning(
-                    "[CreatePortfolioTool] 权重之和 {:.4f} 不等于 1.0，仍按输入创建",
-                    weight_sum,
-                )
-
-            portfolio = Portfolio(
-                name=name,
-                portfolio_type=PortfolioType.MANUAL,
-                description=kwargs.get("description"),
-                initial_capital=initial_capital,
-                current_capital=initial_capital,
-                positions=positions,
-                inception_date=inception_dt,
-            )
-            portfolio_id = await _portfolio_service.create_portfolio(portfolio)
-            return ToolResult.success(
-                data={
-                    "portfolio_id": portfolio_id,
-                    "name": name,
-                    "inception_date": inception_dt.strftime("%Y-%m-%d"),
-                    "initial_capital": initial_capital,
-                    "position_count": len(positions),
-                    "weight_sum": round(weight_sum, 4),
-                },
-                summary=f"手工组合 '{name}' 创建成功，portfolio_id={portfolio_id}",
-                record_count=1,
-            )
-        except Exception as e:
-            logger.error("[CreatePortfolioTool] 创建失败: {}", e)
-            return ToolResult.error(f"创建组合失败: {e}")
-
-
-# ═══════════════════════════════════════════════════════════════
-#  Tool 2: get_portfolio
-# ═══════════════════════════════════════════════════════════════
-
-class GetPortfolioTool(BaseTool):
-    """查询模拟组合详情（含持仓、业绩、权重饼图）。"""
-
-    name = "get_portfolio"
-    description = (
-        "查询指定组合的当前持仓、资金、业绩指标。"
-        "返回持仓表格与权重饼图。如未指定 portfolio_id 则返回组合列表。"
-    )
-    category = "portfolio"
-    tags = ["组合", "持仓", "查询"]
-    parameters = {
-        "type": "object",
-        "properties": {
-            "portfolio_id": {"type": "string", "description": "组合 ID；不传则返回组合列表"},
-            "limit": {"type": "integer", "description": "列表模式下的返回数量上限，默认 50"},
-        },
-        "required": [],
-    }
-
-    async def execute(self, **kwargs) -> dict:
-        portfolio_id = kwargs.get("portfolio_id")
-        try:
-            if not portfolio_id:
-                limit = min(int(kwargs.get("limit") or 50), 200)
-                portfolios = await _portfolio_service.list_portfolios(skip=0, limit=limit)
-                items = [
-                    {
-                        "portfolio_id": p.id,
-                        "name": p.name,
-                        "portfolio_type": str(p.portfolio_type),
-                        "model_id": p.model_id,
-                        "current_capital": p.current_capital,
-                        "position_count": len(p.positions),
-                        "inception_date": p.inception_date.strftime("%Y-%m-%d"),
-                    }
-                    for p in portfolios
-                ]
-                _r = ToolResult.success(
-                    data={"portfolios": items},
-                    summary=f"共 {len(items)} 个组合。",
-                    record_count=len(items),
-                )
-                return self.attach_lineage(
-                    _r,
-                    tables=["portfolios"],
-                    domains=["portfolio"],
-                    fields={"portfolios": ["id", "name", "portfolio_type", "current_capital", "positions"]},
-                    records_returned=len(items),
-                    query_operation="get_portfolio:list",
-                )
-
-            portfolio = await _portfolio_service.get_portfolio(portfolio_id)
-            if not portfolio:
-                return ToolResult.error(f"未找到组合: {portfolio_id}")
-
-            positions = [_serialize_position(p) for p in portfolio.positions]
-            perf = portfolio.performance.dict() if portfolio.performance else None
-
-            charts: List[Dict[str, Any]] = []
-            pie_items = [
-                {"name": p.asset_name or p.asset_code, "value": round(float(p.weight or 0.0) * 100, 4)}
-                for p in portfolio.positions if p.weight
-            ]
-            if pie_items:
-                charts.append(ChartBuilder.build_pie(
-                    title=f"{portfolio.name} - 当前权重分配",
-                    data_items=pie_items,
-                ))
-
-            summary = (
-                f"组合 '{portfolio.name}' 共 {len(positions)} 项持仓，"
-                f"当前资金 {portfolio.current_capital:,.2f}"
-            )
-            if perf and perf.get("total_return") is not None:
-                summary += f"，累计收益 {perf['total_return']*100:.2f}%"
-
-            _r = ToolResult.success(
-                data={
-                    "portfolio_id": portfolio.id,
-                    "name": portfolio.name,
-                    "portfolio_type": str(portfolio.portfolio_type),
-                    "model_id": portfolio.model_id,
-                    "rebalance_frequency": portfolio.rebalance_frequency,
-                    "initial_capital": portfolio.initial_capital,
-                    "current_capital": portfolio.current_capital,
-                    "inception_date": portfolio.inception_date.strftime("%Y-%m-%d"),
-                    "positions": positions,
-                    "performance": perf,
-                },
-                charts=charts,
-                summary=summary,
-                record_count=len(positions),
-            )
-            return self.attach_lineage(
-                _r,
-                tables=["portfolios"],
-                domains=["portfolio"],
-                fields={"portfolios": ["id", "name", "positions", "performance", "current_capital"]},
-                records_returned=len(positions),
-                query_operation="get_portfolio:detail",
-                portfolio_id=portfolio.id,
-            )
-        except Exception as e:
-            logger.error("[GetPortfolioTool] 查询失败: {}", e)
-            return ToolResult.error(f"查询组合失败: {e}")
-
-
-# ═══════════════════════════════════════════════════════════════
-#  Tool 3: get_rebalance_history
-# ═══════════════════════════════════════════════════════════════
-
-class GetRebalanceHistoryTool(BaseTool):
-    """查询组合历次调仓记录。"""
-
-    name = "get_rebalance_history"
-    description = (
-        "查询指定组合的调仓历史记录，按时间升序排列。"
-        "每条记录包含调仓日期、动作、前后权重差异和调仓原因。"
-    )
-    category = "portfolio"
-    tags = ["组合", "调仓", "历史"]
-    parameters = {
-        "type": "object",
-        "properties": {
-            "portfolio_id": {"type": "string", "description": "组合 ID"},
-        },
-        "required": ["portfolio_id"],
-    }
-
-    async def execute(self, **kwargs) -> dict:
-        portfolio_id = (kwargs.get("portfolio_id") or "").strip()
-        if not portfolio_id:
-            return ToolResult.error("必须提供 portfolio_id")
-
-        try:
-            records = await _portfolio_service.list_rebalance_records(portfolio_id)
-            items: List[Dict[str, Any]] = []
-            for r in records:
-                before_weights = {p.asset_code: p.weight for p in r.positions_before if p.weight is not None}
-                after_weights = {p.asset_code: p.weight for p in r.positions_after if p.weight is not None}
-                all_codes = set(before_weights.keys()) | set(after_weights.keys())
-                weight_diff = {
-                    code: round(
-                        float(after_weights.get(code, 0.0) or 0.0)
-                        - float(before_weights.get(code, 0.0) or 0.0),
-                        6,
-                    )
-                    for code in all_codes
-                }
-                items.append({
-                    "rebalance_date": r.rebalance_date.strftime("%Y-%m-%d"),
-                    "action": str(r.action),
-                    "reason": r.reason,
-                    "weights_before": before_weights,
-                    "weights_after": after_weights,
-                    "weight_diff": weight_diff,
-                })
-
-            return ToolResult.success(
-                data={
-                    "portfolio_id": portfolio_id,
-                    "rebalance_records": items,
-                },
-                summary=f"组合 {portfolio_id} 共 {len(items)} 条调仓记录。",
-                record_count=len(items),
-            )
-        except Exception as e:
-            logger.error("[GetRebalanceHistoryTool] 查询失败: {}", e)
-            return ToolResult.error(f"查询调仓历史失败: {e}")
-
-
-# ═══════════════════════════════════════════════════════════════
-#  Tool 4: execute_rebalance
-# ═══════════════════════════════════════════════════════════════
-
-class ExecuteRebalanceTool(BaseTool):
-    """手工执行一次调仓：将组合权重调整到目标权重并记录。"""
-
-    name = "execute_rebalance"
-    description = (
-        "对指定组合手工执行一次调仓，写入调仓记录并更新组合当前持仓。"
-        "需要提供目标权重字典 target_weights。"
-    )
-    category = "portfolio"
-    tags = ["组合", "调仓", "执行"]
-    parameters = {
-        "type": "object",
-        "properties": {
-            "portfolio_id": {"type": "string", "description": "组合 ID"},
-            "target_weights": {
-                "type": "object",
-                "description": "目标权重字典 {asset_code: weight}，权重和应约等于 1",
-            },
-            "reason": {"type": "string", "description": "调仓原因"},
-            "rebalance_date": {
+            "description": {
                 "type": "string",
-                "description": "调仓日期 YYYY-MM-DD，默认今天",
+                "description": "组合描述（可选）",
+            },
+            "inception_date": {
+                "type": "string",
+                "description": "建仓日期 YYYY-MM-DD（可选，默认今天）",
             },
         },
-        "required": ["portfolio_id", "target_weights"],
+        "required": ["name", "positions"],
     }
 
-    async def execute(self, **kwargs) -> dict:
-        portfolio_id = (kwargs.get("portfolio_id") or "").strip()
-        target_weights = kwargs.get("target_weights") or {}
-        if not portfolio_id or not target_weights:
-            return ToolResult.error("必须提供 portfolio_id 和 target_weights")
+    tool_timeout = 90.0
 
-        reason = kwargs.get("reason") or "手工调仓"
-        rebal_dt = _parse_datetime(kwargs.get("rebalance_date")) or datetime.now()
+    async def execute(self, **kwargs) -> dict:
+        error = self._validate(kwargs)
+        if error:
+            return {"success": False, "error": error}
+        return await super().execute(**kwargs)
+
+    def build_preview(self, arguments: dict) -> dict:
+        return {
+            "tool": self.name,
+            "operation": "创建模拟组合",
+            "target": arguments.get("name", ""),
+            "arguments": arguments,
+        }
+
+    async def perform(self, **kwargs) -> dict:
+        from app.portfolio.models import Portfolio, PortfolioSource, Position
+        from app.portfolio.portfolio_service import PortfolioService
+        from app.services.asset_service import AssetService
+
+        error = self._validate(kwargs)
+        if error:
+            return {"success": False, "error": error}
+
+        conversation_id = kwargs.get("conversation_id", "")
+        name = kwargs["name"].strip()
+        initial_capital = float(kwargs.get("initial_capital") or 10_000_000)
+        inception = (
+            datetime.strptime(kwargs["inception_date"], "%Y-%m-%d")
+            if kwargs.get("inception_date") else datetime.now()
+        )
+
+        asset_codes = [p["asset_code"] for p in kwargs["positions"]]
+        asset_service = AssetService()
+
+        # 校验资产代码并取名称（Position.asset_name 必填）
+        name_map: dict[str, str] = {}
+        cursor = asset_service.collection.find({"code": {"$in": asset_codes}}, {"code": 1, "name": 1})
+        async for asset_doc in cursor:
+            name_map[asset_doc.get("code", "")] = asset_doc.get("name", "")
+        unknown = [c for c in asset_codes if c not in name_map]
+        if unknown:
+            return {"success": False, "error": f"以下资产代码不存在: {', '.join(unknown)}"}
+
+        import pandas as pd
+        price_df = await asset_service.get_price_dataframe(
+            asset_codes, inception - pd.Timedelta(days=30), datetime.now()
+        )
+        if price_df.empty:
+            return {"success": False, "error": f"无法获取资产价格数据，请确认行情已导入: {', '.join(asset_codes)}"}
+
+        latest_prices = price_df.iloc[-1].to_dict()
+        positions = []
+        for p in kwargs["positions"]:
+            price = latest_prices.get(p["asset_code"])
+            if price is None or price <= 0:
+                return {"success": False, "error": f"资产 {p['asset_code']} 的价格数据不可用"}
+            market_value = initial_capital * float(p["weight"])
+            positions.append(Position(
+                asset_code=p["asset_code"],
+                asset_name=name_map[p["asset_code"]] or p["asset_code"],
+                weight=float(p["weight"]),
+                price=float(price),
+                shares=market_value / float(price),
+                market_value=market_value,
+            ))
+
+        portfolio = Portfolio(
+            name=name,
+            source=PortfolioSource.MANUAL,
+            description=kwargs.get("description") or None,
+            initial_capital=initial_capital,
+            current_capital=initial_capital,
+            inception_date=inception,
+            positions=positions,
+            created_by=AGENT_CREATED_BY,
+        )
+        service = PortfolioService()
+        portfolio_id = await service.create_portfolio(portfolio)
+
+        # 补打 agent_meta（Portfolio 模型不承载该字段，直接写文档）
+        meta_doc = stamp_agent_origin({}, conversation_id=conversation_id, tool_name=self.name)
+        await service.collection.update_one(
+            {"_id": ObjectId(portfolio_id)}, {"$set": {"agent_meta": meta_doc["agent_meta"]}},
+        )
+        await service.ensure_portfolio_model(portfolio_id)
+
+        return {
+            "success": True,
+            "portfolio_id": portfolio_id,
+            "name": name,
+            "summary": f"组合「{name}」创建成功，共 {len(positions)} 项持仓，初始资金 {initial_capital:,.0f}。",
+        }
+
+    @staticmethod
+    def _validate(kwargs: dict) -> str:
+        positions = kwargs.get("positions") or []
+        if not kwargs.get("name", "").strip():
+            return "缺少组合名称"
+        if not positions:
+            return "positions 不能为空"
+        for p in positions:
+            if not isinstance(p, dict) or not p.get("asset_code") or p.get("weight") is None:
+                return "positions 每项需包含 asset_code 与 weight"
+        total = sum(float(p["weight"]) for p in positions)
+        if abs(total - 1.0) > 0.01:
+            return f"权重总和必须为 1，当前: {total:.4f}"
+        if kwargs.get("inception_date"):
+            try:
+                datetime.strptime(kwargs["inception_date"], "%Y-%m-%d")
+            except ValueError:
+                return "inception_date 格式无效，应为 YYYY-MM-DD"
+        return ""
+
+
+class AdjustPortfolioTool(ConfirmableTool):
+    """调整组合子策略权重（两阶段确认 + M2 护栏：仅限 agent 创建的组合）"""
+
+    name = "adjust_portfolio"
+    description = (
+        "调整组合内子策略权重（写操作，需用户确认后执行）。"
+        "仅允许调整 agent 创建的组合；用户手动创建的组合会被拒绝，"
+        "请到组合管理页面操作。新权重总和必须为 1，"
+        "只调整组合内已有子策略的权重。"
+    )
+    parameters = {
+        "type": "object",
+        "properties": {
+            "portfolio_id": {
+                "type": "string",
+                "description": "组合 ID（来自 query_portfolios）",
+            },
+            "weights": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "model_id": {"type": "string", "description": "子策略模型 ID"},
+                        "weight": {"type": "number", "description": "新权重（0~1）"},
+                    },
+                    "required": ["model_id", "weight"],
+                },
+                "description": "新权重列表 [{model_id, weight}]，总和为 1",
+            },
+            "reason": {
+                "type": "string",
+                "description": "调整原因（记录到调仓历史）",
+            },
+        },
+        "required": ["portfolio_id", "weights"],
+    }
+
+    tool_timeout = 90.0
+
+    def build_preview(self, arguments: dict) -> dict:
+        return {
+            "tool": self.name,
+            "operation": "调整组合子策略权重",
+            "target": arguments.get("portfolio_id", ""),
+            "arguments": arguments,
+        }
+
+    async def perform(self, **kwargs) -> dict:
+        from app.portfolio.portfolio_service import PortfolioService
+
+        portfolio_id = kwargs.get("portfolio_id", "")
+        weights = kwargs.get("weights") or []
+        if not portfolio_id or not weights:
+            return {"success": False, "error": "缺少 portfolio_id 或 weights"}
+
+        service = PortfolioService()
+        try:
+            doc = await service.collection.find_one({"_id": ObjectId(portfolio_id)})
+        except Exception:
+            return {"success": False, "error": f"无效的 portfolio_id: {portfolio_id}"}
+
+        # M2 护栏：非 agent 创建的组合拒绝修改（抛 WriteGuardError 由确认框架转 rejected）
+        assert_agent_owned(doc, "组合", page_hint="组合管理页面")
 
         try:
-            portfolio = await _portfolio_service.get_portfolio(portfolio_id)
-            if not portfolio:
-                return ToolResult.error(f"未找到组合: {portfolio_id}")
-
-            # 构造调仓前/后持仓
-            positions_before = list(portfolio.positions)
-            asset_name_map: Dict[str, str] = {p.asset_code: p.asset_name for p in positions_before}
-
-            positions_after: List[Position] = []
-            for code, weight in target_weights.items():
-                w = float(weight or 0.0)
-                if w <= 0:
-                    continue
-                if code not in asset_name_map:
-                    asset = await _asset_service.get_asset_by_code(code)
-                    asset_name_map[code] = asset.name if asset else code
-                positions_after.append(Position(
-                    asset_code=code,
-                    asset_name=asset_name_map[code],
-                    weight=w,
-                    market_value=portfolio.current_capital * w,
-                ))
-            if not positions_after:
-                return ToolResult.error("target_weights 无有效权重")
-
-            record = RebalanceRecord(
-                portfolio_id=portfolio_id,
-                rebalance_date=rebal_dt,
-                action=RebalanceAction.ADJUST,
-                positions_before=positions_before,
-                positions_after=positions_after,
-                reason=reason,
+            await service.update_sub_strategy_weights(
+                portfolio_id,
+                [{"model_id": w.get("model_id", ""), "weight": float(w.get("weight", 0))} for w in weights],
+                reason=kwargs.get("reason") or "Agent 调整子策略权重",
             )
-            record_id = await _portfolio_service.add_rebalance_record(record)
+        except ValueError as e:
+            return {"success": False, "error": str(e)}
 
-            # 更新组合当前持仓
-            from bson import ObjectId
-            await _portfolio_service.collection.update_one(
-                {"_id": ObjectId(portfolio_id)},
-                {"$set": {
-                    "positions": [p.dict() for p in positions_after],
-                    "updated_at": datetime.now(),
-                }},
-            )
-
-            return ToolResult.success(
-                data={
-                    "portfolio_id": portfolio_id,
-                    "record_id": record_id,
-                    "rebalance_date": rebal_dt.strftime("%Y-%m-%d"),
-                    "reason": reason,
-                    "weights_after": {p.asset_code: p.weight for p in positions_after},
-                },
-                summary=(
-                    f"组合 {portfolio_id} 已调仓，"
-                    f"共 {len(positions_after)} 项目标持仓，原因：{reason}"
-                ),
-                record_count=1,
-            )
-        except Exception as e:
-            logger.error("[ExecuteRebalanceTool] 调仓失败: {}", e)
-            return ToolResult.error(f"执行调仓失败: {e}")
+        return {
+            "success": True,
+            "portfolio_id": portfolio_id,
+            "summary": f"组合权重调整完成，共调整 {len(weights)} 个子策略。",
+        }

@@ -47,59 +47,6 @@
             </el-col>
           </el-row>
         </template>
-        <template v-else-if="importParamStyle === 'ptl_param_maps'">
-          <el-row :gutter="16">
-            <el-col :span="8">
-              <el-form-item label="关键字">
-                <el-input v-model="filter.keyword" clearable placeholder="多字段模糊" prefix-icon="el-icon-search"
-                  @keyup.enter.native="handleSearch" />
-              </el-form-item>
-            </el-col>
-            <el-col v-for="uf in ptlFieldsNoKeyword" :key="uf.key" :span="8">
-              <el-form-item :label="uf.label">
-                <el-select
-                  v-if="uf.component === 'enum_multi'"
-                  v-model="dynFilterValues[uf.key]"
-                  multiple
-                  collapse-tags
-                  clearable
-                  filterable
-                  placeholder="全部"
-                  style="width: 100%;"
-                >
-                  <el-option v-for="opt in enumOptionsDynamic[uf.key] || []" :key="String(opt)" :label="opt" :value="opt" />
-                </el-select>
-                <el-select
-                  v-else-if="uf.component === 'enum'"
-                  v-model="dynFilterValues[uf.key]"
-                  clearable
-                  filterable
-                  placeholder="全部"
-                  style="width: 100%;"
-                >
-                  <el-option v-for="opt in enumOptionsDynamic[uf.key] || []" :key="String(opt)" :label="opt" :value="opt" />
-                </el-select>
-                <el-date-picker
-                  v-else-if="uf.component === 'daterange'"
-                  v-model="dateRanges[uf.key]"
-                  type="daterange"
-                  range-separator="至"
-                  start-placeholder="起始"
-                  end-placeholder="结束"
-                  value-format="yyyy-MM-dd"
-                  style="width: 100%;"
-                />
-                <el-input
-                  v-else
-                  v-model="dynFilterValues[uf.key]"
-                  clearable
-                  placeholder="精确匹配"
-                  @keyup.enter.native="handleSearch"
-                />
-              </el-form-item>
-            </el-col>
-          </el-row>
-        </template>
         <el-row :gutter="16" v-if="filter.batch_id">
           <el-col :span="24">
             <el-alert type="info" :closable="false" show-icon style="margin-bottom: 10px;">
@@ -149,22 +96,6 @@
           </template>
         </el-table-column>
         <el-table-column
-          v-if="hasPinnedProductCode"
-          prop="产品代码"
-          label="产品代码"
-          min-width="140"
-          fixed
-          show-overflow-tooltip
-        />
-        <el-table-column
-          v-if="hasProductShortName"
-          prop="产品简称"
-          label="产品简称"
-          min-width="160"
-          fixed
-          show-overflow-tooltip
-        />
-        <el-table-column
           v-for="col in visibleCols"
           :key="col"
           :prop="col"
@@ -207,8 +138,6 @@ import {
 
 const LEVEL_TYPE_MAP = { 红: 'danger', 橙: 'warning', 黄: 'warning', 蓝: 'info', 绿: 'success', 信息提示类: 'info' };
 
-const PTL_COL_ORDER = ['产品代码', '产品简称', '产品名称', '风险等级', '产品性质', '币种', '管理人', '数据日期', '数据来源'];
-
 export default {
   name: 'DataHubQueryPanel',
   components: { ChartGrid },
@@ -229,9 +158,6 @@ export default {
         batch_id: ''
       },
       dateRange: [],
-      dynFilterValues: {},
-      dateRanges: {},
-      enumOptionsDynamic: {},
       rows: [],
       total: 0,
       page: 1,
@@ -250,27 +176,8 @@ export default {
     importParamStyle() {
       return (this.connector && this.connector.import_param_style) || 'date_range';
     },
-    ptlFieldsNoKeyword() {
-      const ufs = (this.connector && this.connector.ui_filter_fields) || [];
-      return ufs.filter(function (f) { return f.component !== 'keyword'; });
-    },
     detailTitle() {
       if (!this.detailRow) return '记录详情';
-      if (this.connectorId === 'zysc_dwd_ptl_holder_summary') {
-        var parts = [this.detailRow['产品代码'], this.detailRow['生效日期']].filter(Boolean);
-        return parts.length ? String(parts.join(' · ')) : '记录详情';
-      }
-      if (this.connectorId === 'zysc_dwd_ptl_info' && this.importParamStyle === 'ptl_param_maps') {
-        return String(
-          this.detailRow['产品简称'] || this.detailRow['产品名称'] || this.detailRow['产品代码'] ||
-            this.detailRow[this.badgeField] || this.connectorId || '记录详情'
-        );
-      }
-      if (this.importParamStyle === 'ptl_param_maps') {
-        return String(
-          this.detailRow['产品代码'] || this.detailRow[this.badgeField] || this.connectorId || '记录详情'
-        );
-      }
       return String(this.detailRow.subject_name || this.detailRow[this.badgeField] || this.connectorId || '记录详情');
     },
     detailJson() {
@@ -286,32 +193,20 @@ export default {
         Object.prototype.hasOwnProperty.call(r, 'subjectName')
       );
     },
-    hasPinnedProductCode() {
-      return this.connectorId === 'zysc_dwd_ptl_holder_summary' && this.rows.length &&
-        Object.prototype.hasOwnProperty.call(this.rows[0], '产品代码');
-    },
-    hasProductShortName() {
-      return this.connectorId === 'zysc_dwd_ptl_info' && this.importParamStyle === 'ptl_param_maps' &&
-        this.rows.length &&
-        Object.prototype.hasOwnProperty.call(this.rows[0], '产品简称');
-    },
     visibleCols() {
       var bf = this.badgeField || '';
-      var vm = this;
       if (this.dynCols && this.dynCols.length) {
-        const skip = ['subject_name', '产品简称'];
+        const skip = ['subject_name'];
         return this.dynCols.filter(function (k) {
           if (skip.indexOf(k) >= 0) return false;
           if (bf && k === bf) return false;
-          if (vm.hasPinnedProductCode && k === '产品代码') return false;
           return true;
         });
       }
       const r = this.rows[0];
       if (!r) return [];
       return Object.keys(r).filter(
-        k => k.indexOf('_') !== 0 && k !== bf && k !== 'subject_name' && k !== '产品简称' &&
-          !(vm.hasPinnedProductCode && k === '产品代码')
+        k => k.indexOf('_') !== 0 && k !== bf && k !== 'subject_name'
       ).slice(0, 16);
     }
   },
@@ -338,32 +233,12 @@ export default {
     }
   },
   mounted() {
-    this.initDynFilters();
     this.fetchEnums();
     this.fetchIndMeta();
     this.reload();
     this.refreshCharts();
   },
   methods: {
-    initDynFilters() {
-      this.dynFilterValues = {};
-      this.dateRanges = {};
-      if (this.importParamStyle !== 'ptl_param_maps') return;
-      const ufs = (this.connector && this.connector.ui_filter_fields) || [];
-      var vm = this;
-      ufs.forEach(function (uf) {
-        if (uf.component === 'keyword') return;
-        if (uf.component === 'enum_multi') {
-          vm.$set(vm.dynFilterValues, uf.key, []);
-        } else if (uf.component === 'daterange') {
-          vm.$set(vm.dateRanges, uf.key, []);
-        } else if (uf.component === 'enum') {
-          vm.$set(vm.dynFilterValues, uf.key, '');
-        } else {
-          vm.$set(vm.dynFilterValues, uf.key, '');
-        }
-      });
-    },
     columnLabel(code) {
       const m = this.indNameMeta.find(x => (x.ind_code || '').toUpperCase() === String(code).toUpperCase());
       return (m && m.ind_name) || code;
@@ -379,10 +254,6 @@ export default {
       }
     },
     async fetchEnums() {
-      if (this.importParamStyle === 'ptl_param_maps') {
-        await this.fetchEnumOptionsProduct();
-        return;
-      }
       try {
         const [lv, prov, nat] = await Promise.all([
           getDataHubDistinct(this.connectorId, 'risk_signal_level'),
@@ -402,26 +273,6 @@ export default {
       } catch (e) {
         // 静默
       }
-    },
-    async fetchEnumOptionsProduct() {
-      const vm = this;
-      const ufs = (this.connector && this.connector.ui_filter_fields) || [];
-      const pickVals = function (r) {
-        const d = r && r.data !== undefined ? r.data : r;
-        return (d && d.values) ? d.values : [];
-      };
-      const opts = {};
-      for (let i = 0; i < ufs.length; i++) {
-        const uf = ufs[i];
-        if (uf.enum_source !== 'distinct' || !uf.mongo_field) continue;
-        try {
-          var res = await getDataHubDistinct(this.connectorId, uf.mongo_field);
-          vm.$set(opts, uf.key, pickVals(res));
-        } catch (e) {
-          vm.$set(opts, uf.key, []);
-        }
-      }
-      this.enumOptionsDynamic = opts;
     },
     levelTagType(level) {
       if (!level) return 'info';
@@ -452,40 +303,7 @@ export default {
       if (s.indexOf('黄') >= 0) return 'row-level-yellow';
       return '';
     },
-    buildFiltersPtl() {
-      var clauses = [];
-      const ufs = (this.connector && this.connector.ui_filter_fields) || [];
-      var vm = this;
-      ufs.forEach(function (uf) {
-        if (uf.component === 'keyword') return;
-        var mf = uf.mongo_field || uf.key;
-        if (uf.component === 'text') {
-          var tv = vm.dynFilterValues[uf.key];
-          if (tv && String(tv).trim()) {
-            clauses.push({ field: mf, op: 'eq', value: String(tv).trim() });
-          }
-        } else if (uf.component === 'enum_multi') {
-          var arr = vm.dynFilterValues[uf.key];
-          if (arr && arr.length) {
-            clauses.push({ field: mf, op: 'in', value: arr.slice() });
-          }
-        } else if (uf.component === 'enum') {
-          var ev = vm.dynFilterValues[uf.key];
-          if (ev && String(ev).trim()) {
-            clauses.push({ field: mf, op: 'eq', value: String(ev).trim() });
-          }
-        } else if (uf.component === 'daterange') {
-          var dr = vm.dateRanges[uf.key] || [];
-          if (dr[0]) clauses.push({ field: mf, op: 'gte', value: dr[0] });
-          if (dr[1]) clauses.push({ field: mf, op: 'lte', value: dr[1] });
-        }
-      });
-      return clauses;
-    },
     buildFilters() {
-      if (this.importParamStyle === 'ptl_param_maps') {
-        return this.buildFiltersPtl();
-      }
       var clauses = [];
       if (this.filter.risk_signal_level && this.filter.risk_signal_level.length) {
         clauses.push({ field: 'risk_signal_level', op: 'in', value: this.filter.risk_signal_level.slice() });
@@ -534,27 +352,9 @@ export default {
         this.rows = (data && data.items) ? data.items : [];
         this.total = (data && data.total) ? data.total : 0;
         if (this.rows.length) {
-          if (this.importParamStyle === 'ptl_param_maps') {
-            var order = [];
-            var prio = this.connector && this.connector.column_display_priority;
-            if (prio && prio.length) {
-              order = prio.slice();
-            } else if (this.connectorId === 'zysc_dwd_ptl_info') {
-              order = PTL_COL_ORDER.slice();
-            }
-            var firstP = Object.keys(this.rows[0]).filter(function (k) { return k.indexOf('_') !== 0; });
-            if (order.length) {
-              this.dynCols = order.filter(function (k) { return firstP.indexOf(k) >= 0; }).concat(
-                firstP.filter(function (k) { return order.indexOf(k) < 0; })
-              );
-            } else {
-              this.dynCols = firstP.slice();
-            }
-          } else {
-            const keys = ['subject_name', 'unified_social_credit_code', 'risk_signal_level', 'biz_date', 'affiliated_province', 'enterprise_nature'];
-            var first = Object.keys(this.rows[0]).filter(function (k) { return k.indexOf('_') !== 0; });
-            this.dynCols = keys.filter(k => first.indexOf(k) >= 0).concat(first.filter(function (k) { return keys.indexOf(k) < 0; }));
-          }
+          const keys = ['subject_name', 'unified_social_credit_code', 'risk_signal_level', 'biz_date', 'affiliated_province', 'enterprise_nature'];
+          var first = Object.keys(this.rows[0]).filter(function (k) { return k.indexOf('_') !== 0; });
+          this.dynCols = keys.filter(k => first.indexOf(k) >= 0).concat(first.filter(function (k) { return keys.indexOf(k) < 0; }));
         }
       } catch (e) {
         this.rows = [];
@@ -586,7 +386,6 @@ export default {
         batch_id: ''
       };
       this.dateRange = [];
-      this.initDynFilters();
       this.page = 1;
       this.reload();
     },
@@ -610,20 +409,7 @@ export default {
         return;
       }
       var headCols;
-      if (this.importParamStyle === 'ptl_param_maps') {
-        if (this.connectorId === 'zysc_dwd_ptl_holder_summary') {
-          var hdrPrio = this.connector && this.connector.column_display_priority;
-          headCols = hdrPrio && hdrPrio.length
-            ? hdrPrio.slice().concat(['_batch_id'])
-            : ['产品代码', '生效日期', '数据日期', '_batch_id'];
-        } else if (this.connectorId === 'zysc_dwd_ptl_info') {
-          headCols = ['产品代码', '产品简称', '产品名称', '风险等级', '_batch_id'];
-        } else {
-          headCols = ['_batch_id'];
-        }
-      } else {
-        headCols = ['risk_signal_level', 'subject_name', 'risk_id', 'biz_date', '_batch_id'];
-      }
+      headCols = ['risk_signal_level', 'subject_name', 'risk_id', 'biz_date', '_batch_id'];
       const cols = headCols.concat(this.visibleCols);
       var uniq = [];
       cols.forEach(function (c) { if (uniq.indexOf(c) < 0) uniq.push(c); });

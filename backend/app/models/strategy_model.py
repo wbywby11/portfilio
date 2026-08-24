@@ -180,6 +180,12 @@ class BacktestResult(BaseModel):
     today_nav: Optional[TodayNav] = Field(None, description="当日净值")
     today_weights: Optional[Dict[str, float]] = Field(None, description="当日权重")
     today_planned_rebalance: Optional[TodayPlannedRebalance] = Field(None, description="当日计划调仓（若为调仓日）")
+
+    # 投资组合回测结果（新增）
+    sub_strategies: Optional[List[Dict[str, Any]]] = Field(None, description="""
+        子策略回测结果列表，仅投资组合回测时使用。
+        每个元素: {model_id, name, weight, annual_return, annual_vol, sharpe, max_drawdown, equity_curve}
+    """)
     
     def dict(self, **kwargs):
         d = super().dict(**kwargs)
@@ -203,6 +209,18 @@ class BacktestRecord(BaseModel):
     benchmark_code: Optional[str] = Field(None, description="业绩基准代码")  # 新增字段
     result: BacktestResult = Field(..., description="回测结果")
     remark: Optional[str] = Field(None, description="备注信息")
+    param_version_id: Optional[str] = Field(None, description="关联的参数版本ID")
+    param_version_number: Optional[int] = Field(None, description="关联的参数版本号")
+    # 参数快照（不可变，回测时的完整参数快照）
+    param_snapshot: Optional[Dict[str, Any]] = Field(
+        None,
+        description="回测时的完整参数快照（包含策略参数 + 选择器参数 + 控制器参数，与回测时刻完全一致）"
+    )
+    # 数据指纹（确保相同参数 + 相同数据 = 相同指纹）
+    data_fingerprint: Optional[str] = Field(
+        None,
+        description="行情数据指纹（hash of asset_codes + start_date + end_date），用于检测数据变化"
+    )
     created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
     
     @field_validator('start_date', 'end_date', mode='before')
@@ -240,6 +258,7 @@ class StrategyModel(BaseModel):
     
     # 资产配置
     asset_codes: List[str] = Field(..., description="关联的资产代码列表")
+    asset_names: Optional[Dict[str, str]] = Field(default_factory=dict, description="资产名称映射，键为资产代码，值为资产名称")
     
     # 参数配置
     parameters: Dict[str, Any] = Field(default_factory=dict, description="模型参数")
@@ -260,7 +279,19 @@ class StrategyModel(BaseModel):
     macd_windows: Optional[str] = Field(None, description="MACD 短期均线窗口（四档）")
     macd_long_window: Optional[int] = Field(None, description="MACD 长期均线窗口（默认250）")
     reversal_windows: Optional[str] = Field(None, description="反转偏度双窗口，逗号分隔两个整数")
+    sharp_windows: Optional[str] = Field(None, description="夏普率窗口（仅sharpe选择器）")
     tie_break_window: Optional[int] = Field(None, description="并列决胜窗口")
+    # 选择器参数聚合视图（文档对齐：selector_parameters 是上述散列字段的聚合表达）
+    selector_parameters: Optional[Dict[str, Any]] = Field(
+        None, description="选择器参数聚合视图（与上述散列字段对称，service 层保存时自动聚合）"
+    )
+    
+    # 风险控制策略
+    controller_code: Optional[str] = Field(None, description="风险控制策略模板代码")
+    controller_parameters: Optional[Dict[str, Any]] = Field(None, description="风险控制策略参数")
+    
+    # 结构化参数快照（前端提交时写入，与 resolved_params 对称）
+    structured_params: Optional[Dict[str, Any]] = Field(None, description="结构化参数：{allocator, selector, controller}")
     
     # 状态管理
     status: ModelStatus = Field(ModelStatus.DRAFT, description="模型状态")
@@ -279,6 +310,24 @@ class StrategyModel(BaseModel):
     live_snapshot: Dict[str, Any] = Field(default_factory=dict, description="实盘配置快照")
     live_snapshot_outdated: bool = Field(False, description="实盘快照是否落后于当前策略配置")
     
+    # 策略标签与回测摘要（层间连接：第5层回测 → 第6层入库）
+    tags: List[str] = Field(default_factory=list, description="策略标签，用于检索和分类")
+    latest_backtest_summary: Optional[Dict[str, Any]] = Field(None, description="""
+        最近一次回测的核心绩效快照，回测完成时自动写入。
+        {annual_return, annual_vol, sharpe, max_drawdown, calmar,
+         total_return, win_rate, backtest_date, start_date, end_date}
+    """)
+
+    # 投资组合（新增）
+    is_portfolio: bool = Field(False, description="是否为投资组合")
+    sub_strategies: List[Dict[str, Any]] = Field(default_factory=list, description="""
+        子策略列表，每个元素: {model_id: str, weight: float, name: str}
+        仅 is_portfolio=True 时使用。weight 为配置权重（如 0.6 和 0.4）
+    """)
+    initial_nav: float = Field(1000.0, description="回测起始净值（NAV），默认1000")
+    weight_model_type: Optional[str] = Field(None, description="组合权重模型: fixed/risk_budget/quadrant，仅 is_portfolio=True 时有效")
+    weight_model_params: Dict[str, Any] = Field(default_factory=dict, description="权重模型参数（如 quadrant 的 signal_code/boost_factor 等）")
+
     # 创建信息
     created_by: Optional[str] = Field(None, description="创建人")
     created_at: datetime = Field(default_factory=datetime.now)
@@ -288,3 +337,44 @@ class StrategyModel(BaseModel):
         populate_by_name = True
         json_encoders = {datetime: lambda v: v.isoformat()}
         protected_namespaces = ()  # 允许使用 model_ 前缀的字段名
+
+
+# ============================================================
+# 实盘审计与跟踪 (strategy_live_change_logs / strategy_live_monitoring_records)
+# ============================================================
+
+class StrategyLiveChangeLog(BaseModel):
+    """策略参数变更审计日志 (strategy_live_change_logs 集合)
+
+    写入时机: 策略参数被修改时自动记录。
+    用途: 审计追踪，记录每次实盘发布的完整变更前后快照。
+    """
+    id: Optional[str] = Field(None, alias="_id")
+    model_id: str = Field(..., description="FK → strategy_models._id")
+    action: str = Field(..., description="变更动作: publish / update / unpublish / confirm_manual")
+    source: str = Field("unknown", description="触发来源: strategy / monitor / manual")
+    operator: Optional[str] = Field(None, description="操作人")
+    live_version: Optional[int] = Field(None, description="实盘发布版本号")
+    before: Dict[str, Any] = Field(default_factory=dict, description="变更前快照")
+    after: Dict[str, Any] = Field(default_factory=dict, description="变更后快照")
+    change_summary: Optional[str] = Field(None, description="变更摘要（中文描述）")
+    monitor_scoped_changes: Optional[Dict[str, Any]] = Field(None, description="监控范围内的变更详情")
+    created_at: datetime = Field(default_factory=datetime.now, description="记录时间")
+
+    class Config:
+        populate_by_name = True
+
+
+class StrategyLiveMonitoringRecord(BaseModel):
+    """实盘跟踪快照 (strategy_live_monitoring_records 集合)
+
+    写入时机: 实盘跟踪运行后自动写入。
+    用途: 实盘 vs 回测对比分析。
+    """
+    id: Optional[str] = Field(None, alias="_id")
+    model_id: str = Field(..., description="FK → strategy_models._id")
+    payload: Dict[str, Any] = Field(default_factory=dict, description="跟踪快照完整内容（权重、净值、日期等）")
+    created_at: datetime = Field(default_factory=datetime.now, description="记录时间")
+
+    class Config:
+        populate_by_name = True

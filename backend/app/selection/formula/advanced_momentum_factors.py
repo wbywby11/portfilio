@@ -330,6 +330,20 @@ def _select_reversal_unique_max(
     return []  # 并列则都不入选
 
 
+def _select_strict_top_k(
+    df: pd.DataFrame, score_col: str, n: int
+) -> List[str]:
+    """严格取综合得分前 n 名，同分时按排序结果截断（不做并列扩张/剔除）。
+
+    该规则与四象限策略原型一致：``scores.sort_values(ascending=False).index[:n]``。
+    编制规则的平均排名口径会让入选数在 n 附近波动（同分整组入选或整组剔除），
+    使 tag_based 预算的实际占用槽位数与 ``n_momentum + n_reversal`` 不符。
+    """
+    if len(df) == 0 or n <= 0:
+        return []
+    return df.sort_values(score_col, ascending=False).index[:n].tolist()
+
+
 def _select_top_by_average_rank(
     df: pd.DataFrame, score_col: str, n: int
 ) -> List[str]:
@@ -365,12 +379,15 @@ def select_momentum_and_reversal_assets(
     min_history_days: int = 260,
     min_history_reversal: int = 22,
     use_price_skew: bool = True,
+    tie_rule: str = "index_rule",
 ) -> Tuple[List[str], List[str], pd.DataFrame, pd.DataFrame]:
     """基于动量与反转双模型选择资产.
-    
-    编制规则：
-    动量：综合打分从高到低，同分资产共享「平均排名」；平均排名<=n 则整组入选，>n 则整组不入选。
-    反转：选取综合得分最高的 1 个；若最高分存在并列，则全部不入选。
+
+    Args:
+        tie_rule: 同分处理口径。
+            ``index_rule``（默认，指数编制规则）动量按平均排名整组入选/剔除，
+            反转最高分并列时全部不入选，入选数会在 n 附近浮动；
+            ``strict`` 严格取前 n 名，动量与反转各自恒为 n 个，槽位数与预算分母一致。
     """
     mom_df, rev_df = compute_advanced_momentum_scores(
         prices=prices,
@@ -380,6 +397,10 @@ def select_momentum_and_reversal_assets(
         min_history_reversal=min_history_reversal,
         use_price_skew=use_price_skew,
     )
+    if str(tie_rule).lower() == "strict":
+        mom_sel = _select_strict_top_k(mom_df, "TotalMomentumScore", n_momentum) if not mom_df.empty else []
+        rev_sel = _select_strict_top_k(rev_df, "TotalReversalScore", n_reversal) if not rev_df.empty else []
+        return mom_sel, rev_sel, mom_df, rev_df
     mom_sel = _select_top_by_average_rank(mom_df, "TotalMomentumScore", n_momentum) if not mom_df.empty else []
     rev_sel = _select_reversal_unique_max(rev_df, "TotalReversalScore", n_reversal) if not rev_df.empty else []
     return mom_sel, rev_sel, mom_df, rev_df

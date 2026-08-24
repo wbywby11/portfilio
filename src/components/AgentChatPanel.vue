@@ -1,17 +1,12 @@
 <template>
   <div class="chat-panel">
-    <!-- 消息列表（虚拟滚动） -->
-    <DynamicScroller
+    <!-- 消息列表 -->
+    <div
       ref="messageList"
-      :items="displayMessages"
-      :min-item-size="60"
-      :buffer="800"
-      key-field="id"
       class="message-list"
     >
-      <template #before>
         <!-- 加载更早的消息 -->
-        <div v-if="hasMoreMessages" class="load-more-wrapper" style="text-align: center; padding: 10px;">
+        <div v-if="hasMoreMessages" class="load-more-wrapper">
           <el-button
             size="mini"
             :loading="loadingMore"
@@ -26,66 +21,70 @@
           v-if="!messages.length && !showStreamingUI"
           :welcomeTitle="welcomeTitle"
           :welcomeDescription="welcomeDescription"
-          :quickQuestions="sceneQuickQuestions"
-          @quick-question="handleQuickQuestion"
-          @select-template="handleTemplateSelect"
         />
-      </template>
 
-      <template v-slot="{ item, index, active }">
-        <DynamicScrollerItem
-          :item="item"
-          :active="active"
+        <div
+          v-for="(item, index) in displayMessages"
+          :key="item.id"
           :data-index="index"
-          :size-dependencies="[item.content, item.tool_calls]"
         >
-          <div
-            :class="['message-item', item.role === 'user' ? 'message-user' : 'message-assistant']"
-          >
-            <!-- 头像 -->
-            <div class="message-avatar">
-              <el-avatar
-                :size="36"
-                :icon="item.role === 'user' ? 'el-icon-user-solid' : 'el-icon-s-opportunity'"
-                :style="{ background: item.role === 'user' ? '#409EFF' : '#67C23A' }"
-              ></el-avatar>
+          <!-- 用户消息：右对齐圆角气泡，无头像 -->
+          <div v-if="item.role === 'user'" class="message-item message-user">
+            <div class="message-content-wrap user-wrap">
+              <div class="message-bubble user">
+                <div class="message-text">{{ item.content }}</div>
+              </div>
             </div>
+          </div>
+
+          <!-- AI 消息：全宽无气泡，顶部标识行 + 复制按钮 -->
+          <div v-else class="message-item message-assistant">
             <!-- 内容：使用 v-for="[rd] in [...]" 模式创建局部变量，避免模板中 7 次独立方法调用 -->
             <template v-for="rd in [_getMsgRender(item)]">
-            <div class="message-content-wrap" :class="{ 'has-charts': rd.hasChartsOrTables }">
-              <div class="message-role">{{ item.role === 'user' ? '我' : '数智平台AI助手' }}</div>
-              <div class="message-bubble" :class="item.role">
-                <!-- 用户消息 -->
-                <div v-if="item.role === 'user'" class="message-text">{{ item.content }}</div>
-                <!-- AI 消息：按 segments 顺序渲染，表格走 ChatDataTable（可查询/排序/导出） -->
-                <template v-else>
-                  <template v-for="(seg, sIdx) in rd.segments">
-                    <div
-                      v-if="seg.type === 'html'"
-                      :key="'seg_html_' + item.id + '_' + sIdx"
-                      class="message-text markdown-body"
-                      v-html="seg.content"
-                    ></div>
-                    <ChatDataTable
-                      v-else
-                      :key="'seg_table_' + item.id + '_' + (seg.segId || sIdx)"
-                      :records="seg.records"
-                      :recordCount="seg.records.length"
-                      :preview-limit="50"
-                      dataShape="table"
-                      :traceable-assets="seg.traceableAssets || []"
-                      :traceable-backtests="seg.traceableBacktests || _cachedTraceableBacktests(item)"
-                      @asset-click="handleAssetClick"
-                      @backtest-click="handleBacktestClick"
-                    />
-                  </template>
+            <div class="message-content-wrap ai-wrap" :class="{ 'has-charts': rd.hasChartsOrTables }">
+              <div class="ai-header">
+                <span class="ai-avatar-dot"><i class="el-icon-s-opportunity"></i></span>
+                <button
+                  class="msg-copy-btn"
+                  title="复制原文"
+                  @click="copyMessageContent(item)"
+                ><i class="el-icon-document-copy"></i><span>复制</span></button>
+              </div>
+              <div class="message-body assistant">
+                <!-- AI 消息：按 segments 顺序渲染，表格走 ChatDataTable（可查询/排序/导出），echarts 围栏走 ChatChartRenderer -->
+                <template v-for="(seg, sIdx) in rd.segments">
+                  <div
+                    v-if="seg.type === 'html'"
+                    :key="'seg_html_' + item.id + '_' + sIdx"
+                    class="message-text markdown-body"
+                    v-html="seg.content"
+                  ></div>
+                  <ChatChartRenderer
+                    v-else-if="seg.type === 'chart'"
+                    :key="'seg_chart_' + item.id + '_' + sIdx"
+                    :charts="[seg.chart]"
+                    :refPrefix="'seg_chart_' + item.id + '_' + sIdx"
+                  />
+                  <ChatDataTable
+                    v-else
+                    :key="'seg_table_' + item.id + '_' + (seg.segId || sIdx)"
+                    :records="seg.records"
+                    :recordCount="seg.records.length"
+                    :preview-limit="50"
+                    dataShape="table"
+                    :traceable-assets="seg.traceableAssets || []"
+                    :traceable-backtests="seg.traceableBacktests || _cachedTraceableBacktests(item)"
+                    @asset-click="handleAssetClick"
+                    @backtest-click="handleBacktestClick"
+                  />
                 </template>
               </div>
-              <!-- 数据溯源卡片 -->
-              <LineageSummaryCard
-                v-if="item.lineageSummary"
-                :summary="item.lineageSummary"
-                :message-id="item.id"
+              <!-- 写操作确认卡片（含历史重建的终态卡片） -->
+              <ChatConfirmCard
+                v-for="(card, kIdx) in rd.confirmations"
+                :key="'confirm_' + item.id + '_' + (card.token || kIdx)"
+                :card="card"
+                @decide="handleConfirmDecision(card, $event)"
               />
               <!-- 数据表格 -->
               <ChatDataTable v-for="(table, tIdx) in rd.dataTables" :key="'table_' + item.id + '_' + tIdx"
@@ -113,21 +112,14 @@
             </div>
             </template>
           </div>
-        </DynamicScrollerItem>
-      </template>
-
-      <template #after>
-        <!-- 计划进度展示 -->
-        <PlanProgress :plan="currentPlan" />
-
+        </div>
         <!-- 流式输出中（仅当前查看的会话与流归属一致时显示） -->
-        <div v-if="showStreamingUI && (streamingContent || streamingCharts.length > 0 || streamingTables.length > 0)" class="message-item message-assistant">
-          <div class="message-avatar">
-            <el-avatar :size="36" icon="el-icon-s-opportunity" style="background: #67C23A"></el-avatar>
-          </div>
-          <div class="message-content-wrap" :class="{ 'has-charts': streamingCharts.length > 0 || streamingTables.length > 0 }">
-            <div class="message-role">数智平台AI助手</div>
-            <div class="message-bubble assistant">
+        <div v-if="showStreamingUI && (streamingContent || streamingCharts.length > 0 || streamingTables.length > 0 || streamingConfirmations.length > 0)" class="message-item message-assistant">
+          <div class="message-content-wrap ai-wrap" :class="{ 'has-charts': streamingCharts.length > 0 || streamingTables.length > 0 }">
+            <div class="ai-header">
+              <span class="ai-avatar-dot"><i class="el-icon-s-opportunity"></i></span>
+            </div>
+            <div class="message-body assistant">
               <!-- 流式内容也按 segments 渲染，使表格一出现即具查询/排序/导出能力 -->
               <template v-for="(seg, sIdx) in _cachedParseSegments(_streamingSegmentsMsg)">
                 <div
@@ -136,6 +128,12 @@
                   class="message-text markdown-body"
                   v-html="seg.content"
                 ></div>
+                <ChatChartRenderer
+                  v-else-if="seg.type === 'chart'"
+                  :key="'stream_seg_chart_' + sIdx"
+                  :charts="[seg.chart]"
+                  :refPrefix="'stream_seg_chart_' + sIdx"
+                />
                 <ChatDataTable
                   v-else
                   :key="'stream_seg_table_' + (seg.segId || sIdx)"
@@ -166,10 +164,12 @@
               :card-type="card.cardType"
               :data="card.data"
             />
-            <!-- 流式数据溯源卡片 -->
-            <LineageSummaryCard
-              v-if="streamingLineageSummary"
-              :summary="streamingLineageSummary"
+            <!-- 流式确认卡片：写工具返回 pending_confirmation 时由 confirm_request 事件推送 -->
+            <ChatConfirmCard
+              v-for="(card, kIdx) in streamingConfirmations"
+              :key="'stream_confirm_' + (card.token || kIdx)"
+              :card="card"
+              @decide="handleConfirmDecision(card, $event)"
             />
             <!-- 流式图表区域 -->
             <ChatChartRenderer
@@ -183,39 +183,30 @@
 
         <!-- 工具调用中的处理指示 -->
         <div v-if="showStreamingUI && isInToolPhase" class="message-item message-assistant">
-          <div class="message-avatar">
-            <el-avatar :size="36" icon="el-icon-s-opportunity" style="background: #67C23A"></el-avatar>
-          </div>
-          <div class="message-content-wrap">
-            <div class="message-role">数智平台AI助手</div>
-            <div class="message-bubble assistant">
+          <div class="message-content-wrap ai-wrap">
+            <div class="ai-header">
+              <span class="ai-avatar-dot"><i class="el-icon-s-opportunity"></i></span>
+            </div>
+            <div class="message-body assistant">
               <ChatToolProgress :completedSteps="completedToolSteps" :currentLabel="currentToolLabel" />
             </div>
           </div>
         </div>
 
         <!-- 加载指示（等待首次响应） -->
-        <div v-if="showStreamingUI && !streamingContent && streamingCharts.length === 0 && streamingTables.length === 0 && !isInToolPhase" class="message-item message-assistant">
-          <div class="message-avatar">
-            <el-avatar :size="36" icon="el-icon-s-opportunity" style="background: #67C23A"></el-avatar>
-          </div>
-          <div class="message-content-wrap">
-            <div class="message-role">数智平台AI助手</div>
-            <div class="message-bubble assistant">
+        <div v-if="showStreamingUI && !streamingContent && streamingCharts.length === 0 && streamingTables.length === 0 && streamingConfirmations.length === 0 && !isInToolPhase" class="message-item message-assistant">
+          <div class="message-content-wrap ai-wrap">
+            <div class="ai-header">
+              <span class="ai-avatar-dot"><i class="el-icon-s-opportunity"></i></span>
+            </div>
+            <div class="message-body assistant">
               <span class="typing-indicator">
                 <span></span><span></span><span></span>
               </span>
             </div>
           </div>
         </div>
-      </template>
-    </DynamicScroller>
-
-    <!-- 数据更新模板快捷栏 -->
-    <DataUpdateTemplates
-      v-if="showTemplates"
-      @select-template="handleTemplateSelect"
-    />
+    </div>
 
     <!-- 输入区域 -->
     <ChatInputBox :isLoading="isStreaming" @send="handleSend" ref="chatInput" />
@@ -239,26 +230,33 @@
 </template>
 
 <script>
-import { sendMessageStream } from '@/api/agent'
+import { sendMessageStream, submitConfirmationDecision, getConversationConfirmations } from '@/api/agent'
 import { getSceneByKey, AGENT_SCENES } from '@/config/agentScenes'
-import { quickQuestionLabel } from '@/config/creditRatingQuickAddons'
 import { debounce } from 'lodash'
 import { renderMarkdown, parseMessageSegments, getMessageCharts, getMessageDataTables, parseToolResult, throttle } from './chatUtils'
-import PlanProgress from './PlanProgress.vue'
 import ChatEmptyState from './ChatEmptyState.vue'
 import ChatChartRenderer from './ChatChartRenderer.vue'
 import ChatDataTable from './ChatDataTable.vue'
 import ChatToolProgress from './ChatToolProgress.vue'
 import ChatInputBox from './ChatInputBox.vue'
-import DataUpdateTemplates from './DataUpdateTemplates.vue'
+import ChatConfirmCard from './ChatConfirmCard.vue'
 import DataImportCards from './DataImportCards.vue'
-import LineageSummaryCard from './LineageSummaryCard.vue'
 import AssetChartDialog from './AssetChartDialog.vue'
 import BacktestDetailDialog from './BacktestDetailDialog.vue'
 
+/** 写工具名 → 中文操作名（确认决策后的本地镜像消息） */
+const CONFIRM_TOOL_LABELS = {
+  'run_backtest': '执行回测',
+  'create_portfolio': '创建组合',
+  'adjust_portfolio': '调整组合',
+  'update_monitor_config': '更新监控配置',
+  'trigger_data_sync': '触发数据同步',
+  'save_report': '保存报告'
+}
+
 export default {
   name: 'AgentChatPanel',
-  components: { PlanProgress, ChatEmptyState, ChatChartRenderer, ChatDataTable, ChatToolProgress, ChatInputBox, DataUpdateTemplates, DataImportCards, LineageSummaryCard, AssetChartDialog, BacktestDetailDialog },
+  components: { ChatEmptyState, ChatChartRenderer, ChatDataTable, ChatToolProgress, ChatInputBox, ChatConfirmCard, DataImportCards, AssetChartDialog, BacktestDetailDialog },
   props: {
     conversationId: {
       type: String,
@@ -268,40 +266,38 @@ export default {
   data() {
     return {
       loadingMore: false,
-      showTemplates: true,
       streamingContent: '',
       streamingToolCalls: [],
       streamingCharts: [],
+      /** 本轮流中收到的写操作确认卡片（confirm_request 事件） */
+      streamingConfirmations: [],
       isStreaming: false,
       pendingText: '',
       isInToolPhase: false,
       toolNameMap: {
-        'query_assets': '正在查询资产信息...',
-        'recommend_strategy': '正在分析资产特征并推荐策略...',
-        'compare_strategies': '正在执行多策略对比回测...',
-        'execute_backtest': '正在执行回测...',
-        'calculate_performance_metrics': '正在计算绩效指标...',
-        'calculate_correlation': '正在计算相关性矩阵...',
-        'get_timeseries': '正在获取时序数据...',
-        'create_strategy_model': '正在创建策略模型...',
-        'list_strategy_types': '正在获取策略类型列表...',
-        'compute_weights': '正在计算策略目标权重...',
-        'create_portfolio': '正在创建模拟组合...',
-        'get_portfolio': '正在获取组合持仓...',
-        'get_rebalance_history': '正在获取调仓历史...',
-        'execute_rebalance': '正在执行组合调仓...',
-        'list_benchmarks': '正在查询基准列表...',
-        'data_query': '正在查询数据...',
-        'data_analyze': '正在进行数据分析...',
-        'data_transform': '正在加工数据...',
-        'data_visualize': '正在生成图表...',
-        'data_template': '正在处理分析模板...',
-        'query_asset_prices': '正在查询资产价格...',
-        'data_import': '正在处理数据导入...'
+        'search_knowledge': '正在检索知识库...',
+        'read_knowledge': '正在阅读知识文档...',
+        'manage_memory': '正在更新记忆...',
+        'read_tool_result': '正在读取完整工具结果...',
+        'query_strategies': '正在查询策略...',
+        'query_backtests': '正在查询回测记录...',
+        'run_backtest': '正在执行回测...',
+        'query_portfolios': '正在查询组合...',
+        'create_portfolio': '正在准备创建组合...',
+        'adjust_portfolio': '正在准备调整组合...',
+        'query_monitors': '正在查询监控状态...',
+        'update_monitor_config': '正在准备更新监控配置...',
+        'query_assets': '正在盘点数据资产...',
+        'check_data_quality': '正在检查数据质量...',
+        'query_import_logs': '正在查询导入历史...',
+        'query_data_connectors': '正在查询数据连接器...',
+        'trigger_data_sync': '正在准备触发数据同步...',
+        'query_dataset': '正在查询数据集...',
+        'save_report': '正在生成报告...',
+        'query_reports': '正在查询历史报告...'
       },
       completedToolSteps: [],
       currentToolLabel: '',
-      currentPlan: null,
       /** 本次发送开始前 store 中的 conversationId */
       _sendSnapshotConvId: undefined,
       /** 发送时是否为「尚无会话 id」的新建对话 */
@@ -320,9 +316,7 @@ export default {
       currentChartEndDate: '',
       /** 回测详情弹窗状态 */
       backtestDialogVisible: false,
-      selectedBacktestRecord: null,
-      /** 流式过程中收到的 lineage_summary */
-      streamingLineageSummary: null
+      selectedBacktestRecord: null
     }
   },
   computed: {
@@ -341,9 +335,6 @@ export default {
         return '我可以帮你进行数据资产管理、数据查询分析、数据加工和可视化。选择一个场景或直接告诉我你的需求。'
       }
       return scene.description
-    },
-    sceneQuickQuestions() {
-      return this.currentSceneConfig.quickQuestions || []
     },
     messages() {
       return this.$store.state.agent.messages
@@ -404,20 +395,26 @@ export default {
       // 会话切换时清理消息缓存，避免旧消息的缓存占用内存
       if (newId !== oldId) {
         this._clearMsgCache()
+        this._confirmAttachedConvId = null
       }
       // 新建对话初始化（null/undefined -> 新ID）时不应中止流
       if (oldId == null) {
         if (newId && this.$store.state.agent.currentConversationId !== newId) {
           this.$store.dispatch('agent/loadConversation', newId)
+            .then(() => this.attachHistoryConfirmations(newId))
+        } else if (newId) {
+          this.attachHistoryConfirmations(newId)
         }
         return
       }
       // 用户主动切换到不同对话时才中止
       if (newId && newId !== oldId) {
         this.cancelStreaming()
-        this.currentPlan = null
         if (this.$store.state.agent.currentConversationId !== newId) {
           this.$store.dispatch('agent/loadConversation', newId)
+            .then(() => this.attachHistoryConfirmations(newId))
+        } else {
+          this.attachHistoryConfirmations(newId)
         }
       }
     },
@@ -426,6 +423,16 @@ export default {
         this.$nextTick(() => {
           this.debouncedScrollToBottom()
         })
+      }
+    },
+    /** 首次拿到当前会话的消息后，拉取确认记录重建终态卡片 */
+    messages: {
+      handler(msgs) {
+        const convId = this.currentConvId
+        if (!convId || !msgs || !msgs.length) return
+        if (this._confirmAttachedConvId === convId) return
+        this._confirmAttachedConvId = convId
+        this.attachHistoryConfirmations(convId)
       }
     },
     streamingContent() {
@@ -456,8 +463,8 @@ export default {
   created() {
     this._throttledScroll = throttle(() => {
       const scroller = this.$refs.messageList
-      if (scroller && scroller.$el) {
-        scroller.$el.scrollTop = scroller.$el.scrollHeight
+      if (scroller) {
+        scroller.scrollTop = scroller.scrollHeight
       }
     }, 80)
     this.debouncedScrollToBottom = debounce(this.scrollToBottom, 100)
@@ -482,6 +489,12 @@ export default {
     if (this.$el && this.$el.addEventListener) {
       this.$el.addEventListener('click', this.handleTableExportClick)
     }
+    // 带会话进入（消息已在 store）时 watcher 不会触发，主动重建一次终态卡片
+    const convId = this.currentConvId || this.conversationId
+    if (convId && this.messages.length) {
+      this._confirmAttachedConvId = convId
+      this.attachHistoryConfirmations(convId)
+    }
   },
   beforeDestroy() {
     this.cancelStreaming()
@@ -497,11 +510,13 @@ export default {
     async loadMoreMessages() {
       this.loadingMore = true
       const scroller = this.$refs.messageList
-      const el = scroller ? scroller.$el : null
+      const el = scroller || null
       const scrollHeightBefore = el ? el.scrollHeight : 0
 
       try {
         await this.$store.dispatch('agent/loadMoreMessages')
+        // 更早的历史消息可能承载更早的确认卡片，补充一次重建（token 去重）
+        this.attachHistoryConfirmations(this.currentConvId)
 
         // 恢复滚动位置（避免加载后跳到顶部）
         this.$nextTick(() => {
@@ -530,11 +545,11 @@ export default {
       this.streamingContent = ''
       this.streamingToolCalls = []
       this.streamingCharts = []
+      this.streamingConfirmations = []
       this.pendingText = ''
       this.isInToolPhase = false
       this.completedToolSteps = []
       this.currentToolLabel = ''
-      this.streamingLineageSummary = null
       this._sseOwnerConversationId = null
       this._sendSnapshotConvId = undefined
       this._wasNullConvAtSend = false
@@ -627,7 +642,8 @@ export default {
       if (!key) return this._buildMsgRender(msg)
       const content = msg.content || ''
       const tc = msg.tool_calls
-      const v = (content.length | 0) + '|' + ((tc && tc.length) || 0) + '|' + (msg.lineageSummary ? '1' : '0')
+      const cf = msg.confirmations
+      const v = (content.length | 0) + '|' + ((tc && tc.length) || 0) + '|' + ((cf && cf.length) || 0)
       const cached = this._renderCache.get(key)
       if (cached && cached.v === v) return cached.r
       const r = this._buildMsgRender(msg)
@@ -644,6 +660,7 @@ export default {
         dataTables,
         charts,
         importCards,
+        confirmations: msg.confirmations || [],
         hasChartsOrTables: charts.length > 0 || dataTables.length > 0
       }
     },
@@ -698,6 +715,44 @@ export default {
     },
 
     /**
+     * 复制 AI 消息的原始 Markdown 文本（纯前端，不依赖后端）
+     * @param {Object} item 消息对象
+     */
+    copyMessageContent(item) {
+      const text = (item && item.content) || ''
+      if (!text) {
+        this.$message.info('该消息暂无可复制的文本内容')
+        return
+      }
+      const onSuccess = () => this.$message.success('已复制到剪贴板')
+      const onFail = () => this.$message.error('复制失败，请手动选择文本复制')
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
+          this.fallbackCopy(text) ? onSuccess() : onFail()
+        })
+      } else {
+        this.fallbackCopy(text) ? onSuccess() : onFail()
+      }
+    },
+
+    /** 剪贴板降级方案（非 HTTPS / 旧浏览器） */
+    fallbackCopy(text) {
+      try {
+        const ta = document.createElement('textarea')
+        ta.value = text
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        const ok = document.execCommand('copy')
+        document.body.removeChild(ta)
+        return ok
+      } catch (e) {
+        return false
+      }
+    },
+
+    /**
      * 从消息中提取所有可追踪回测记录（去重）
      * 优先使用后端显式提供的 traceable_backtests，
      * 若无则尝试从回测类工具结果中自动推断。
@@ -707,7 +762,7 @@ export default {
       const backtests = []
       const seen = new Set()
       // 回测相关工具名集合
-      const BACKTEST_TOOLS = ['execute_backtest', 'compare_strategies', 'recommend_strategy']
+      const BACKTEST_TOOLS = ['execute_backtest', 'compare_strategies', 'recommend_strategy', 'run_backtest', 'query_backtests']
 
       for (const tool of msg.tool_calls) {
         const result = parseToolResult(tool)
@@ -923,57 +978,13 @@ export default {
     },
 
 
-    handleQuickQuestion(q) {
-      const label = quickQuestionLabel(q)
-      if (this.$refs.chatInput) {
-        this.$refs.chatInput.setText(label)
-      }
-      this.handleSend(q)
-    },
-
-    /**
-     * 处理模板选择：填充提示文本，需要文件时触发文件选择
-     */
-    handleTemplateSelect(tpl) {
-      // 如果模板需要文件上传，触发文件选择
-      if (tpl.acceptFormats) {
-        this.$refs.chatInput.triggerFileSelect()
-      }
-      // 将模板的 prompt 填入输入框
-      this.$refs.chatInput.setText(tpl.prompt)
-      // 对于不需要文件的模板，直接发送
-      if (!tpl.acceptFormats) {
-        this.handleSend({ message: tpl.prompt, attachments: [] })
-      }
-    },
-
     /**
      * 发送消息 —— 使用 SSE 流式接收 AI 回复
-     * @param {string|{message:string,attachments?:string[],system_turn_addon?:string}} textOrPayload
+     * @param {string} text 用户输入文本
      */
-    async handleSend(textOrPayload) {
-      let msg = null
-      let systemTurnAddon = undefined
-      let attachmentIds = []
-      if (typeof textOrPayload === 'string') {
-        msg = textOrPayload.trim() || null
-      } else if (textOrPayload && typeof textOrPayload === 'object') {
-        msg = textOrPayload.message != null
-          ? String(textOrPayload.message).trim() || null
-          : null
-        if (textOrPayload.system_turn_addon) {
-          systemTurnAddon = String(textOrPayload.system_turn_addon)
-        }
-        if (Array.isArray(textOrPayload.attachments)) {
-          attachmentIds = textOrPayload.attachments
-        }
-      }
-
-      // 当有附件但无文本时，给一个默认 message，避免传 null 导致后端 422
-      if (!msg && attachmentIds.length) {
-        msg = '请处理上传的文件'
-      }
-      if ((!msg && !attachmentIds.length) || this.isStreaming) return
+    async handleSend(text) {
+      const msg = typeof text === 'string' ? text.trim() : ''
+      if (!msg || this.isStreaming) return
 
       this.isStreaming = true
       this._sendSnapshotConvId = this.currentConvId
@@ -991,10 +1002,9 @@ export default {
       this.streamingContent = ''
       this.streamingToolCalls = []
       this.streamingCharts = []
-      this.streamingLineageSummary = null
+      this.streamingConfirmations = []
       this.pendingText = ''
       this.isInToolPhase = false
-      this.currentPlan = null
 
       const conversationId = this.currentConvId || this.conversationId
 
@@ -1006,12 +1016,6 @@ export default {
           message: msg,
           conversation_id: conversationId,
           scene
-        }
-        if (systemTurnAddon) {
-          payload.system_turn_addon = systemTurnAddon
-        }
-        if (attachmentIds.length) {
-          payload.attachments = attachmentIds
         }
         const response = await sendMessageStream(
           payload,
@@ -1049,7 +1053,7 @@ export default {
         const owner = this._sseOwnerConversationId
         const cur = this.currentConvId
         // 对于新建对话，owner 可能来不及更新，但如果有内容且流未中止，也应该保存
-        const hasContent = this.streamingContent || this.streamingToolCalls.length
+        const hasContent = this.streamingContent || this.streamingToolCalls.length || this.streamingConfirmations.length
         const ownerMatch = owner != null && cur === owner
         const newConvFallback = this._wasNullConvAtSend && cur != null && owner == null
 
@@ -1067,8 +1071,9 @@ export default {
           if (this.streamingToolCalls.length) {
             aiMsg.tool_calls = JSON.parse(JSON.stringify(this.streamingToolCalls))
           }
-          if (this.streamingLineageSummary) {
-            aiMsg.lineageSummary = Object.freeze(JSON.parse(JSON.stringify(this.streamingLineageSummary)))
+          // 确认卡片随消息落库：重开会话时由历史重建逻辑按确认记录状态渲染终态卡片
+          if (this.streamingConfirmations.length) {
+            aiMsg.confirmations = JSON.parse(JSON.stringify(this.streamingConfirmations))
           }
           this.$store.commit('agent/ADD_MESSAGE', aiMsg)
         }
@@ -1098,7 +1103,7 @@ export default {
         this.streamingContent = ''
         this.streamingToolCalls = []
         this.streamingCharts = []
-        this.streamingLineageSummary = null
+        this.streamingConfirmations = []
         this.pendingText = ''
         this.isInToolPhase = false
         this._sendSnapshotConvId = undefined
@@ -1212,8 +1217,25 @@ export default {
           break
         }
 
+        case 'confirm_request': {
+          // M3 确认协议：写工具进入待确认，渲染确认卡片（决策走独立 HTTP，不依赖 SSE）
+          if (data.token) {
+            const exists = this.streamingConfirmations.some(c => c.token === data.token)
+            if (!exists) {
+              this.streamingConfirmations.push({
+                token: data.token,
+                tool_name: data.tool_name || '',
+                preview: data.preview || {},
+                status: 'pending',
+                reused: !!data.reused
+              })
+              this.streamingConfirmations = [...this.streamingConfirmations]
+            }
+          }
+          break
+        }
+
         case 'conversation_id':
-        case 'message_start':
           if (data.conversation_id) {
             const cid = data.conversation_id
             this._sseOwnerConversationId = cid
@@ -1235,14 +1257,6 @@ export default {
           this.currentToolLabel = ''
           break
 
-        case 'plan_update':
-          this.currentPlan = data
-          break
-
-        case 'lineage_summary':
-          this.streamingLineageSummary = data
-          break
-
         case 'error':
           console.error('[SSE] 收到错误事件:', data)
           this.$message.error(data.message || data.error || 'AI 返回了一个错误')
@@ -1255,6 +1269,121 @@ export default {
         default:
           break
       }
+    },
+
+    /**
+     * 提交确认卡片决策（confirmed / rejected），决策为独立 HTTP 请求
+     * @param {Object} card 卡片状态对象（流式中或消息上的 confirmations 项）
+     * @param {string} decision 'confirmed' | 'rejected'
+     */
+    async handleConfirmDecision(card, decision) {
+      if (!card || card._busy) return
+      if (!(card.status === 'pending' || card.status === 'pending_confirmation')) return
+      this.$set(card, '_busy', true)
+      try {
+        const res = await submitConfirmationDecision(card.token, decision)
+        const outcome = (res && res.data) || {}
+        this.$set(card, 'status', outcome.status || (decision === 'confirmed' ? 'confirmed' : 'rejected'))
+        if (outcome.result !== undefined && outcome.result !== null) {
+          let text
+          try {
+            text = typeof outcome.result === 'string' ? outcome.result : JSON.stringify(outcome.result)
+          } catch (e) {
+            text = String(outcome.result)
+          }
+          this.$set(card, 'result_summary', text.length > 200 ? text.slice(0, 200) + '…' : text)
+        }
+        if (outcome.error) this.$set(card, 'error', outcome.error)
+        // 后端已将执行结果/取消消息写入会话历史，此处本地镜像一条，
+        // 使当前会话无需刷新即可看到结果（重开页面时以后端数据为准）
+        const toolLabel = CONFIRM_TOOL_LABELS[card.tool_name] || card.tool_name || '写操作'
+        let content
+        if (decision === 'rejected') {
+          content = `[操作已取消] 已取消${toolLabel}操作，未产生任何变更。`
+        } else if (outcome.error) {
+          content = `[${toolLabel}执行失败] ${outcome.error}`
+        } else {
+          content = `[${toolLabel}操作执行结果] 操作已执行完成。`
+        }
+        this.$store.commit('agent/ADD_MESSAGE', {
+          role: 'assistant',
+          content,
+          created_at: new Date().toISOString()
+        })
+      } catch (e) {
+        console.error('提交确认决策失败:', e)
+        this.$message.error('提交确认决策失败: ' + ((e && e.message) || '未知错误'))
+      } finally {
+        this.$set(card, '_busy', false)
+      }
+    },
+
+    /**
+     * 历史消息重建：拉取会话确认记录，按时间就近挂到 assistant 消息上渲染终态卡片
+     * @param {string} convId 会话 id
+     */
+    async attachHistoryConfirmations(convId) {
+      if (!convId) return
+      try {
+        const res = await getConversationConfirmations(convId, 50)
+        const payload = (res && res.data) || {}
+        const items = Array.isArray(payload.items) ? payload.items
+          : Array.isArray(payload) ? payload : []
+        if (!items.length || this.currentConvId !== convId) return
+        const msgs = this.$store.state.agent.messages
+        for (const rec of items) {
+          if (!rec || !rec.token) continue
+          const duplicated = msgs.some(m =>
+            m.confirmations && m.confirmations.some(c => c.token === rec.token))
+          if (duplicated) continue
+          const target = this._findCardHostMessage(msgs, rec)
+          if (!target) continue
+          if (!target.confirmations) this.$set(target, 'confirmations', [])
+          target.confirmations.push(this._buildCardFromRecord(rec))
+        }
+      } catch (e) {
+        console.warn('[Confirm] 加载会话确认记录失败:', e)
+      }
+    },
+
+    /** 找与确认记录创建时间最接近（±5 分钟）的 assistant 消息作为卡片宿主 */
+    _findCardHostMessage(msgs, rec) {
+      const recTime = Date.parse(rec.created_at)
+      if (!recTime || isNaN(recTime)) return null
+      let best = null
+      let bestDelta = Infinity
+      for (const m of msgs) {
+        if (m.role !== 'assistant') continue
+        const t = Date.parse(m.created_at)
+        if (!t || isNaN(t)) continue
+        const delta = Math.abs(t - recTime)
+        if (delta < bestDelta) {
+          bestDelta = delta
+          best = m
+        }
+      }
+      return bestDelta <= 5 * 60 * 1000 ? best : null
+    },
+
+    /** 后端确认记录 → 前端卡片状态 */
+    _buildCardFromRecord(rec) {
+      const card = {
+        token: rec.token,
+        tool_name: rec.tool_name || '',
+        preview: rec.preview || {},
+        status: rec.status || 'pending'
+      }
+      if (rec.status === 'confirmed' && rec.result !== undefined && rec.result !== null) {
+        let text
+        try {
+          text = typeof rec.result === 'string' ? rec.result : JSON.stringify(rec.result)
+        } catch (e) {
+          text = ''
+        }
+        card.result_summary = text.length > 200 ? text.slice(0, 200) + '…' : text
+      }
+      if (rec.error) card.error = rec.error
+      return card
     }
   }
 }
@@ -1266,73 +1395,158 @@ export default {
 </style>
 
 <style scoped>
-
 .chat-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: #fff;
+  background: #f7f8fa;
 }
 
+/* 消息列表：浅灰背景 + 全宽铺开，用户贴右、AI贴左 */
 .message-list {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
-}
-
-.message-item {
-  display: flex;
-  margin-bottom: 20px;
-  gap: 12px;
-}
-
-.message-user {
-  flex-direction: row-reverse;
-}
-
-.message-user .message-content-wrap {
-  align-items: flex-end;
-}
-
-.message-content-wrap {
+  padding: 28px 32px 16px;
+  background: #f7f8fa;
   display: flex;
   flex-direction: column;
-  max-width: 75%;
+}
+
+/* 自定义滚动条：细轨道、圆角、淡色 */
+.message-list::-webkit-scrollbar {
+  width: 6px;
+}
+.message-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.message-list::-webkit-scrollbar-thumb {
+  background: #d4d8e0;
+  border-radius: 3px;
+}
+.message-list::-webkit-scrollbar-thumb:hover {
+  background: #b8bec8;
+}
+
+/* 加载更多按钮 */
+.load-more-wrapper {
+  text-align: center;
+  padding: 8px 0 16px;
+}
+
+.message-list > * {
+  width: 100%;
+}
+
+/* 消息间距 */
+.message-item {
+  display: flex;
+  margin-bottom: 30px;
+}
+
+/* ===== 用户消息：右对齐圆角气泡，无头像 ===== */
+.message-user {
+  justify-content: flex-end;
+}
+
+.user-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: 78%;
   min-width: 0;
 }
 
-.message-content-wrap.has-charts {
-  max-width: 95% !important;
-}
-
-.message-role {
-  font-size: 12px;
-  color: #909399;
-  margin-bottom: 4px;
-}
-
-.message-user .message-role {
-  text-align: right;
-}
-
-.message-bubble {
+.message-bubble.user {
   padding: 12px 16px;
-  border-radius: 8px;
-  line-height: 1.6;
+  border-radius: 18px 18px 4px 18px;
+  background: linear-gradient(135deg, #e9f2ff 0%, #d9e8ff 100%);
+  color: #1f2937;
   font-size: 14px;
+  line-height: 1.65;
+  word-break: break-word;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+/* ===== AI 消息：全宽无气泡 ===== */
+.message-assistant {
+  width: 100%;
+}
+
+.ai-wrap {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+/* AI 标识行：渐变圆标 + 弱化名称 + 复制按钮 */
+.ai-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.ai-avatar-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #409EFF 0%, #7C6CF0 100%);
+  color: #fff;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(64, 158, 255, 0.35);
+}
+
+/* 复制按钮：hover 时浮现 */
+.msg-copy-btn {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.message-assistant:hover .msg-copy-btn,
+.msg-copy-btn:focus {
+  opacity: 1;
+}
+
+.msg-copy-btn:hover {
+  background: #eef1f6;
+  color: #409EFF;
+}
+
+/* AI 内容主体：全宽铺开，无气泡背景 */
+.message-body.assistant {
+  color: #303133;
+  font-size: 14px;
+  line-height: 1.7;
   word-break: break-word;
 }
 
-.message-bubble.user {
-  background: #ecf5ff;
-  color: #303133;
-  border-top-right-radius: 2px;
-}
-
-.message-bubble.assistant {
-  background: #f4f4f5;
-  color: #303133;
-  border-top-left-radius: 2px;
+/* 表格 / 图表 / 导入卡片：白底卡片 + 细边框 + 12px 圆角 */
+.ai-wrap .chat-data-table,
+.ai-wrap .message-charts,
+.ai-wrap .data-import-card {
+  margin-top: 14px;
+  background: #fff;
+  border: 1px solid #e8ebf0;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
 }
 
 .message-text {
@@ -1343,18 +1557,18 @@ export default {
   white-space: normal;
 }
 
-/* 打字指示器 */
+/* 打字指示器（调小） */
 .typing-indicator {
   display: inline-flex;
   gap: 4px;
-  padding: 4px 0;
+  padding: 6px 0;
 }
 
 .typing-indicator span {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: #c0c4cc;
+  background: #a5b4fc;
   animation: typing 1.4s infinite ease-in-out;
 }
 

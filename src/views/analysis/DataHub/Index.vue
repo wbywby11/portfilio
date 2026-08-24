@@ -164,7 +164,8 @@ export default {
     },
     onConnectorChange() {
       var q = Object.assign({}, this.$route.query || {}, { connector: this.selectedId });
-      this.$router.replace({ path: this.$route.path, query: q });
+      // 用命名路由原地替换 query，避免依赖当前路径字符串
+      this.$router.replace({ name: this.$route.name, query: q });
       this.fetchOverview();
     },
     async fetchOverview() {

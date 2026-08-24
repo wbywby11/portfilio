@@ -82,7 +82,7 @@ export default {
             const result = await this.$store.dispatch('user/login', this.loginForm);
             if (result.success) {
               this.$message.success('登录成功');
-              this.$router.push('/');
+              this.$router.push({ name: 'Dashboard' });
             } else {
               this.$message.error(result.message || '登录失败');
             }

@@ -16,9 +16,9 @@
           text-color="#bfcbd9"
           active-text-color="#409EFF"
           :unique-opened="true"
-          router
+          @select="handleMenuSelect"
         >
-          <el-menu-item index="/dashboard">
+          <el-menu-item index="Dashboard">
             <i class="el-icon-s-home"></i>
             <span slot="title">工作台</span>
           </el-menu-item>
@@ -28,9 +28,8 @@
               <i class="el-icon-coin"></i>
               <span>资产库管理</span>
             </template>
-            <el-menu-item index="/asset/list">资产列表</el-menu-item>
-            <el-menu-item index="/asset/add">新增资产</el-menu-item>
-            <el-menu-item index="/asset/quote">资产行情</el-menu-item>
+            <el-menu-item index="AssetList">资产列表</el-menu-item>
+            <el-menu-item index="AssetQuote">资产行情</el-menu-item>
           </el-submenu>
 
           <el-submenu index="strategy">
@@ -38,20 +37,10 @@
               <i class="el-icon-data-analysis"></i>
               <span>策略管理</span>
             </template>
-            <el-menu-item index="/strategy/template">算法模板库</el-menu-item>
-            <el-menu-item index="/strategy/model">我的策略</el-menu-item>
-            <el-menu-item index="/strategy/backtest">回测执行</el-menu-item>
-            <el-menu-item index="/strategy/benchmark">业绩基准管理</el-menu-item>
-          </el-submenu>
-
-          <el-submenu index="portfolio">
-            <template slot="title">
-              <i class="el-icon-s-data"></i>
-              <span>模拟组合</span>
-            </template>
-            <el-menu-item index="/portfolio/list">组合列表</el-menu-item>
-            <el-menu-item index="/portfolio/create">创建组合</el-menu-item>
-            <el-menu-item index="/portfolio/compare">多组合对比</el-menu-item>
+            <el-menu-item index="StrategyTemplate">策略库</el-menu-item>
+            <el-menu-item index="StrategyModelList">策略模型</el-menu-item>
+            <el-menu-item index="PortfolioList">组合管理</el-menu-item>
+            <el-menu-item index="BacktestExecution">回测执行</el-menu-item>
           </el-submenu>
 
           <el-submenu index="analysis">
@@ -59,16 +48,24 @@
               <i class="el-icon-data-line"></i>
               <span>数据分析</span>
             </template>
-            <el-menu-item index="/analysis">资产分析</el-menu-item>
-            <el-menu-item index="/analysis/asset-index">大类资产指数</el-menu-item>
-            <el-menu-item index="/analysis/monitor">日常监控</el-menu-item>
-            <el-menu-item index="/analysis/weight-import">权重与持仓估值导入</el-menu-item>
-            <el-menu-item index="/analysis/fx-import">汇率数据导入</el-menu-item>
-            <el-menu-item index="/analysis/multi-asset-import">多资产行情导入</el-menu-item>
-            <el-menu-item index="/analysis/data-hub">数据接入中心</el-menu-item>
-            <el-menu-item index="/analysis/data-assets">数据资产管理</el-menu-item>
-            <el-menu-item index="/analysis/zy-data-domain">ZY数据域管理</el-menu-item>
-            <el-menu-item index="/analysis/data-lineage">数据血缘图谱</el-menu-item>
+            <el-menu-item index="Analysis">资产分析</el-menu-item>
+            <el-menu-item index="MonitorCenter">日常监控</el-menu-item>
+            <el-menu-item index="FxImport">汇率与日历管理</el-menu-item>
+            <el-menu-item index="DataHubCenter">数据接入中心</el-menu-item>
+            <el-menu-item index="DataAssets">数据资产管理</el-menu-item>
+            
+          </el-submenu>
+
+          <el-submenu index="options">
+            <template slot="title">
+              <i class="el-icon-trophy"></i>
+              <span>收益凭证估值</span>
+            </template>
+            <el-menu-item index="ValuationDataManage">估值数据</el-menu-item>
+            <el-menu-item index="OptionsProducts">产品管理</el-menu-item>
+            <el-menu-item index="ValuationWorkbench">估值工作台</el-menu-item>
+            <el-menu-item index="ValuationHistory">估值历史</el-menu-item>
+            <el-menu-item index="AccountingAssist">核算辅助</el-menu-item>
           </el-submenu>
 
           <el-submenu index="agent">
@@ -76,13 +73,8 @@
               <i class="el-icon-s-opportunity"></i>
               <span>数智平台AI助手</span>
             </template>
-            <el-menu-item index="/agent/chat"><i class="el-icon-chat-dot-round"></i><span>智能对话</span></el-menu-item>
-            <el-menu-item index="/agent/history"><i class="el-icon-time"></i><span>对话历史</span></el-menu-item>
-            <el-menu-item index="/agent/memories"><i class="el-icon-notebook-2"></i><span>知识记忆</span></el-menu-item>
-            <el-menu-item index="/agent/reports"><i class="el-icon-document"></i><span>报告中心</span></el-menu-item>
-            <el-menu-item index="/agent/templates"><i class="el-icon-copy-document"></i><span>分析模板</span></el-menu-item>
-            <el-menu-item index="/agent/data-templates"><i class="el-icon-data-analysis"></i><span>数据模板</span></el-menu-item>
-            <el-menu-item index="/agent/scenes" v-if="isAdmin"><i class="el-icon-setting"></i><span>场景管理</span></el-menu-item>
+            <el-menu-item index="AgentWorkspace"><i class="el-icon-chat-dot-round"></i><span>智能对话</span></el-menu-item>
+            <el-menu-item index="KnowledgeBase"><i class="el-icon-reading"></i><span>知识库</span></el-menu-item>
           </el-submenu>
 
           <el-submenu index="system" v-if="isAdmin">
@@ -90,9 +82,9 @@
               <i class="el-icon-setting"></i>
               <span>系统管理</span>
             </template>
-            <el-menu-item index="/system/user">用户管理</el-menu-item>
-            <el-menu-item index="/system/role">角色管理</el-menu-item>
-            <el-menu-item index="/system/log">操作日志</el-menu-item>
+            <el-menu-item index="UserManage">用户管理</el-menu-item>
+            <el-menu-item index="RoleManage">角色管理</el-menu-item>
+            <el-menu-item index="SystemLog">操作日志</el-menu-item>
           </el-submenu>
         </el-menu>
       </el-aside>
@@ -107,7 +99,7 @@
               @click="toggleCollapse"
             ></i>
             <el-breadcrumb separator="/" class="breadcrumb">
-              <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
+              <el-breadcrumb-item :to="{ name: 'Dashboard' }">首页</el-breadcrumb-item>
               <el-breadcrumb-item v-for="item in breadcrumbs" :key="item.path">
                 {{ item.meta.title }}
               </el-breadcrumb-item>
@@ -133,7 +125,13 @@
 
         <!-- 主内容区 -->
         <el-main class="main-content">
-          <transition name="fade-transform" mode="out-in">
+          <div v-if="routeLoading" class="route-skeleton">
+            <div class="route-skeleton-header"></div>
+            <div class="route-skeleton-row"></div>
+            <div class="route-skeleton-row"></div>
+            <div class="route-skeleton-block"></div>
+          </div>
+          <transition v-else name="fade-transform" mode="out-in">
             <router-view :key="$route.fullPath" />
           </transition>
         </el-main>
@@ -149,7 +147,8 @@ export default {
   name: 'MainLayout',
   data() {
     return {
-      activeMenu: '/dashboard'
+      activeMenu: 'Dashboard',
+      routeLoading: false
     };
   },
   computed: {
@@ -158,8 +157,8 @@ export default {
       const p = this.$route.path;
       if (p.startsWith('/asset')) return ['asset'];
       if (p.startsWith('/strategy')) return ['strategy'];
-      if (p.startsWith('/portfolio')) return ['portfolio'];
       if (p.startsWith('/analysis')) return ['analysis'];
+      if (p.startsWith('/options')) return ['options'];
       if (p.startsWith('/agent')) return ['agent'];
       if (p.startsWith('/system')) return ['system'];
       return [];
@@ -175,20 +174,37 @@ export default {
   watch: {
     $route: {
       handler(route) {
-        const p = route.path;
-        if (p.startsWith('/agent/chat')) {
-          this.activeMenu = '/agent/chat';
-        } else {
-          this.activeMenu = p;
-        }
+        // 菜单高亮基于命名路由，场景对话页归入智能对话菜单项
+        this.activeMenu = route.name === 'AgentSceneChat' ? 'AgentWorkspace' : route.name;
       },
       immediate: true
     }
+  },
+  mounted() {
+    // 路由切换时懒加载分块期间展示骨架屏，导航完成后隐藏
+    this._unBeforeEach = this.$router.beforeEach((to, from, next) => {
+      this.routeLoading = true;
+      next();
+    });
+    this._unAfterEach = this.$router.afterEach(() => {
+      setTimeout(() => {
+        this.routeLoading = false;
+      }, 120);
+    });
+  },
+  beforeDestroy() {
+    if (this._unBeforeEach) this._unBeforeEach();
+    if (this._unAfterEach) this._unAfterEach();
   },
   methods: {
     ...mapActions(['toggleCollapsed']),
     toggleCollapse() {
       this.toggleCollapsed();
+    },
+    // 菜单项 index 为命名路由名，避免硬编码路径在远端部署下失效
+    handleMenuSelect(index) {
+      if (index === this.activeMenu) return;
+      this.$router.push({ name: index }).catch(() => {});
     },
     handleCommand(command) {
       switch (command) {
@@ -210,7 +226,7 @@ export default {
         type: 'warning'
       }).then(() => {
         this.$store.dispatch('user/logout');
-        this.$router.push('/login');
+        this.$router.push({ name: 'Login' });
         this.$message.success('已退出登录');
       }).catch(() => {});
     }
@@ -310,6 +326,40 @@ export default {
   background-color: #f0f2f5;
   padding: 20px;
   overflow-y: auto;
+}
+
+/* 路由切换骨架屏 */
+.route-skeleton {
+  padding: 4px;
+}
+
+.route-skeleton-header,
+.route-skeleton-row,
+.route-skeleton-block {
+  background: linear-gradient(90deg, #e8eaed 25%, #f3f4f6 37%, #e8eaed 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+  border-radius: 6px;
+}
+
+.route-skeleton-header {
+  height: 28px;
+  width: 220px;
+  margin-bottom: 18px;
+}
+
+.route-skeleton-row {
+  height: 44px;
+  margin-bottom: 14px;
+}
+
+.route-skeleton-block {
+  height: 320px;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
 }
 
 /* 页面切换动画 */

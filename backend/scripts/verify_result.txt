@@ -1,0 +1,33 @@
+﻿--- 鏂板瓧娈靛垎甯?---
+
+instrument_type:
+  鐜拌揣鍨?         : 150
+  鎸囨暟鍨?         : 24
+
+asset_class:
+  鏉冪泭           : 147
+  鍟嗗搧           : 17
+  鍥烘敹           : 6
+  璐у竵           : 4
+
+security_type:
+  鍩洪噾           : 150
+  (null)       : 18
+  鎸囨暟           : 6
+
+--- 鎶芥牱楠岃瘉锛堝惈鏂版棫瀛楁瀵圭収锛?--
+  SH000300     娌繁300                | inst=鎸囨暟鍨?   class=鏉冪泭     sec=-      | old=鎸囨暟绫?
+  510300.SH    鍗庢嘲鏌忕憺娌繁300ETF         | inst=鐜拌揣鍨?   class=鏉冪泭     sec=鍩洪噾     | old=鍩洪噾
+  518880.SH    鍗庡畨榛勯噾ETF              | inst=鐜拌揣鍨?   class=鍟嗗搧     sec=鍩洪噾     | old=鍩洪噾
+  ZQGZ10       涓浗10骞村浗鍊?             | inst=鎸囨暟鍨?   class=鍥烘敹     sec=-      | old=鎸囨暟绫?
+  B00Y         甯冧鸡鐗瑰師娌?               | inst=鎸囨暟鍨?   class=鍟嗗搧     sec=-      | old=鎸囨暟绫?
+  IRON         閾佺熆鐭?                 | inst=鎸囨暟鍨?   class=鍟嗗搧     sec=鎸囨暟     | old=鎸囨暟
+  SHSN         娌敗                   | inst=鎸囨暟鍨?   class=鍟嗗搧     sec=-      | old=鎸囨暟绫?
+  DM           璞嗙矔                   | inst=鎸囨暟鍨?   class=鍟嗗搧     sec=-      | old=鎸囨暟绫?
+  CVTBND       鍙浆鍊?                 | inst=鎸囨暟鍨?   class=鍥烘敹     sec=-      | old=鎸囨暟绫?
+  512400.SH    鍗楁柟涓瘉鐢充竾鏈夎壊閲戝睘ETF        | inst=鐜拌揣鍨?   class=鍟嗗搧     sec=鍩洪噾     | old=鍩洪噾
+  ZZ000001     绾㈠埄浣庢尝                 | inst=鎸囨暟鍨?   class=鏉冪泭     sec=鎸囨暟     | old=鎸囨暟
+  UST10        缇庡浗10骞村浗鍊?             | inst=鎸囨暟鍨?   class=鍥烘敹     sec=-      | old=鎸囨暟绫?
+  YSJS         涓浗鏈夎壊閲戝睘               | inst=鎸囨暟鍨?   class=鍟嗗搧     sec=鎸囨暟     | old=鎸囨暟
+  510500.SH    鍗楁柟涓瘉500ETF           | inst=鐜拌揣鍨?   class=鏉冪泭     sec=鍩洪噾     | old=鍩洪噾
+  HSTECH       鎭掔敓绉戞妧                 | inst=鎸囨暟鍨?   class=鏉冪泭     sec=鎸囨暟     | old=鎸囨暟

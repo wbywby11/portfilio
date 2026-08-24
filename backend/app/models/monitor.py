@@ -66,7 +66,8 @@ class MonitorState(BaseModel):
     # 净值相关
     nav: float = Field(1.0, description="当前净值（基于人民币）")
     nav_base: float = Field(1.0, description="基准净值（上次调仓日的净值）")
-    day_count: int = Field(0, description="从基日起的运行天数")
+    day_count: int = Field(0, description="从基日起的运行天数（包含所有处理日）")
+    trade_day_count: int = Field(0, description="交易日计数（仅计入 trade_dates 中的日期，与原型 trade_day_idx 对齐）")
     
     # 持仓信息
     positions_cny: Dict[str, float] = Field(
@@ -80,6 +81,10 @@ class MonitorState(BaseModel):
     apl_local: Dict[str, float] = Field(
         default_factory=dict, 
         description="本币累计损益 {资产名: PnL}"
+    )
+    positions_cny_base: Dict[str, float] = Field(
+        default_factory=dict,
+        description="调仓日基准CNY持仓 = nav × weight（与原型 BacktestState.positions_cny_base 对齐）",
     )
 
     # 传统持仓模型（主观策略：与回测 engine.py 对齐 NAV = cash + Σ(qty × close)）
@@ -367,3 +372,25 @@ class MonitorDailyReportQuery(BaseModel):
     start_date: Optional[str] = Field(None, description="开始日期 (YYYY-MM-DD)")
     end_date: Optional[str] = Field(None, description="结束日期 (YYYY-MM-DD)")
     limit: int = Field(30, description="返回条数限制")
+
+
+# ============================================================
+# 夏普策略权重缓存 (sharpe_rebalance_weights 集合)
+# ============================================================
+
+class SharpeRebalanceWeight(BaseModel):
+    """夏普策略权重缓存 (sharpe_rebalance_weights 集合)
+
+    写入时机: 夏普策略监控计算后缓存，避免重复计算。
+    索引: calc_date
+    """
+    id: Optional[str] = Field(None, alias="_id")
+    calc_date: str = Field(..., description="计算日期 (YYYY-MM-DD)")
+    asset_code: str = Field("", description="资产代码")
+    weight: float = Field(0.0, description="权重")
+    # 完整权重快照以 dict 形式存储，key 为资产名/代码，value 为权重
+    weights: Dict[str, float] = Field(default_factory=dict, description="完整权重快照 {资产名: 权重}")
+    created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
+
+    class Config:
+        populate_by_name = True

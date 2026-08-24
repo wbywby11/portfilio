@@ -2,13 +2,25 @@
   <div class="single-strategy-result">
     <h3 style="margin-bottom: 20px;">📈 回测结果：{{ strategyName }}</h3>
 
+    <!-- 数据质量提示：后端如实上报，指标不做任何钳制 -->
+    <el-alert
+      v-if="warnings.length > 0"
+      type="warning"
+      title="数据质量提示（指标未做修正，请结合下列情况解读）"
+      :closable="false"
+      show-icon
+      style="margin-bottom: 20px;"
+    >
+      <div v-for="(w, i) in warnings" :key="i" style="font-size: 12px; line-height: 1.8;">{{ w }}</div>
+    </el-alert>
+
     <!-- 核心绩效指标 -->
     <el-card shadow="never" style="margin-bottom: 20px;">
       <div slot="header">
         <span>核心绩效指标</span>
       </div>
       <el-row :gutter="20">
-        <el-col :span="6">
+        <el-col :span="8">
           <div class="metric-item">
             <div class="metric-label">总收益率</div>
             <div class="metric-value" :class="getReturnClass(result.total_return)">
@@ -16,7 +28,7 @@
             </div>
           </div>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="8">
           <div class="metric-item">
             <div class="metric-label">年化收益率</div>
             <div class="metric-value" :class="getReturnClass(result.annual_return)">
@@ -24,13 +36,21 @@
             </div>
           </div>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="8">
           <div class="metric-item">
             <div class="metric-label">夏普比率</div>
             <div class="metric-value">{{ formatNumber(result.sharpe_ratio, 3) }}</div>
           </div>
         </el-col>
-        <el-col :span="6">
+      </el-row>
+      <el-row :gutter="20" style="margin-top: 20px;">
+        <el-col :span="8">
+          <div class="metric-item">
+            <div class="metric-label">年化波动率</div>
+            <div class="metric-value">{{ formatPercent(result.volatility) }}</div>
+          </div>
+        </el-col>
+        <el-col :span="8">
           <div class="metric-item">
             <div class="metric-label">最大回撤</div>
             <div class="metric-value" :class="getReturnClass(result.max_drawdown)">
@@ -38,27 +58,21 @@
             </div>
           </div>
         </el-col>
-      </el-row>
-      <el-row :gutter="20" style="margin-top: 20px;">
-        <el-col :span="6">
-          <div class="metric-item">
-            <div class="metric-label">年化波动率</div>
-            <div class="metric-value">{{ formatPercent(result.volatility) }}</div>
-          </div>
-        </el-col>
-        <el-col :span="6">
+        <el-col :span="8">
           <div class="metric-item">
             <div class="metric-label">Calmar比率</div>
             <div class="metric-value">{{ formatNumber(result.calmar_ratio, 3) }}</div>
           </div>
         </el-col>
-        <el-col :span="6">
+      </el-row>
+      <el-row :gutter="20" style="margin-top: 20px;">
+        <el-col :span="8">
           <div class="metric-item">
             <div class="metric-label">交易次数</div>
-            <div class="metric-value">{{ result.trades ? result.trades.length : 0 }}</div>
+            <div class="metric-value">{{ tradeCount }}</div>
           </div>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="8">
           <div class="metric-item">
             <div class="metric-label">收益回撤比</div>
             <div class="metric-value">
@@ -66,11 +80,19 @@
             </div>
           </div>
         </el-col>
+        <el-col :span="8">
+          <div class="metric-item">
+            <div class="metric-label">胜率</div>
+            <div class="metric-value">
+              {{ result.win_rate != null ? formatPercent(result.win_rate) : '-' }}
+            </div>
+          </div>
+        </el-col>
       </el-row>
     </el-card>
 
-    <!-- 交易成本分析 -->
-    <el-card shadow="never" style="margin-bottom: 20px;" v-if="result.trades && result.trades.length > 0">
+    <!-- 交易成本分析（优先用后端统一统计，避免前后端口径不一） -->
+    <el-card shadow="never" style="margin-bottom: 20px;" v-if="totalCost > 0 || tradeCount > 0">
       <div slot="header">
         <span>💰 交易成本分析</span>
       </div>
@@ -100,6 +122,9 @@
           </div>
         </el-col>
       </el-row>
+      <div v-if="turnover != null" style="margin-top: 12px; font-size: 12px; color: #909399;">
+        累计换手率（单边成交额 / 期初净值）：{{ formatPercent(turnover) }}
+      </div>
     </el-card>
 
     <!-- 净值曲线和回撤 -->
@@ -153,6 +178,42 @@
       <div :id="`volatility-chart-${chartId}`" style="height: 400px; width: 100%;"></div>
     </el-card>
 
+    <!-- 子策略归因（仅组合回测返回）：逐日贡献精确可加，Σ贡献 + 残差 = 组合总收益 -->
+    <el-card shadow="never" style="margin-bottom: 20px;" v-if="attributionRows.length > 0">
+      <div slot="header">
+        <span>子策略收益归因</span>
+      </div>
+      <el-table :data="attributionRows" size="mini" border style="width: 100%;">
+        <el-table-column prop="name" label="子策略" min-width="140"></el-table-column>
+        <el-table-column label="平均生效权重" width="120" align="right">
+          <template slot-scope="{ row }">{{ formatPercent(row.avg_weight) }}</template>
+        </el-table-column>
+        <el-table-column label="子策略区间收益" width="130" align="right">
+          <template slot-scope="{ row }">{{ formatPercent(row.sub_return) }}</template>
+        </el-table-column>
+        <el-table-column label="对组合贡献" width="120" align="right">
+          <template slot-scope="{ row }">
+            <span :class="getReturnClass(row.contribution)">{{ formatPercent(row.contribution) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="贡献占比" width="100" align="right">
+          <template slot-scope="{ row }">{{ formatPercent(row.contribution_pct) }}</template>
+        </el-table-column>
+        <el-table-column label="相对等权基准" width="130" align="right">
+          <template slot-scope="{ row }">
+            <span :class="getReturnClass(row.allocation_effect)">{{ formatPercent(row.allocation_effect) }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div style="margin-top: 10px; font-size: 12px; color: #909399; line-height: 1.8;">
+        组合总收益 {{ formatPercent(attribution.total_return) }}
+        = 已解释 {{ formatPercent(attribution.explained) }}
+        + 残差 {{ formatPercent(attribution.residual) }}；
+        「相对等权基准」= 本策略贡献 − 等权买入持有下的贡献（基准收益 {{ formatPercent(attribution.benchmark_return) }}）。
+        <span v-if="attribution.method !== 'exact'">当前为静态权重近似口径，残差偏大属正常。</span>
+      </div>
+    </el-card>
+
     <!-- 分析与记录笔记（与策略详情页「历史回测记录」卡片编辑备注方式一致，仅当本次回测已关联记录时可编辑保存） -->
     <el-card shadow="never" style="margin-bottom: 20px;" class="remark-card">
       <div slot="header" class="remark-header">
@@ -195,6 +256,12 @@
         <span>📋 交易明细</span>
       </div>
       <el-table :data="tradeTableData" border stripe max-height="400">
+        <el-table-column prop="strategy_name" label="来源策略" width="140" v-if="hasStrategyNameInTrades">
+          <template slot-scope="scope">
+            <el-tag size="small" v-if="scope.row.strategy_name">{{ scope.row.strategy_name }}</el-tag>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="time" label="时间" width="120">
           <template slot-scope="scope">
             {{ formatDate(scope.row.time) }}
@@ -348,60 +415,27 @@ export default {
         }));
     },
     volatilityData() {
+      // 只展示后端（策略/控制层）给出的监控波动率。
+      // 前端不再自行滞后估算：那一套公式（滚动21日×√252）与策略实际监控口径（多窗口取最大值）
+      // 不一致，会把一个不存在的指标当成策略阈值展示。无数据时整张图隐藏。
       if (!this.result || !this.result.snapshots || this.result.snapshots.length === 0) return [];
-      const snapshots = this.result.snapshots;
-      const withVol = snapshots.filter(s => s.portfolio_volatility !== null && s.portfolio_volatility !== undefined);
-      const hasBackendVol = withVol.length > 0;
-      const allZeros = hasBackendVol && withVol.every(s => (s.portfolio_volatility || 0) === 0);
-      if (hasBackendVol && !allZeros) {
-        return withVol.map(s => ({
-            date: this.formatDate(s.time),
-            volatility: s.portfolio_volatility,
-            time: s.time,
-            isVolReset: s.rebalance_type === 'vol_reset' || (s.rebalance_reason && s.rebalance_reason.indexOf('波动率重置') >= 0),
-            isRebalanceDay: !!s.is_rebalance_day,
-            isManualAdjustment: s.rebalance_type === 'manual_adjustment' || (s.rebalance_reason && s.rebalance_reason.indexOf('交互式') >= 0)
-          }));
-      }
-      // 无后端波动率时：用净值序列计算滚动年化波动率（约 21 日），保证图表始终可显示
-      const rollWindow = 21;
-      const initialValue = snapshots[0].total_value || 1;
-      const navs = snapshots.map(s => (s.total_value || 0) / initialValue);
-      const out = [];
-      for (let i = 0; i < snapshots.length; i++) {
-        const s = snapshots[i];
-        const start = Math.max(0, i - rollWindow);
-        const slice = navs.slice(start, i + 1);
-        let annVol = 0;
-        if (slice.length >= 2) {
-          const returns = [];
-          for (let j = 1; j < slice.length; j++) {
-            returns.push((slice[j] - slice[j - 1]) / slice[j - 1]);
-          }
-          const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
-          const variance = returns.reduce((sum, r) => sum + (r - mean) * (r - mean), 0) / returns.length;
-          annVol = Math.sqrt(Math.max(0, variance)) * Math.sqrt(252);
-        }
-        out.push({
-          date: this.formatDate(s.time),
-          volatility: annVol,
-          time: s.time,
-          isVolReset: s.rebalance_type === 'vol_reset' || (s.rebalance_reason && s.rebalance_reason.indexOf('波动率重置') >= 0),
-          isRebalanceDay: !!s.is_rebalance_day,
-          isManualAdjustment: s.rebalance_type === 'manual_adjustment' || (s.rebalance_reason && s.rebalance_reason.indexOf('交互式') >= 0)
-        });
-      }
-      return out;
-    },
-    targetVol() {
-      const cfg = this.result.config || {};
-      const params = (this.strategy && this.strategy.strategy_params) || {};
-      return cfg.target_vol != null ? Number(cfg.target_vol) : (params.target_vol != null ? Number(params.target_vol) : 0.05);
+      const withVol = this.result.snapshots.filter(
+        s => s.portfolio_volatility !== null && s.portfolio_volatility !== undefined && s.portfolio_volatility !== 0
+      );
+      return withVol.map(s => ({
+        date: this.formatDate(s.time),
+        volatility: s.portfolio_volatility,
+        time: s.time,
+        isVolReset: s.rebalance_type === 'vol_reset' || (s.rebalance_reason && s.rebalance_reason.indexOf('波动率重置') >= 0),
+        isRebalanceDay: !!s.is_rebalance_day,
+        isManualAdjustment: s.rebalance_type === 'manual_adjustment' || (s.rebalance_reason && s.rebalance_reason.indexOf('交互式') >= 0)
+      }));
     },
     tradeTableData() {
       if (!this.result.trades) return [];
       return this.result.trades.map(t => ({
         time: t.time,
+        strategy_name: t.strategy_name || null,
         thscode: t.thscode,
         side: t.side,
         quantity: t.quantity,
@@ -411,11 +445,33 @@ export default {
         rebalanceLabel: t.rebalance_label || this.rebalanceLabelFromTypeReason(t.rebalance_type, t.rebalance_reason)
       }));
     },
+    /** 交易明细中是否包含策略来源名称（组合回测时有值） */
+    hasStrategyNameInTrades() {
+      if (!this.result.trades || this.result.trades.length === 0) return false;
+      return this.result.trades.some(t => t.strategy_name);
+    },
+    /** 后端如实上报的数据质量告警（指标不做钳制，仅提示解读口径） */
+    warnings() {
+      const list = this.result && this.result.warnings;
+      return Array.isArray(list) ? list : [];
+    },
+    /** 成交笔数：优先用后端统计，缺失时回退交易明细条数 */
+    tradeCount() {
+      if (this.result && this.result.n_trades != null) return this.result.n_trades;
+      return (this.result && this.result.trades) ? this.result.trades.length : 0;
+    },
+    /** 累计换手率（后端统计口径：单边成交额 / 期初净值），后端未给出时不展示 */
+    turnover() {
+      return (this.result && this.result.turnover != null) ? this.result.turnover : null;
+    },
     totalCommission() {
+      // 优先用后端统一统计，避免与后端成本口径出现两套算法
+      if (this.result && this.result.total_commission != null) return this.result.total_commission;
       if (!this.result.trades) return 0;
       return this.result.trades.reduce((sum, t) => sum + (t.commission || 0), 0);
     },
     totalSlippage() {
+      if (this.result && this.result.total_slippage != null) return this.result.total_slippage;
       if (!this.result.trades) return 0;
       return this.result.trades.reduce((sum, t) => sum + (t.slippage_cost || 0), 0);
     },
@@ -426,6 +482,18 @@ export default {
       if (!this.result.snapshots || this.result.snapshots.length === 0) return 0;
       const initialValue = this.result.snapshots[0].total_value || 1000000;
       return this.totalCost / initialValue;
+    },
+    /** 子策略收益归因（仅组合回测返回） */
+    attribution() {
+      return (this.result && this.result.attribution) ? this.result.attribution : {};
+    },
+    /** 归因表格数据：按对组合贡献降序 */
+    attributionRows() {
+      const bySub = this.attribution.by_sub;
+      if (!bySub || typeof bySub !== 'object') return [];
+      return Object.keys(bySub)
+        .map(name => Object.assign({ name }, bySub[name]))
+        .sort((a, b) => (b.contribution || 0) - (a.contribution || 0));
     },
     manualAdjustmentDates() {
       if (!this.result.snapshots) return [];
@@ -592,17 +660,31 @@ export default {
       
       let dates = this.navData.map(d => d.date);
       let navs = this.navData.map(d => d.nav);
+      let drawdowns = this.navData.map(d => (d.drawdown || 0) * 100);
 
       // 降采样：限制最多 500 个数据点，避免大数据量时 ECharts 卡顿
       const sampledNav = downsampleParallel(dates, navs, 500);
       dates = sampledNav.dates;
       navs = sampledNav.values;
+      const sampledDD = downsampleParallel(dates, drawdowns, 500);
+      drawdowns = sampledDD.values;
 
       const option = {
         tooltip: {
           trigger: 'axis',
           axisPointer: {
             type: 'cross'
+          },
+          formatter: (params) => {
+            let html = `${params[0].axisValue}<br />`;
+            params.forEach(p => {
+              if (p.seriesName === '净值') {
+                html += `${p.marker} ${p.seriesName}: ${p.value != null ? p.value.toFixed(4) : '-'}<br />`;
+              } else if (p.seriesName === '回撤') {
+                html += `${p.marker} ${p.seriesName}: ${p.value != null ? p.value.toFixed(2) + '%' : '-'}<br />`;
+              }
+            });
+            return html;
           }
         },
         legend: {
@@ -624,6 +706,7 @@ export default {
             type: 'value',
             name: '净值',
             position: 'left',
+            scale: true,
             axisLabel: {
               formatter: '{value}'
             }
@@ -641,6 +724,7 @@ export default {
           {
             name: '净值',
             type: 'line',
+            yAxisIndex: 0,
             data: navs,
             smooth: true,
             itemStyle: {
@@ -650,6 +734,27 @@ export default {
               data: [
                 { yAxis: 1.0, name: '基准线', lineStyle: { color: '#909399', type: 'dashed' } }
               ]
+            }
+          },
+          {
+            name: '回撤',
+            type: 'line',
+            yAxisIndex: 1,
+            data: drawdowns,
+            smooth: true,
+            lineStyle: { width: 1.5 },
+            areaStyle: {
+              color: {
+                type: 'linear',
+                x: 0, y: 0, x2: 0, y2: 1,
+                colorStops: [
+                  { offset: 0, color: 'rgba(245, 108, 108, 0.3)' },
+                  { offset: 1, color: 'rgba(245, 108, 108, 0.02)' }
+                ]
+              }
+            },
+            itemStyle: {
+              color: '#F56C6C'
             }
           }
         ]
@@ -803,11 +908,25 @@ export default {
         };
       });
 
-      const maxWeightSumPercent = dailyWeights.reduce((max, p) => {
-        const sum = Object.values(p.weights || {}).reduce((s, w) => s + (Number(w) || 0), 0) * 100;
-        return Math.max(max, sum);
-      }, 0);
-      const yAxisMax = maxWeightSumPercent <= 100 ? 100 : Math.max(100, Math.ceil(maxWeightSumPercent / 5) * 5);
+      // 纵轴边界：做空策略存在负权重，下界取「各日权重和」最小值（堆叠模式下即负向堆叠底边）；
+      // 上限同时覆盖「单资产最大权重」，避免做空对冲场景单权重超出日权重和被裁剪；
+      // 纯多头策略（无负权重）上下界行为与历史一致
+      let maxWeightSumPercent = 0;
+      let minWeightSumPercent = 0;
+      let maxSingleWeightPercent = 0;
+      dailyWeights.forEach(p => {
+        const ws = Object.values(p.weights || {});
+        const sum = ws.reduce((s, w) => s + (Number(w) || 0), 0) * 100;
+        maxWeightSumPercent = Math.max(maxWeightSumPercent, sum);
+        minWeightSumPercent = Math.min(minWeightSumPercent, sum);
+        ws.forEach(w => {
+          const v = (Number(w) || 0) * 100;
+          if (v > maxSingleWeightPercent) maxSingleWeightPercent = v;
+        });
+      });
+      const upperBoundPercent = Math.max(maxWeightSumPercent, maxSingleWeightPercent);
+      const yAxisMax = upperBoundPercent <= 100 ? 100 : Math.max(100, Math.ceil(upperBoundPercent / 5) * 5);
+      const yAxisMin = minWeightSumPercent >= 0 ? 0 : Math.floor(minWeightSumPercent / 5) * 5;
 
       const getRebalanceTypeLabel = (dayInfo) => {
         if (!dayInfo || !dayInfo.rebalance_type) return '持仓不变';
@@ -913,7 +1032,7 @@ export default {
             formatter: '{value}%',
             margin: 10
           },
-          min: 0,
+          min: yAxisMin,
           max: yAxisMax
         },
         series: series.map((s, i) => ({
@@ -1022,7 +1141,6 @@ export default {
 
       const dates = sampledVolData.map(d => d.date);
       const volatilities = sampledVolData.map(d => (d.volatility || 0) * 100);
-      const targetVolPercent = (this.targetVol || 0.05) * 100;
 
       // 调仓类型文案（波动率图按日，仅调仓日有含义）
       const getVolRebalanceLabel = (d) => {
@@ -1052,7 +1170,7 @@ export default {
             const idx = param.dataIndex;
             const d = sampledVolData[idx];
             const typeLabel = getVolRebalanceLabel(d);
-            let html = `${param.name}<br/>组合波动率: ${(param.value != null ? param.value : 0).toFixed(2)}%<br/>目标波动率: ${targetVolPercent.toFixed(2)}%`;
+            let html = `${param.name}<br/>组合波动率: ${(param.value != null ? param.value : 0).toFixed(2)}%`;
             if (typeLabel) html += `<br/><strong>调仓类型：${typeLabel}</strong>`;
             if (d && d.isVolReset) html += '<br/><span style="color:#E6A23C">◆ 波动率重置</span>';
             if (d && d.isManualAdjustment) html += '<br/><span style="color:#E6A23C">◆ 人工干预</span>';
@@ -1085,11 +1203,6 @@ export default {
             smooth: true,
             itemStyle: {
               color: '#409EFF'
-            },
-            markLine: {
-              data: [
-                { yAxis: targetVolPercent, name: `目标波动率 (${targetVolPercent.toFixed(1)}%)`, lineStyle: { color: '#67C23A', type: 'dashed' }, label: { formatter: `目标 ${targetVolPercent.toFixed(1)}%`, position: 'end' } }
-              ]
             },
             markPoint: (volResetPoints.length > 0 || manualPoints.length > 0) ? {
               symbol: 'circle',
@@ -1174,11 +1287,11 @@ export default {
 }
 
 .metric-value.positive {
-  color: #67C23A;
+  color: #F56C6C;
 }
 
 .metric-value.negative {
-  color: #F56C6C;
+  color: #67C23A;
 }
 
 [id^="nav-chart-"],

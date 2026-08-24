@@ -6,6 +6,7 @@ from bson import ObjectId
 from loguru import logger
 
 from app.config.database import Database
+from app.config.collections import COL_AGENT_CONVERSATIONS, COL_AGENT_MESSAGES
 
 TOOL_RESULTS_COLLECTION = "agent_tool_results"
 
@@ -27,11 +28,11 @@ class ConversationStore:
 
     @property
     def conversations(self):
-        return self.db["agent_conversations"]
+        return self.db[COL_AGENT_CONVERSATIONS]
 
     @property
     def messages(self):
-        return self.db["agent_messages"]
+        return self.db[COL_AGENT_MESSAGES]
 
     async def ensure_indexes(self):
         """确保 MongoDB 索引已创建（幂等，仅执行一次）"""
@@ -131,7 +132,6 @@ class ConversationStore:
         tool_calls: list[dict] | None = None,
         tool_call_id: str | None = None,
         tool_calls_raw: list | None = None,
-        lineage_summary: dict | None = None,
     ) -> str:
         """添加消息，返回 message_id"""
         now = datetime.now(timezone.utc)
@@ -162,8 +162,6 @@ class ConversationStore:
             doc["tool_call_id"] = tool_call_id
         if tool_calls_raw is not None:
             doc["tool_calls_raw"] = tool_calls_raw
-        if lineage_summary is not None:
-            doc["lineageSummary"] = lineage_summary
 
         result = await self.messages.insert_one(doc)
         message_id = str(result.inserted_id)

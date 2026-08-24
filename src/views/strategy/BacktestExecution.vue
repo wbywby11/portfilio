@@ -12,51 +12,74 @@
 
         <el-form :model="form" :rules="rules" ref="form" label-width="120px" style="max-width: 900px;">
           <!-- 回测模式 -->
-          <el-divider content-position="left">回测模式</el-divider>
-          <el-form-item label="回测模式">
+          <el-form-item>
+            <span slot="label">回测模式
+              <el-tooltip content="单策略回测：查看单个策略或组合的完整回测结果；多策略对比：同时运行2-10个策略/组合" placement="top">
+                <i class="el-icon-question" style="color: #909399; cursor: help;"></i>
+              </el-tooltip>
+            </span>
             <el-radio-group v-model="form.backtest_mode">
               <el-radio-button label="single">单策略回测</el-radio-button>
               <el-radio-button label="multi">多策略对比</el-radio-button>
             </el-radio-group>
-            <el-tooltip content="单策略回测：查看单个策略的完整回测结果，包含净值曲线、持仓变化、交易明细等；多策略对比：同时运行2-5个策略，横向对比绩效指标和净值曲线" placement="top">
-              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-            </el-tooltip>
           </el-form-item>
 
-          <!-- 策略选择 -->
-          <el-divider content-position="left">策略选择</el-divider>
-          <el-form-item label="选择策略" prop="strategy_ids">
-            <!-- 单策略模式 -->
+          <!-- 策略/组合选择 -->
+          <el-form-item prop="strategy_ids">
+            <span slot="label">选择策略
+              <el-tooltip content="选择要回测的策略模型或投资组合，多策略对比模式下需要选择2-10个" placement="top">
+                <i class="el-icon-question" style="color: #909399; cursor: help;"></i>
+              </el-tooltip>
+            </span>
+            <!-- 单策略模式：分组下拉 -->
             <el-select
               v-if="form.backtest_mode === 'single'"
               v-model="form.strategy_ids"
-              placeholder="请选择策略"
+              placeholder="请选择策略或组合"
               style="width: 100%;"
               @change="handleStrategyChange"
             >
-              <el-option
-                v-for="strategy in strategyList"
-                :key="strategy.id"
-                :label="`${strategy.name} (${strategy.template_code})`"
-                :value="strategy.id"
-              >
-                <span style="float: left">{{ strategy.name }}</span>
-                <span style="float: right; color: #8492a6; font-size: 13px">
-                  {{ strategy.template_code }}
-                  <el-tag
-                    :type="getStatusTagType(strategy.status)"
-                    size="mini"
-                    style="margin-left: 4px;"
-                  >
-                    {{ strategy.status || '草稿' }}
-                  </el-tag>
-                </span>
-              </el-option>
+              <el-option-group label="策略模型">
+                <el-option
+                  v-for="strategy in strategyList"
+                  :key="strategy.id"
+                  :label="`${strategy.name} (${strategy.template_code})`"
+                  :value="strategy.id"
+                >
+                  <span style="float: left">{{ strategy.name }}</span>
+                  <span style="float: right; color: #8492a6; font-size: 13px">
+                    {{ strategy.template_code }}
+                    <el-tag
+                      :type="getStatusTagType(strategy.status)"
+                      size="mini"
+                      style="margin-left: 4px;"
+                    >
+                      {{ strategy.status || '草稿' }}
+                    </el-tag>
+                  </span>
+                </el-option>
+              </el-option-group>
+              <el-option-group v-if="portfolioList.length > 0" label="投资组合">
+                <el-option
+                  v-for="p in portfolioList"
+                  :key="`portfolio:${p.id}`"
+                  :label="`${p.name}（组合）`"
+                  :value="`portfolio:${p.id}`"
+                >
+                  <span style="float: left">{{ p.name }}</span>
+                  <span style="float: right; color: #8492a6; font-size: 13px">
+                    {{ (p.sub_strategies || []).length }}个子策略
+                    <el-tag size="mini" type="success" style="margin-left: 4px;">组合</el-tag>
+                  </span>
+                </el-option>
+              </el-option-group>
             </el-select>
-            <!-- 多策略模式 - 使用多选框 -->
+            <!-- 多策略模式 - 使用多选框，策略+组合分组显示 -->
             <div v-else style="width: 100%;">
               <el-checkbox-group v-model="form.strategy_ids" @change="handleStrategyChange" style="width: 100%;">
-                <div style="max-height: 300px; overflow-y: auto; border: 1px solid #DCDFE6; border-radius: 4px; padding: 10px;">
+                <div style="max-height: 360px; overflow-y: auto; border: 1px solid #DCDFE6; border-radius: 4px; padding: 10px;">
+                  <!-- 策略模型分组 -->
+                  <div style="font-weight: 600; color: #606266; margin-bottom: 8px; font-size: 13px;">策略模型</div>
                   <el-checkbox
                     v-for="(strategy, index) in strategyList"
                     :key="strategy.id"
@@ -77,351 +100,53 @@
                       </el-tag>
                     </div>
                   </el-checkbox>
+                  <!-- 投资组合分组 -->
+                  <template v-if="portfolioList.length > 0">
+                    <div style="border-top: 2px solid #E4E7ED; margin-top: 8px; padding-top: 10px; font-weight: 600; color: #606266; margin-bottom: 8px; font-size: 13px;">投资组合</div>
+                    <el-checkbox
+                      v-for="(p, index) in portfolioList"
+                      :key="`portfolio:${p.id}`"
+                      :label="`portfolio:${p.id}`"
+                      style="display: block; margin-bottom: 10px; padding: 8px;"
+                      :style="{'border-bottom': index < portfolioList.length - 1 ? '1px solid #F0F0F0' : 'none'}"
+                    >
+                      <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <span style="flex: 1; font-weight: 500;">{{ p.name }}</span>
+                        <span style="color: #8492a6; font-size: 12px; margin-right: 8px;">
+                          {{ (p.sub_strategies || []).length }}个子策略
+                        </span>
+                        <el-tag size="mini" type="success">组合</el-tag>
+                      </div>
+                    </el-checkbox>
+                  </template>
                 </div>
               </el-checkbox-group>
             </div>
-            <el-tooltip content="选择要回测的策略模型，多策略对比模式下需要选择2-5个策略" placement="top">
-              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-            </el-tooltip>
-            <div v-if="strategyList.length === 0" style="margin-top: 10px;">
+            <div v-if="strategyList.length === 0 && portfolioList.length === 0" style="margin-top: 10px;">
               <el-alert
                 title="提示"
                 type="warning"
                 :closable="false"
                 show-icon
               >
-                暂无可用策略，请先创建策略模型
+                暂无可用策略或组合，请先创建策略模型或投资组合
               </el-alert>
             </div>
             <!-- 多策略模式下显示已选择数量 -->
             <div v-else-if="form.backtest_mode === 'multi'" style="margin-top: 10px;">
               <span v-if="selectedStrategyCount > 0" style="color: #409EFF; font-size: 13px; font-weight: 500;">
-                已选择 {{ selectedStrategyCount }} 个策略
+                已选择 {{ selectedStrategyCount }} 项
                 <span v-if="selectedStrategyCount < 2" style="color: #F56C6C; margin-left: 10px;">
-                  （至少需要选择2个策略）
+                  （至少需要选择2项）
                 </span>
-                <span v-else-if="selectedStrategyCount > 5" style="color: #F56C6C; margin-left: 10px;">
-                  （最多只能选择5个策略）
+                <span v-else-if="selectedStrategyCount > 10" style="color: #F56C6C; margin-left: 10px;">
+                  （最多只能选择10项）
                 </span>
               </span>
-              <span v-else style="color: #909399; font-size: 13px;">
-                共 {{ strategyList.length }} 个策略可选，请选择2-5个策略进行对比
-              </span>
-            </div>
-            <!-- 单策略模式下不显示选择数量 -->
-            <div v-else-if="form.backtest_mode === 'single'" style="margin-top: 10px;">
-              <span style="color: #909399; font-size: 13px;">
-                共 {{ strategyList.length }} 个策略可选（包括草稿和已发布）
-              </span>
             </div>
           </el-form-item>
 
-          <!-- 回测参数 -->
-          <el-divider content-position="left">回测参数</el-divider>
-          
-          <!-- 初始资金 -->
-          <el-form-item label="初始资金" prop="initial_cash">
-            <el-input-number
-              v-model="form.initial_cash"
-              :min="100000"
-              :max="100000000"
-              :step="100000"
-              style="width: 200px;"
-            ></el-input-number>
-            <el-tooltip content="回测的初始投资金额，最小10万元，用于计算组合净值和收益" placement="top">
-              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-            </el-tooltip>
-            <span style="margin-left: 10px; color: #909399;">元（默认：1000000，范围：100000-100000000，步长：100000）</span>
-          </el-form-item>
-
-          <!-- 调仓频率 -->
-          <el-form-item v-if="!isManualAllocationStrategy" label="调仓频率" prop="rebalance_freq">
-            <el-select v-model="form.rebalance_freq" placeholder="请选择调仓频率" style="width: 200px;">
-              <el-option label="每日" value="daily"></el-option>
-              <el-option label="每周" value="weekly"></el-option>
-              <el-option label="每月" value="monthly"></el-option>
-              <el-option label="每季度" value="quarterly"></el-option>
-              <el-option label="每年" value="yearly"></el-option>
-            </el-select>
-            <el-tooltip content="组合权重调整的频率，每日表示每个交易日都调仓，每月表示每月第一个交易日调仓，每季度表示每季度第一个交易日调仓" placement="top">
-              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-            </el-tooltip>
-          </el-form-item>
-
-          <!-- 波动率阈值重置：非主观策略可选；主观策略不设周期性调仓与波动率重置 -->
-          <template v-if="!isManualAllocationStrategy">
-            <el-divider content-position="left">波动率阈值重置</el-divider>
-            <div style="margin-bottom: 12px; color: #909399; font-size: 13px;">
-              当组合波动率超过阈值时将按比例缩放权重以控制风险。
-            </div>
-            <el-form-item label="启用波动率阈值重置">
-              <el-switch v-model="form.enable_vol_reset"></el-switch>
-              <el-tooltip content="启用后，当组合波动率超过设定阈值时将触发权重重置" placement="top">
-                <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-              </el-tooltip>
-            </el-form-item>
-            <el-form-item v-if="form.enable_vol_reset" label="波动率重置阈值">
-              <el-input-number
-                v-model="form.vol_reset_threshold"
-                :min="0.01"
-                :max="0.5"
-                :step="0.01"
-                :precision="2"
-                controls-position="right"
-                style="width: 200px;"
-              ></el-input-number>
-              <span style="margin-left: 10px; color: #909399; font-size: 13px;">（默认 0.06，即 6%）</span>
-            </el-form-item>
-          </template>
-          
-          <!-- 显示策略参数信息 -->
-          <el-form-item v-if="selectedStrategyInfo && selectedStrategyInfo.parameters" label="策略参数">
-            <!-- 主观调仓策略：折叠时仅显示摘要行 -->
-            <div v-if="isManualAllocationStrategy && !manualParamsExpanded" class="manual-params-summary">
-              <el-tag size="small" type="info">主观配置</el-tag>
-              <span class="summary-text">{{ manualParamsAssetCount }} 个资产 · {{ manualParamsAdjustmentCount }} 个调仓日</span>
-              <el-button type="text" size="mini" @click="manualParamsExpanded = true">
-                展开参数详情 <i class="el-icon-arrow-down"></i>
-              </el-button>
-              <el-tooltip content="主观调仓策略可在下方权重初始化与调仓矩阵中查看与编辑完整参数" placement="top">
-                <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-              </el-tooltip>
-            </div>
-            <!-- 非主观策略，或主观策略展开后：显示完整参数详情 -->
-            <template v-if="!isManualAllocationStrategy || manualParamsExpanded">
-              <el-card shadow="never" style="background-color: #f5f7fa;">
-                <div slot="header" style="font-size: 14px; font-weight: 500;">
-                  <span>{{ selectedStrategyInfo.name || '策略参数' }}</span>
-                  <span style="margin-left: 10px; color: #909399; font-size: 12px;">
-                    ({{ selectedStrategyInfo.template_name || selectedStrategyInfo.template_code }})
-                  </span>
-                </div>
-                <el-descriptions :column="2" border size="small">
-                  <el-descriptions-item
-                    v-for="(value, key) in selectedStrategyInfo.parameters"
-                    :key="key"
-                    :label="getParameterLabel(key)"
-                    :span="1"
-                  >
-                    <template v-if="typeof value === 'object' && value !== null && !Array.isArray(value)">
-                      <!-- 字典类型参数，显示为键值对 -->
-                      <div v-if="Object.keys(value).length > 0" style="font-size: 12px;">
-                        <div v-for="(dictValue, dictKey) in value" :key="dictKey" style="margin-bottom: 4px;">
-                          <el-tag size="mini" style="margin-right: 4px;">{{ dictKey }}</el-tag>
-                          <span>{{ formatParameterValue(dictValue) }}</span>
-                        </div>
-                      </div>
-                      <span v-else style="color: #909399;">空配置</span>
-                    </template>
-                    <template v-else>
-                      {{ formatParameterValue(value) }}
-                    </template>
-                  </el-descriptions-item>
-                </el-descriptions>
-              </el-card>
-              <el-button v-if="isManualAllocationStrategy" type="text" size="mini" @click="manualParamsExpanded = false" style="margin-top: 4px;">
-                收起 <i class="el-icon-arrow-up"></i>
-              </el-button>
-              <el-tooltip content="策略模型配置的参数，这些参数将用于回测计算" placement="top">
-                <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-              </el-tooltip>
-            </template>
-          </el-form-item>
-
-          <!-- 单策略下显示动量选择器参数（多策略时使用下方「各策略选择器参数」避免重复） -->
-          <el-form-item 
-            v-if="form.backtest_mode === 'single' && hasMomentumSelection" 
-            label="动量资产选择器参数"
-          >
-            <el-card shadow="never" style="background-color: #f0f9ff; border: 1px solid #b3d8ff;">
-              <div slot="header" style="font-size: 14px; font-weight: 500; color: #409EFF;">
-                <i class="el-icon-s-data"></i> 动量资产选择器配置
-              </div>
-              <el-form :model="form" label-width="140px" style="margin-bottom: 0;">
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="选择器类型" label-width="140px">
-                    <el-select v-model="form.selector_type" placeholder="请选择" style="width: 100%;">
-                      <el-option label="动量选择器" value="momentum"></el-option>
-                      <el-option label="混合动量选择器" value="hybrid"></el-option>
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="最小历史数据要求" label-width="140px">
-                    <el-input-number
-                      v-model="form.min_history_days"
-                      :min="100"
-                      :max="500"
-                      :step="10"
-                      style="width: 100%;"
-                    ></el-input-number>
-                    <span style="margin-left: 8px; color: #909399; font-size: 12px;">天</span>
-                    <el-tooltip content="资产进入选择的最小交易日数要求" placement="top">
-                      <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-                    </el-tooltip>
-                  </el-form-item>
-                </el-col>
-                <el-col :span="12">
-                  <el-form-item label="并列决胜窗口" label-width="140px">
-                    <el-input-number
-                      v-model="form.tie_break_window"
-                      :min="5"
-                      :max="260"
-                      :step="1"
-                      style="width: 100%;"
-                    ></el-input-number>
-                    <span style="margin-left: 8px; color: #909399; font-size: 12px;">天</span>
-                    <el-tooltip content="当多个资产得分相同时，使用此窗口期的动量进行排序" placement="top">
-                      <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-                    </el-tooltip>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-row :gutter="20">
-                <el-col :span="24">
-                  <el-form-item label="动量窗口" label-width="140px">
-                    <el-input
-                      v-model="form.momentum_windows"
-                      placeholder="例如：22,65,260"
-                      style="width: 100%;"
-                    ></el-input>
-                    <el-tooltip content="动量计算的窗口期，多个窗口用逗号分隔，例如：22,65,260 表示短期、中期、长期动量" placement="top">
-                      <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-                    </el-tooltip>
-                    <div style="margin-top: 4px; font-size: 12px; color: #909399;">
-                      格式：天数用逗号分隔，例如 22,65,260
-                    </div>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <el-row :gutter="20">
-                <el-col :span="12">
-                  <el-form-item label="杠杆倍数" label-width="140px">
-                    <el-input-number
-                      v-model="form.run_max_leverage"
-                      :min="1"
-                      :max="10"
-                      :step="0.5"
-                      :precision="1"
-                      placeholder="不填则 1（100%）"
-                      controls-position="right"
-                      style="width: 100%;"
-                    ></el-input-number>
-                    <el-tooltip content="资产权重按此倍数缩放，不归一化。如 4 表示 400%，选中的资产权重和可为 4" placement="top">
-                      <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-                    </el-tooltip>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              </el-form>
-            </el-card>
-            <el-tooltip content="这些参数用于动态选择资产，可以在回测时修改以测试不同配置的效果" placement="top">
-              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-            </el-tooltip>
-          </el-form-item>
-
-          <!-- 多策略模式：显示所有策略的选择器参数 -->
-          <el-form-item 
-            v-if="form.backtest_mode === 'multi' && selectedStrategiesWithSelection.length > 0" 
-            label="各策略选择器参数"
-          >
-            <el-collapse>
-              <el-collapse-item
-                v-for="strategy in selectedStrategiesWithSelection"
-                :key="strategy.id"
-                :title="`${strategy.name} - 动量选择器参数`"
-                :name="strategy.id"
-              >
-                <el-form :model="form" label-width="140px" style="margin-bottom: 0;">
-                <el-row :gutter="20">
-                  <el-col :span="12">
-                    <el-form-item :label="`${strategy.name} - 选择器类型`" label-width="140px">
-                      <el-select 
-                        v-model="form.multiStrategySelectionParams[strategy.id].selector_type" 
-                        placeholder="请选择" 
-                        style="width: 100%;"
-                      >
-                        <el-option label="动量选择器" value="momentum"></el-option>
-                        <el-option label="混合动量选择器" value="hybrid"></el-option>
-                      </el-select>
-                    </el-form-item>
-                  </el-col>
-                </el-row>
-                <el-row :gutter="20">
-                  <el-col :span="12">
-                    <el-form-item :label="`${strategy.name} - 最小历史数据要求`" label-width="140px">
-                      <el-input-number
-                        v-model="form.multiStrategySelectionParams[strategy.id].min_history_days"
-                        :min="100"
-                        :max="500"
-                        :step="10"
-                        style="width: 100%;"
-                      ></el-input-number>
-                      <span style="margin-left: 8px; color: #909399; font-size: 12px;">天</span>
-                    </el-form-item>
-                  </el-col>
-                  <el-col :span="12">
-                    <el-form-item :label="`${strategy.name} - 并列决胜窗口`" label-width="140px">
-                      <el-input-number
-                        v-model="form.multiStrategySelectionParams[strategy.id].tie_break_window"
-                        :min="5"
-                        :max="260"
-                        :step="1"
-                        style="width: 100%;"
-                      ></el-input-number>
-                      <span style="margin-left: 8px; color: #909399; font-size: 12px;">天</span>
-                    </el-form-item>
-                  </el-col>
-                </el-row>
-                <el-row :gutter="20">
-                  <el-col :span="24">
-                    <el-form-item :label="`${strategy.name} - 动量窗口`" label-width="140px">
-                      <el-input
-                        v-model="form.multiStrategySelectionParams[strategy.id].momentum_windows"
-                        placeholder="例如：22,65,260"
-                        style="width: 100%;"
-                      ></el-input>
-                    </el-form-item>
-                  </el-col>
-                </el-row>
-                </el-form>
-              </el-collapse-item>
-            </el-collapse>
-          </el-form-item>
-
-          <!-- 显示资产池信息 -->
-          <el-form-item v-if="selectedStrategyInfo && selectedStrategyInfo.asset_codes && selectedStrategyInfo.asset_codes.length > 0" label="资产池">
-            <div style="margin-bottom: 8px;">
-              <el-tooltip
-                v-for="code in selectedStrategyInfo.asset_codes"
-                :key="code"
-                :content="selectedStrategyInfo.asset_names && selectedStrategyInfo.asset_names[code] ? `${code} - ${selectedStrategyInfo.asset_names[code]}` : code"
-                placement="top"
-              >
-                <el-tag
-                  size="small"
-                  style="margin-right: 8px; margin-bottom: 8px; cursor: help;"
-                >
-                  {{ code }}
-                </el-tag>
-              </el-tooltip>
-            </div>
-            <el-alert
-              v-if="selectedStrategyInfo.asset_codes.length === 0"
-              title="提示"
-              type="warning"
-              :closable="false"
-              show-icon
-            >
-              该策略未配置资产池，请先编辑策略模型添加资产
-            </el-alert>
-            <el-tooltip content="资产池来自策略模型配置，如需修改请编辑策略模型。请确保资产库中已配置这些资产并已导入行情数据。" placement="top">
-              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-            </el-tooltip>
-          </el-form-item>
+          <!-- 多策略对比 -->
 
           <!-- 主观配置策略：杠杆倍数限制 + 权重初始化与交互式权重调整 -->
           <template v-if="form.backtest_mode === 'single' && isManualAllocationStrategy">
@@ -491,12 +216,6 @@
                 </el-form>
               </el-card>
             </el-form-item>
-            <!-- 主观策略：调仓日执行方式（步进暂停 vs 一次执行到底） -->
-            <el-form-item label="调仓日执行方式">
-              <el-checkbox v-model="form.manual_preset_step">
-                预设调仓日步进暂停（在每档调仓日当日推演完成后暂停，便于查看绩效后再继续；取消勾选则一次执行到底）
-              </el-checkbox>
-            </el-form-item>
             <!-- 主观策略：预设调仓日期与权重（仅在这些日期调仓） -->
             <el-form-item label="预设调仓日期与权重">
               <el-card shadow="never" style="background-color: #f0f9ff; border: 1px solid #b3d8ff;">
@@ -504,7 +223,7 @@
                   <i class="el-icon-date"></i> 仅在这些日期调仓
                 </div>
                 <div style="margin-bottom: 12px; color: #606266; font-size: 13px;">
-                  主观策略<strong>不设</strong>周期性调仓与波动率阈值重置，仅在下方预设的日期调仓。若策略模型中已配置调仓日与权重，将自动带出；否则请在此添加。每个调仓日可填预设权重——<strong>回测运行到该日会暂停</strong>，可查看绩效后按预设权重调仓并继续。请至少添加一个调仓日。
+                  主观策略<strong>不设</strong>周期性调仓与波动率阈值重置，仅在下方预设的日期调仓。若策略模型中已配置调仓日与权重，将自动带出；否则请在此添加。每个调仓日可填预设权重——回测将<strong>直接按预设仓位完整执行</strong>。请至少添加一个调仓日。
                 </div>
                 <SubjectiveWeightsMatrixTable
                   :asset-codes="(selectedStrategyInfo && selectedStrategyInfo.asset_codes) || []"
@@ -518,7 +237,7 @@
           </template>
 
           <!-- 多策略对比：杠杆倍数限制 + 主观策略预设调仓日期与权重 -->
-          <template v-if="form.backtest_mode === 'multi' && (selectedStrategiesWithManual.length > 0 || selectedStrategiesWithSelection.length > 0)">
+          <template v-if="form.backtest_mode === 'multi' && selectedStrategiesWithManual.length > 0">
             <el-form-item label="杠杆倍数限制">
               <el-input-number
                 v-model="form.run_max_leverage"
@@ -532,15 +251,10 @@
               ></el-input-number>
               <span style="margin-left: 8px; color: #909399; font-size: 12px;">（主观策略：权重和不得超过此倍数；动量选择策略：资产权重按此倍数缩放，不归一化）</span>
             </el-form-item>
-            <el-form-item label="调仓日执行方式">
-              <el-checkbox v-model="form.manual_preset_step">
-                预设调仓日步进暂停（在每档调仓日当日推演完成后暂停，便于查看绩效后再继续；取消勾选则一次执行到底，对所有主观策略生效）
-              </el-checkbox>
-            </el-form-item>
             <el-form-item label="主观策略：预设调仓日期与权重">
               <el-card shadow="never" style="background-color: #f0f9ff; border: 1px solid #b3d8ff;">
                 <div slot="header" style="font-size: 14px; font-weight: 500; color: #409EFF;">
-                  <i class="el-icon-date"></i> 多策略中的主观策略需至少一个调仓日（权重可留空，步进时再选）
+                  <i class="el-icon-date"></i> 多策略中的主观策略需至少一个调仓日
                 </div>
                 <div style="margin-bottom: 12px; color: #606266; font-size: 13px;">
                   每个主观策略与单策略一致：可设置<strong>权重初始化</strong>（默认取策略模型默认权重），并在下方预设调仓日与权重。若策略模型中已配置，将自动带出；否则请在此添加。资产权重按指数编制规则设上限。
@@ -611,20 +325,13 @@
             </el-form-item>
           </template>
 
-          <!-- 波动率重置日人工干预说明（单策略且启用波动率重置且非主观策略时显示） -->
-          <el-form-item v-if="form.backtest_mode === 'single' && !isManualAllocationStrategy && form.enable_vol_reset" label="波动率重置日">
-            <el-card shadow="never" style="background-color: #f0f9ff; border: 1px solid #b3d8ff;">
-              <div slot="header" style="font-size: 14px; font-weight: 500; color: #409EFF;">
-                <i class="el-icon-edit"></i> 执行过程中步进选择
-              </div>
-              <div style="color: #606266; font-size: 13px;">
-                回测将先运行一次；若存在<strong>波动率阈值重置</strong>触发的日期，完成后会列出这些日期，由您逐日选择「使用自动重置权重」或「人工设定重置权重」，然后重新回测得到最终结果。
-              </div>
-            </el-card>
-          </el-form-item>
-
           <!-- 回测时间 -->
-          <el-form-item label="回测时间" prop="date_range">
+          <el-form-item prop="date_range">
+            <span slot="label">回测时间
+              <el-tooltip content="回测的时间区间，系统将从开始日期到结束日期进行模拟交易" placement="top">
+                <i class="el-icon-question" style="color: #909399; cursor: help;"></i>
+              </el-tooltip>
+            </span>
             <el-date-picker
               v-model="form.date_range"
               type="daterange"
@@ -635,15 +342,17 @@
               value-format="yyyy-MM-dd"
               style="width: 100%;"
             ></el-date-picker>
-            <el-tooltip content="回测的时间区间，系统将从开始日期到结束日期进行模拟交易" placement="top">
-              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-            </el-tooltip>
           </el-form-item>
 
           <!-- 交易成本 -->
           <el-divider content-position="left">交易成本</el-divider>
           
-          <el-form-item label="手续费率" prop="commission_rate">
+          <el-form-item prop="commission_rate">
+            <span slot="label">手续费率
+              <el-tooltip content="交易手续费率，默认0.03%（万三），包含买卖双向成本；范围0-0.01，步长0.0001" placement="top">
+                <i class="el-icon-question" style="color: #909399; cursor: help;"></i>
+              </el-tooltip>
+            </span>
             <el-input-number
               v-model="form.commission_rate"
               :min="0"
@@ -652,13 +361,14 @@
               :precision="4"
               style="width: 200px;"
             ></el-input-number>
-            <el-tooltip content="交易手续费率，默认0.03%（万三），包含买卖双向成本" placement="top">
-              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-            </el-tooltip>
-            <span style="margin-left: 10px; color: #909399;">（默认：0.0003，范围：0-0.01，步长：0.0001）</span>
           </el-form-item>
 
-          <el-form-item label="滑点" prop="slippage">
+          <el-form-item prop="slippage">
+            <span slot="label">滑点
+              <el-tooltip content="市场冲击成本（滑点），默认0.05%（万五），用于模拟大额交易对价格的影响；范围0-0.01，步长0.0001" placement="top">
+                <i class="el-icon-question" style="color: #909399; cursor: help;"></i>
+              </el-tooltip>
+            </span>
             <el-input-number
               v-model="form.slippage"
               :min="0"
@@ -667,10 +377,6 @@
               :precision="4"
               style="width: 200px;"
             ></el-input-number>
-            <el-tooltip content="市场冲击成本（滑点），默认0.05%（万五），用于模拟大额交易对价格的影响" placement="top">
-              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-            </el-tooltip>
-            <span style="margin-left: 10px; color: #909399;">（默认：0.0005，范围：0-0.01，步长：0.0001）</span>
           </el-form-item>
 
           <!-- 操作按钮 -->
@@ -686,19 +392,12 @@
         <!-- 提示信息 -->
         <el-alert
           v-if="!executing && !backtestResults"
-          title="提示"
+          title="请配置回测参数后点击执行回测"
           type="info"
           :closable="false"
+          show-icon
           style="margin-top: 20px;"
-        >
-          <template slot="default">
-            <p>请配置回测参数后点击执行按钮</p>
-            <p style="margin-top: 10px; font-size: 12px; color: #909399;">
-              • 单策略回测：查看单个策略的完整回测结果，包含净值曲线、持仓变化、交易明细等<br/>
-              • 多策略对比：同时运行2-5个策略，横向对比绩效指标和净值曲线
-            </p>
-          </template>
-        </el-alert>
+        ></el-alert>
       </el-card>
 
       <!-- 回测结果展示 -->
@@ -710,182 +409,15 @@
         :model-id="backtestModelId"
       ></backtest-result>
 
-      <!-- 波动率重置日 - 选择是否人工干预（步进式） -->
-      <el-dialog
-        title="波动率重置日 — 选择是否人工干预"
-        :visible.sync="volResetDecisionDialog.visible"
-        width="720px"
-        :close-on-click-modal="false"
-        :append-to-body="false"
-        @close="onVolResetDialogClose"
-      >
-        <p style="color: #606266; margin-bottom: 16px;">
-          以下日期触发了<strong>波动率阈值重置</strong>。您可为每个日期选择「使用自动重置权重」或「人工设定重置权重」，然后重新回测得到最终结果。
-        </p>
-        <div
-          v-for="(pt, idx) in volResetDecisionDialog.points"
-          :key="pt.dateStr"
-          style="border: 1px solid #EBEEF5; border-radius: 4px; padding: 12px; margin-bottom: 12px; background: #FAFAFA;"
-        >
-          <div style="display: flex; align-items: center; margin-bottom: 8px;">
-            <span style="font-weight: 500; margin-right: 12px;">{{ pt.dateStr }}</span>
-            <el-radio-group v-model="pt.useAuto" size="small">
-              <el-radio :label="true">使用自动重置权重</el-radio>
-              <el-radio :label="false">人工设定重置权重</el-radio>
-            </el-radio-group>
-          </div>
-          <div v-if="!pt.useAuto" style="margin-top: 10px;">
-            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-              <div
-                v-for="code in (volResetDecisionDialog.strategy && volResetDecisionDialog.strategy.asset_codes) || []"
-                :key="code"
-                style="display: flex; align-items: center; gap: 4px;"
-              >
-                <span style="font-size: 12px; width: 72px; overflow: hidden; text-overflow: ellipsis;" :title="code">{{ code }}</span>
-                <el-input-number
-                  v-model="pt.manualWeights[code]"
-                  :min="0"
-                  :max="1"
-                  :step="0.05"
-                  :precision="4"
-                  size="small"
-                  controls-position="right"
-                  style="width: 88px;"
-                ></el-input-number>
-              </div>
-            </div>
-            <div v-if="getVolResetPointWeightSum(pt) !== null" style="margin-top: 6px; font-size: 12px;" :style="{ color: Math.abs(getVolResetPointWeightSum(pt) - 1) < 0.001 ? '#67C23A' : '#E6A23C' }">
-              权重和：{{ (getVolResetPointWeightSum(pt) * 100).toFixed(2) }}%
-            </div>
-          </div>
-        </div>
-        <span slot="footer" class="dialog-footer">
-          <el-button @click="onVolResetDialogClose">使用首次回测结果</el-button>
-          <el-button type="primary" :loading="volResetDecisionDialog.loading" @click="confirmVolResetAndRerun">
-            确认并重新回测
-          </el-button>
-        </span>
-      </el-dialog>
+      <!-- 策略多维验证（第5层增强） -->
+      <!--
+        暂时隐藏：敏感度 / 情景推演 / 鲁棒性的产品效果尚未确定，
+        后端 API 已就绪（/api/v1/backtests/{sensitivity,scenario,robustness}），
+        待产品方案明确后再开放前端展示。
+        当前策略验证仍以「单策略回测 + 多策略对比」为主。
+      -->
 
-      <!-- 主观策略预设调仓日步进：到该日暂停，按预设权重调仓，可查看绩效后继续 -->
-      <el-dialog
-        :title="presetStepDialogTitle"
-        :visible.sync="presetStepDialog.visible"
-        width="700px"
-        :close-on-click-modal="false"
-        :append-to-body="false"
-        @close="onPresetStepDialogClose"
-      >
-        <template v-if="presetStepDialog.stepResponse">
-          <p v-if="form.backtest_mode === 'multi' && presetStepDialog.strategy" style="margin-bottom: 10px; padding: 8px 12px; background: #ecf5ff; border-left: 4px solid #409EFF; color: #303133; font-weight: 500;">
-            当前步进策略：<strong>{{ presetStepDialog.strategy.name }}</strong>
-          </p>
-          <p style="color: #606266; margin-bottom: 12px;">
-            回测已运行至 <strong>{{ formatPresetDate(presetStepDialog.stepResponse.next_preset_date) }}</strong>，该日将按预设权重调仓，可查看下方绩效后继续。
-          </p>
-          <!-- 当前持仓绩效（至本调仓日）：始终显示该卡片，有数据则展示收益/波动/回撤/风险调整收益 -->
-          <el-card shadow="never" style="margin-bottom: 14px; background: #fafafa; border: 1px solid #EBEEF5;">
-            <div slot="header" style="font-size: 13px; font-weight: 600; color: #303133;">当前持仓绩效（至本调仓日）</div>
-            <template v-if="presetStepDialog.stepResponse.current_metrics && Object.keys(presetStepDialog.stepResponse.current_metrics).length">
-              <el-row :gutter="16">
-                <el-col :span="8">
-                  <div class="metric-item">
-                    <span class="metric-label">累计收益率</span>
-                    <span class="metric-value" :style="{ color: ((presetStepDialog.stepResponse.current_metrics.total_return || 0) >= 0) ? '#67C23A' : '#F56C6C' }">
-                      {{ formatPercent(presetStepDialog.stepResponse.current_metrics.total_return) }}
-                    </span>
-                  </div>
-                </el-col>
-                <el-col :span="8">
-                  <div class="metric-item">
-                    <span class="metric-label">年化收益率</span>
-                    <span class="metric-value" :style="{ color: ((presetStepDialog.stepResponse.current_metrics.annual_return || 0) >= 0) ? '#67C23A' : '#F56C6C' }">
-                      {{ formatPercent(presetStepDialog.stepResponse.current_metrics.annual_return) }}
-                    </span>
-                  </div>
-                </el-col>
-                <el-col :span="8">
-                  <div class="metric-item">
-                    <span class="metric-label">年化波动率</span>
-                    <span class="metric-value">{{ formatPercent(presetStepDialog.stepResponse.current_metrics.volatility) }}</span>
-                  </div>
-                </el-col>
-              </el-row>
-              <el-row :gutter="16" style="margin-top: 10px;">
-                <el-col :span="8">
-                  <div class="metric-item">
-                    <span class="metric-label">最大回撤</span>
-                    <span class="metric-value" style="color: #F56C6C;">{{ formatPercent(presetStepDialog.stepResponse.current_metrics.max_drawdown) }}</span>
-                  </div>
-                </el-col>
-                <el-col :span="8">
-                  <div class="metric-item">
-                    <span class="metric-label">夏普比率</span>
-                    <span class="metric-value">{{ formatMetric(presetStepDialog.stepResponse.current_metrics.sharpe_ratio) }}</span>
-                  </div>
-                </el-col>
-                <el-col :span="8">
-                  <div class="metric-item">
-                    <span class="metric-label">卡玛比率</span>
-                    <span class="metric-value">{{ formatMetric(presetStepDialog.stepResponse.current_metrics.calmar_ratio) }}</span>
-                  </div>
-                </el-col>
-              </el-row>
-              <el-row :gutter="16" style="margin-top: 10px;">
-                <el-col :span="12">
-                  <div class="metric-item">
-                    <span class="metric-label">当前净值</span>
-                    <span class="metric-value">{{ formatNav(presetStepDialog.stepResponse.current_metrics.current_nav) }}</span>
-                  </div>
-                </el-col>
-                <el-col :span="12">
-                  <div class="metric-item">
-                    <span class="metric-label">初始净值</span>
-                    <span class="metric-value">{{ formatNav(presetStepDialog.stepResponse.current_metrics.initial_nav) }}</span>
-                  </div>
-                </el-col>
-              </el-row>
-            </template>
-            <p v-else style="color: #909399; font-size: 13px; margin: 0;">暂无至本日绩效数据</p>
-          </el-card>
-          <!-- 多策略：其他策略截至当前调仓日指标（对比参考） -->
-          <el-card v-if="form.backtest_mode === 'multi'" shadow="never" style="margin-bottom: 14px; background: #f5f7fa; border: 1px solid #E4E7ED;">
-            <div slot="header" style="font-size: 13px; font-weight: 600; color: #303133;">其他策略截至本调仓日绩效（同一时间线对比，非最终回测结果）</div>
-            <div v-if="presetStepDialog.loading" style="color: #909399; font-size: 13px;">加载中…</div>
-            <el-table v-else-if="presetStepDialog.otherStrategiesMetrics && presetStepDialog.otherStrategiesMetrics.length" :data="presetStepDialog.otherStrategiesMetrics" size="small" border style="width: 100%;">
-              <el-table-column prop="strategyName" label="策略" min-width="100"></el-table-column>
-              <el-table-column label="累计收益" min-width="90">
-                <template slot-scope="scope">{{ formatPercent(scope.row.total_return) }}</template>
-              </el-table-column>
-              <el-table-column label="年化收益" min-width="90">
-                <template slot-scope="scope">{{ formatPercent(scope.row.annual_return) }}</template>
-              </el-table-column>
-              <el-table-column label="波动率" min-width="80">
-                <template slot-scope="scope">{{ formatPercent(scope.row.volatility) }}</template>
-              </el-table-column>
-              <el-table-column label="最大回撤" min-width="90">
-                <template slot-scope="scope">{{ formatPercent(scope.row.max_drawdown) }}</template>
-              </el-table-column>
-              <el-table-column label="夏普" min-width="70">
-                <template slot-scope="scope">{{ formatMetric(scope.row.sharpe_ratio) }}</template>
-              </el-table-column>
-            </el-table>
-            <p v-else style="color: #909399; font-size: 13px; margin: 0;">暂无其他策略数据</p>
-          </el-card>
-          <div style="margin-bottom: 12px; font-size: 13px; color: #909399;">
-            当前持仓权重：
-            <span v-for="(w, code) in (presetStepDialog.stepResponse.current_weights || {})" :key="code" style="margin-right: 12px;">
-              {{ (presetStepDialog.stepResponse.asset_names && presetStepDialog.stepResponse.asset_names[code]) || code }} {{ ((w || 0) * 100).toFixed(1) }}%
-            </span>
-          </div>
-        </template>
-        <span slot="footer" class="dialog-footer">
-          <el-button @click="onPresetStepDialogClose">取消</el-button>
-          <el-button type="primary" :loading="presetStepDialog.loading" @click="confirmPresetStepAndContinue">
-            确认并继续回测
-          </el-button>
-        </span>
-      </el-dialog>
+
 
       <!-- 同步调仓日与权重到策略模型确认 -->
       <el-dialog
@@ -940,16 +472,6 @@ export default {
         // 波动率阈值重置（所有策略可选）
         enable_vol_reset: false,  // 所有策略默认关闭波动率重置
         vol_reset_threshold: 0.06,
-        // 动量选择器参数（单策略模式使用）
-        selector_type: 'momentum',
-        asset_selection_count: 2,
-        min_history_days: 260,
-        momentum_windows: '22,65,260',
-        tie_break_window: 22,
-        // 手动选择的资产代码列表
-        selected_asset_codes: [],
-        // 多策略模式的选择器参数（每个策略单独配置）
-        multiStrategySelectionParams: {},
         // 交互式权重调整（仅主观配置策略）
         enable_interactive_adjustment: false,
         manual_weight_adjustments: [],
@@ -961,38 +483,12 @@ export default {
         multiStrategyRunManualWeights: {},
         // 杠杆倍数限制（本次回测，不填则使用策略模型配置；用于动态限制初始化权重、预设调仓日权重、步进调仓权重）
         run_max_leverage: null,
-        // 主观策略：是否在调仓日暂停步进（默认暂停；取消勾选则一次执行到底）
-        manual_preset_step: true
       },
       executing: false,
       backtestResults: null,
       backtestModelId: null,
       selectedStrategyInfo: null,
-      // 波动率重置日人工干预：首次回测后若存在重置日则弹出，用户逐日选择后重新回测
-      volResetDecisionDialog: {
-        visible: false,
-        loading: false,
-        strategyId: null,
-        strategy: null,
-        backtestData: null,
-        firstRunResult: null,
-        points: []  // { dateStr, autoWeights, useAuto, manualWeights }
-      },
-      // 主观策略预设调仓日步进：到每个预设日暂停，用户选择 预设权重/实时输入/不调仓
-      presetStepDialog: {
-        visible: false,
-        loading: false,
-        strategyId: null,
-        strategy: null,
-        backtestData: null,
-        stepResponse: null,  // { phase, state, next_preset_date, remaining_preset_dates, current_weights, snapshots, asset_names }
-        decision: 'skip',    // use_preset | custom | skip
-        customWeights: {},   // 当 decision === 'custom' 时使用
-        autoNormalize: false, // 是否归一化（默认不归一化）
-        otherStrategiesMetrics: []  // 多策略步进时，其他策略截至当前调仓日的指标 [{ strategyId, strategyName, total_return, ... }]
-      },
-      // 多主观策略同步步进：多个主观策略均 start 后，按时间线顺序依次弹窗；key=strategyId, value={ strategy, strategyId, backtestData, stepResponse }
-      multiManualPending: {},
+
       maxWeightDict: {},  // 指数编制规则下每类资产权重上限，供权重初始化与预设调仓输入限制
       multiStrategyMaxWeightDict: {},  // 多策略主观：所有主观策略资产池的指数编制规则权重上限 { [assetCode]: max }
       // 调仓日期禁用：节假日列表（YYYY-MM-DD），可从接口扩展；空则仅禁用周末
@@ -1002,14 +498,14 @@ export default {
       originalRunManualWeights: null,       // 单策略：从策略加载的权重初始化
       originalMultiStrategyManualAdjustments: {},   // 多策略：{ [strategyId]: [...] }
       originalMultiStrategyRunManualWeights: {},   // 多策略：{ [strategyId]: {...} }
-      // 主观调仓策略参数卡片折叠状态：默认折叠，仅显示摘要
-      manualParamsExpanded: false,
       // 同步确认对话框
       syncConfirmDialog: {
         visible: false,
         loading: false,
         resolve: null  // Promise resolve，用于返回用户选择
-      }
+      },
+      // 组合回测
+      portfolioList: []
     };
   },
   computed: {
@@ -1018,23 +514,12 @@ export default {
     strategyList() {
       return this.strategyModelList || [];
     },
-    presetStepDialogTitle() {
-      const d = this.presetStepDialog;
-      if (this.form.backtest_mode === 'multi' && d.strategy && d.strategy.name) {
-        return `预设调仓日 — 选择调仓方式（当前策略：${d.strategy.name}）`;
-      }
-      return '预设调仓日 — 选择调仓方式';
-    },
     selectedStrategies() {
       if (!this.form.strategy_ids) return [];
       const ids = Array.isArray(this.form.strategy_ids) ? this.form.strategy_ids : [this.form.strategy_ids];
       return ids.map(id => this.strategyList.find(s => s.id === id)).filter(Boolean);
     },
-    // 检查是否有策略启用了动量选择器
-    hasMomentumSelection() {
-      if (!this.selectedStrategyInfo) return false;
-      return this.selectedStrategyInfo.enable_momentum_selection === true;
-    },
+    // 检查是否有策略启用了动量选择器（选择器参数由策略模型配置，回测页不展示）
     // 获取所有启用了选择器的策略（多策略模式）
     selectedStrategiesWithSelection() {
       if (this.form.backtest_mode !== 'multi') return [];
@@ -1053,27 +538,6 @@ export default {
             validator: (rule, value, callback) => {
               const ids = value === null || value === undefined ? ([]).concat(value) : (Array.isArray(value) ? value : [value]);
               if (!ids.length || ids.every(id => id === null || id === undefined || id === '')) return callback(new Error('请选择策略'));
-              callback();
-            },
-            trigger: 'change'
-          }
-        ],
-        initial_cash: [
-          {
-            validator: (rule, value, callback) => {
-              const n = Number(value);
-              if (value === undefined || value === null || value === '') return callback(new Error('请输入初始资金'));
-              if (!Number.isFinite(n) || n < 100000) return callback(new Error('初始资金至少为10万元'));
-              callback();
-            },
-            trigger: 'blur'
-          }
-        ],
-        rebalance_freq: [
-          {
-            validator: (rule, value, callback) => {
-              if (this.isManualAllocationStrategy) return callback();
-              if (value === undefined || value === null || value === '') return callback(new Error('请选择调仓频率'));
               callback();
             },
             trigger: 'change'
@@ -1124,24 +588,6 @@ export default {
         return Array.isArray(this.form.strategy_ids) ? this.form.strategy_ids.length : 0;
       }
     },
-    hasPresetWeightsForCurrentDate() {
-      const resp = this.presetStepDialog.stepResponse;
-      if (!resp || !resp.next_preset_date) return false;
-      const list = this.form.backtest_mode === 'multi' && this.presetStepDialog.strategyId
-        ? (this.form.multiStrategyManualAdjustments && this.form.multiStrategyManualAdjustments[this.presetStepDialog.strategyId]) || []
-        : (this.form.manual_weight_adjustments || []);
-      const preset = list.find(adj => (adj.date || '').replace(/-/g, '').slice(0, 8) === resp.next_preset_date);
-      return preset && preset.weights && Object.keys(preset.weights).length > 0 && Object.values(preset.weights).some(v => (Number(v) || 0) > 0);
-    },
-    presetStepCustomSum() {
-      const w = this.presetStepDialog.customWeights || {};
-      const vals = Object.values(w);
-      if (!vals.length) return null;
-      return vals.reduce((s, v) => s + (Number(v) || 0), 0);
-    },
-    presetStepMaxLeverage() {
-      return this.getEffectiveMaxLeverage(this.presetStepDialog.strategy);
-    },
     // 资产池列表（用于手动选择资产）
     assetPoolForSelection() {
       if (!this.selectedStrategyInfo || !this.selectedStrategyInfo.asset_codes) {
@@ -1156,34 +602,6 @@ export default {
     // 资产池大小
     assetPoolSize() {
       return this.assetPoolForSelection.length || 100;
-    },
-    // 主观调仓策略参数摘要：资产数量（取自策略模型 manual_weights 键数）
-    manualParamsAssetCount() {
-      const params = (this.selectedStrategyInfo && this.selectedStrategyInfo.parameters) || {};
-      const mw = params.manual_weights;
-      if (mw && typeof mw === 'object') {
-        return Object.keys(mw).length;
-      }
-      // 兜底：使用本次回测的权重初始化（form.run_manual_weights）
-      const rmw = this.form && this.form.run_manual_weights;
-      if (rmw && typeof rmw === 'object') {
-        return Object.keys(rmw).length;
-      }
-      return 0;
-    },
-    // 主观调仓策略参数摘要：调仓日数量（取自策略模型 manual_weight_adjustments 数组长度）
-    manualParamsAdjustmentCount() {
-      const params = (this.selectedStrategyInfo && this.selectedStrategyInfo.parameters) || {};
-      const adjs = params.manual_weight_adjustments;
-      if (Array.isArray(adjs)) {
-        return adjs.length;
-      }
-      // 兜底：使用本次回测的调仓数组（form.manual_weight_adjustments）
-      const fAdjs = this.form && this.form.manual_weight_adjustments;
-      if (Array.isArray(fAdjs)) {
-        return fAdjs.length;
-      }
-      return 0;
     },
     // 是否为主观配置策略（支持权重初始化与交互式权重调整）
     isManualAllocationStrategy() {
@@ -1258,9 +676,7 @@ export default {
     'form.strategy_ids': {
       handler() {
         this.updateSelectedStrategyInfo();
-        // 策略切换时清空已选资产
-        this.form.selected_asset_codes = [];
-        // 切换策略时清空交互式权重调整
+        // 策略切换时清空交互式权重调整
         this.form.enable_interactive_adjustment = false;
         this.form.manual_weight_adjustments = [];
         // 主观配置策略：预设调仓日由 updateSelectedStrategyInfo 中 initManualWeightAdjustmentsFromStrategy 加载
@@ -1268,16 +684,9 @@ export default {
           this.syncRunManualWeights();
           if (this.isManualAllocationStrategy && this.$refs.form) this.$refs.form.clearValidate();
         });
-        // 如果是多策略模式，初始化选择器参数并清空各策略的已选资产
+        // 如果是多策略模式，初始化主观策略的调仓日与权重
         if (this.form.backtest_mode === 'multi') {
-          // 清空所有策略的已选资产
-          Object.keys(this.form.multiStrategySelectionParams || {}).forEach(strategyId => {
-            if (this.form.multiStrategySelectionParams[strategyId]) {
-              this.$set(this.form.multiStrategySelectionParams[strategyId], 'selected_asset_codes', []);
-            }
-          });
           this.$nextTick(() => {
-            this.initMultiStrategySelectionParams();
             this.initMultiStrategyManualAdjustments();
           });
         }
@@ -1325,6 +734,7 @@ export default {
   },
   created() {
     this.loadStrategyList();
+    this.loadPortfolioList();  // 加载组合列表（用于组合回测模式）
     // 初始化时更新策略信息
     this.$nextTick(() => {
       this.updateSelectedStrategyInfo();
@@ -1349,6 +759,17 @@ export default {
       } catch (error) {
         console.error('加载策略列表失败:', error);
         this.$message.error('加载策略列表失败：' + (error.response?.data?.detail || error.message || '未知错误'));
+      }
+    },
+    // 加载组合列表（用于组合回测模式）
+    async loadPortfolioList() {
+      try {
+        const { getPortfolioList } = await import('@/api/portfolio');
+        const res = await getPortfolioList();
+        this.portfolioList = res.data || [];
+      } catch (error) {
+        console.error('加载组合列表失败:', error);
+        this.portfolioList = [];
       }
     },
     /** 从策略模型加载预设调仓日与权重；若无预设则添加一个默认项 */
@@ -1668,7 +1089,7 @@ export default {
           momentum_windows: model.momentum_windows || '20,60,120,250',
           tie_break_window: model.tie_break_window ?? 22
         };
-        if (model.enable_momentum_selection && model.selector_type === 'hybrid') {
+        if (model.enable_momentum_selection && ['hybrid', 'reversal', 'momentum_reversal'].includes(model.selector_type)) {
           updateData.macd_windows = model.macd_windows || '40,80,120,160';
         }
         await this.$store.dispatch('strategy/updateStrategyModel', { modelId: strategyId, data: updateData });
@@ -1721,10 +1142,10 @@ export default {
           this.form.strategy_ids = this.form.strategy_ids ? [this.form.strategy_ids] : [];
         }
         
-        // 限制最多选择5个策略
-        if (this.form.strategy_ids && this.form.strategy_ids.length > 5) {
-          this.$message.warning('多策略对比最多选择5个策略，已自动保留前5个');
-          this.form.strategy_ids = this.form.strategy_ids.slice(0, 5);
+        // 限制最多选择10个策略
+        if (this.form.strategy_ids && this.form.strategy_ids.length > 10) {
+          this.$message.warning('多策略对比最多选择10个策略，已自动保留前10个');
+          this.form.strategy_ids = this.form.strategy_ids.slice(0, 10);
         }
         
         // 为多策略模式的所有策略构建 asset_names 映射
@@ -1759,6 +1180,11 @@ export default {
       }
           
       if (strategyId) {
+        // 组合ID：不需要加载策略详情
+        if (String(strategyId).startsWith('portfolio:')) {
+          this.selectedStrategyInfo = null;
+          return;
+        }
         // 先从列表中查找
         const strategy = this.strategyList.find(s => s.id === strategyId);
         const code = strategy && (strategy.template_code || '').toString();
@@ -1806,9 +1232,9 @@ export default {
         this.initManualWeightAdjustmentsFromStrategy();
       }
 
-      // 多策略模式：初始化所有策略的选择器参数
+      // 多策略模式：清理已取消选择的策略的调仓日/权重参数
       if (this.form.backtest_mode === 'multi') {
-        this.initMultiStrategySelectionParams();
+        this.cleanupDeselectedStrategies();
       }
     },
     /** 为策略构建 asset_names 映射(从资产库获取名称) */
@@ -1859,115 +1285,6 @@ export default {
       if (!t) return '';
       return dayjs(t).format('YYYY-MM-DD');
     },
-    /** 波动率重置决策：首次回测后发现重置日，打开对话框 */
-    openVolResetDecisionDialog(strategyId, strategy, backtestData, firstRunResult, volResetSnapshots) {
-      const assetCodes = strategy.asset_codes || [];
-      this.volResetDecisionDialog.strategyId = strategyId;
-      this.volResetDecisionDialog.strategy = strategy;
-      this.volResetDecisionDialog.backtestData = backtestData;
-      this.volResetDecisionDialog.firstRunResult = firstRunResult;
-      this.volResetDecisionDialog.points = volResetSnapshots.map(s => {
-        const dateStr = this.formatSnapshotDate(s.time);
-        const autoWeights = s.weights || {};
-        const manualWeights = {};
-        assetCodes.forEach(c => { manualWeights[c] = autoWeights[c] !== undefined ? Number(autoWeights[c]) : 0; });
-        return { dateStr, autoWeights, useAuto: true, manualWeights };
-      });
-      this.volResetDecisionDialog.visible = true;
-      this.volResetDecisionDialog.loading = false;
-    },
-    /** 对话框关闭：使用首次回测结果作为最终结果 */
-    onVolResetDialogClose() {
-      if (this.volResetDecisionDialog.firstRunResult && this.volResetDecisionDialog.strategy) {
-        const first = this.volResetDecisionDialog.firstRunResult;
-        this.backtestModelId = this.volResetDecisionDialog.strategyId;
-        this.backtestResults = {
-          [this.volResetDecisionDialog.strategy.name]: {
-            result: first,
-            strategy: this.volResetDecisionDialog.strategy,
-            record_id: first.record_id != null ? String(first.record_id) : null,
-            remark: first.remark != null ? first.remark : ''
-          }
-        };
-        this.$nextTick(() => {
-          const el = document.querySelector('.backtest-result');
-          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-      }
-      this.volResetDecisionDialog.visible = false;
-      this.volResetDecisionDialog.points = [];
-      this.volResetDecisionDialog.strategyId = null;
-      this.volResetDecisionDialog.strategy = null;
-      this.volResetDecisionDialog.backtestData = null;
-      this.volResetDecisionDialog.firstRunResult = null;
-    },
-    /** 波动率重置决策：某条目的权重和（用于展示） */
-    getVolResetPointWeightSum(pt) {
-      if (!pt || !pt.manualWeights) return null;
-      return Object.values(pt.manualWeights).reduce((s, v) => s + (Number(v) || 0), 0);
-    },
-    /** 确认人工干预选择并重新回测 */
-    async confirmVolResetAndRerun() {
-      const dialog = this.volResetDecisionDialog;
-      const manualPoints = dialog.points.filter(p => !p.useAuto);
-      const hasInvalid = manualPoints.some(p => {
-        const sum = this.getVolResetPointWeightSum(p);
-        return sum === null || sum <= 0;
-      });
-      if (hasInvalid) {
-        this.$message.warning('选择「人工设定重置权重」的日期，权重和必须大于 0');
-        return;
-      }
-
-      const manual_weight_adjustments = dialog.points
-        .filter(p => !p.useAuto)
-        .map(p => ({
-          date: p.dateStr.replace(/-/g, '').slice(0, 8),
-          weights: { ...(p.manualWeights || {}) },
-          auto_normalize: false
-        }));
-
-      dialog.loading = true;
-      try {
-        const backtestData = { ...dialog.backtestData };
-        if (manual_weight_adjustments.length > 0) {
-          backtestData.manual_weight_adjustments = manual_weight_adjustments;
-        }
-        const result = await this.$store.dispatch('strategy/runBacktest', {
-          modelId: dialog.strategyId,
-          data: backtestData
-        });
-        const resultData = (result && result.data !== undefined) ? result.data : result;
-        this.backtestModelId = dialog.strategyId;
-        this.backtestResults = {
-          [dialog.strategy.name]: {
-            result: resultData,
-            strategy: dialog.strategy,
-            remark: resultData.remark != null ? resultData.remark : '',
-            record_id: resultData.record_id != null ? String(resultData.record_id) : resultData.record_id
-          }
-        };
-        this.$message.success('已按您的选择重新回测完成');
-        this.volResetDecisionDialog.visible = false;
-        this.volResetDecisionDialog.points = [];
-        this.volResetDecisionDialog.strategyId = null;
-        this.volResetDecisionDialog.strategy = null;
-        this.volResetDecisionDialog.backtestData = null;
-        this.volResetDecisionDialog.firstRunResult = null;
-        this.$nextTick(() => {
-          const el = document.querySelector('.backtest-result');
-          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-      } catch (error) {
-        this.$message.error('重新回测失败：' + (error.response?.data?.detail || error.message));
-      } finally {
-        dialog.loading = false;
-      }
-    },
-    formatPresetDate(ymd) {
-      if (!ymd || ymd.length < 8) return ymd;
-      return `${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6, 8)}`;
-    },
     formatPercent(v) {
       if (v == null || v === undefined) return '-';
       const p = Number(v);
@@ -1986,658 +1303,6 @@ export default {
       if (Number.isNaN(n)) return '-';
       return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     },
-    onPresetStepDialogClose() {
-      this.presetStepDialog.visible = false;
-      this.presetStepDialog.stepResponse = null;
-      this.presetStepDialog.strategyId = null;
-      this.presetStepDialog.otherStrategiesMetrics = [];
-      this.presetStepDialog.strategy = null;
-      this.presetStepDialog.backtestData = null;
-      if (Object.keys(this.multiManualPending || {}).length > 0) {
-        this.multiManualPending = {};
-        this.executing = false;
-      }
-    },
-    /** 多策略步进时：拉取其他策略截至当前调仓日（endDateYyyymmdd）的指标，用于对比参考；包含正在执行的主观策略（multiManualPending）与已完成策略（backtestResults） */
-    async fetchOtherStrategiesMetricsForStep(currentStrategyId, endDateYyyymmdd) {
-      const ids = Array.isArray(this.form.strategy_ids) ? this.form.strategy_ids : (this.form.strategy_ids ? [this.form.strategy_ids] : []);
-      const currentKey = String(currentStrategyId);
-      const others = ids.filter(id => String(id) !== currentKey);
-      if (others.length === 0) {
-        this.presetStepDialog.otherStrategiesMetrics = [];
-        this.presetStepDialog.loading = false;
-        return;
-      }
-      const metricsList = [];
-      const pending = this.multiManualPending || {};
-      const completedResults = this.backtestResults && typeof this.backtestResults === 'object' ? this.backtestResults : {};
-      for (const oid of others) {
-        const oidKey = String(oid);
-        const strategy = this.strategyList.find(s => String(s.id) === oidKey || s.id === oid);
-        if (!strategy) continue;
-        const strategyName = strategy.name || oidKey;
-        if (pending[oidKey] && pending[oidKey].stepResponse) {
-          const entry = pending[oidKey];
-          const stepResponse = entry.stepResponse;
-          const snapshots = (stepResponse.snapshots && Array.isArray(stepResponse.snapshots)) ? stepResponse.snapshots : [];
-          const lastSnap = snapshots.length ? snapshots[snapshots.length - 1] : null;
-          const lastDateStr = lastSnap ? (typeof lastSnap.time === 'string' ? lastSnap.time.replace(/-/g, '').slice(0, 8) : (lastSnap.time && lastSnap.time.toString && lastSnap.time.toString().replace(/-/g, '').slice(0, 8))) : '';
-          const start = (this.form.date_range && this.form.date_range[0]) ? this.form.date_range[0].replace(/-/g, '') : '';
-          const freqMapping = { '每日': 'daily', '每周': 'weekly', '每月': 'monthly', '每季度': 'quarterly', '每年': 'yearly', daily: 'daily', weekly: 'weekly', monthly: 'monthly', quarterly: 'quarterly', yearly: 'yearly' };
-          const rebalanceFreq = freqMapping[this.form.rebalance_freq] || this.form.rebalance_freq || 'monthly';
-          const baseData = {
-            start_date: start,
-            end_date: endDateYyyymmdd,
-            initial_cash: this.form.initial_cash,
-            rebalance_freq: rebalanceFreq,
-            commission_rate: this.form.commission_rate,
-            slippage: this.form.slippage,
-            lookback_days: 252,
-            enable_vol_reset: this.form.enable_vol_reset,
-            vol_reset_threshold: this.form.vol_reset_threshold
-          };
-          const needExtendPending = endDateYyyymmdd && lastDateStr && lastDateStr < endDateYyyymmdd && stepResponse.state && typeof stepResponse.state === 'object';
-          const hasSnapshotsCoveringDate = endDateYyyymmdd && lastDateStr && lastDateStr >= endDateYyyymmdd;
-          try {
-            let dataAsOfDate = null;
-            if (needExtendPending) {
-              const extendPayload = {
-                ...baseData,
-                step_phase: 'continue',
-                step_state: { state: stepResponse.state, remaining_preset_dates: [] },
-                accumulated_snapshots: snapshots.map(s => ({
-                  time: s.time,
-                  total_value: s.total_value,
-                  cash: s.cash,
-                  holdings_value: s.holdings_value,
-                  weights: (s.weights && typeof s.weights === 'object') ? s.weights : {},
-                  is_rebalance_day: s.is_rebalance_day,
-                  rebalance_type: s.rebalance_type,
-                  rebalance_reason: s.rebalance_reason,
-                  portfolio_volatility: s.portfolio_volatility,
-                  monitoring_metrics: s.monitoring_metrics || {}
-                })),
-                accumulated_trades: (stepResponse.trades && Array.isArray(stepResponse.trades)) ? stepResponse.trades.map(t => ({
-                  time: t.time,
-                  thscode: t.thscode,
-                  side: t.side,
-                  quantity: t.quantity,
-                  price: t.price,
-                  commission: t.commission,
-                  slippage_cost: t.slippage_cost
-                })) : []
-              };
-              const extendResult = await this.$store.dispatch('strategy/runBacktest', { modelId: oidKey, data: extendPayload });
-              dataAsOfDate = (extendResult && extendResult.data !== undefined) ? extendResult.data : extendResult;
-            } else if (hasSnapshotsCoveringDate) {
-              const metricsRes = await computeMetricsFromSnapshots(snapshots, endDateYyyymmdd);
-              dataAsOfDate = (metricsRes && metricsRes.data !== undefined) ? metricsRes.data : metricsRes;
-            } else {
-              const runToDatePayload = { ...baseData, step_phase: 'run_to_date', run_to_date: endDateYyyymmdd };
-              const runResult = await this.$store.dispatch('strategy/runBacktest', { modelId: oidKey, data: runToDatePayload });
-              dataAsOfDate = (runResult && runResult.data !== undefined) ? runResult.data : runResult;
-            }
-            if (dataAsOfDate && !dataAsOfDate.phase) {
-              metricsList.push({
-                strategyId: oidKey,
-                strategyName: (entry.strategy && entry.strategy.name) || strategyName,
-                total_return: dataAsOfDate.total_return,
-                annual_return: dataAsOfDate.annual_return,
-                volatility: dataAsOfDate.volatility,
-                max_drawdown: dataAsOfDate.max_drawdown,
-                sharpe_ratio: dataAsOfDate.sharpe_ratio,
-                calmar_ratio: dataAsOfDate.calmar_ratio
-              });
-            } else {
-              const m = stepResponse.current_metrics || {};
-              metricsList.push({
-                strategyId: oidKey,
-                strategyName: (entry.strategy && entry.strategy.name) || strategyName,
-                total_return: m.total_return,
-                annual_return: m.annual_return,
-                volatility: m.volatility,
-                max_drawdown: m.max_drawdown,
-                sharpe_ratio: m.sharpe_ratio,
-                calmar_ratio: m.calmar_ratio
-              });
-            }
-          } catch (err) {
-            console.warn('其他策略截至调仓日指标拉取失败，使用原暂停指标:', oidKey, err);
-            const m = stepResponse.current_metrics || {};
-            metricsList.push({
-              strategyId: oidKey,
-              strategyName: (entry.strategy && entry.strategy.name) || strategyName,
-              total_return: m.total_return,
-              annual_return: m.annual_return,
-              volatility: m.volatility,
-              max_drawdown: m.max_drawdown,
-              sharpe_ratio: m.sharpe_ratio,
-              calmar_ratio: m.calmar_ratio
-            });
-          }
-          continue;
-        }
-        const completedEntry = completedResults[oidKey] || completedResults[strategyName];
-        if (completedEntry && completedEntry.result && !completedEntry.result.phase) {
-          const r = completedEntry.result;
-          const snapshots = (r.snapshots && Array.isArray(r.snapshots)) ? r.snapshots : [];
-          const lastSnap = snapshots.length ? snapshots[snapshots.length - 1] : null;
-          const lastDateStr = lastSnap ? (typeof lastSnap.time === 'string' ? lastSnap.time.replace(/-/g, '').slice(0, 8) : (lastSnap.time && lastSnap.time.toString && lastSnap.time.toString().replace(/-/g, '').slice(0, 8))) : '';
-          const hasState = completedEntry.step_state_at_end && completedEntry.step_state_at_end.state && typeof completedEntry.step_state_at_end.state === 'object';
-          const needExtend = endDateYyyymmdd && lastDateStr && lastDateStr < endDateYyyymmdd && hasState;
-          if (needExtend) {
-            try {
-              const start = (this.form.date_range && this.form.date_range[0]) ? this.form.date_range[0].replace(/-/g, '') : '';
-              const freqMapping = { '每日': 'daily', '每周': 'weekly', '每月': 'monthly', '每季度': 'quarterly', '每年': 'yearly', daily: 'daily', weekly: 'weekly', monthly: 'monthly', quarterly: 'quarterly', yearly: 'yearly' };
-              const rebalanceFreq = freqMapping[this.form.rebalance_freq] || this.form.rebalance_freq || 'monthly';
-              const baseData = {
-                start_date: start,
-                end_date: endDateYyyymmdd,
-                initial_cash: this.form.initial_cash,
-                rebalance_freq: rebalanceFreq,
-                commission_rate: this.form.commission_rate,
-                slippage: this.form.slippage,
-                lookback_days: 252,
-                enable_vol_reset: this.form.enable_vol_reset,
-                vol_reset_threshold: this.form.vol_reset_threshold
-              };
-              const extendPayload = {
-                ...baseData,
-                step_phase: 'continue',
-                step_state: completedEntry.step_state_at_end,
-                accumulated_snapshots: snapshots.map(s => ({
-                  time: s.time,
-                  total_value: s.total_value,
-                  cash: s.cash,
-                  holdings_value: s.holdings_value,
-                  weights: (s.weights && typeof s.weights === 'object') ? s.weights : {},
-                  is_rebalance_day: s.is_rebalance_day,
-                  rebalance_type: s.rebalance_type,
-                  rebalance_reason: s.rebalance_reason,
-                  portfolio_volatility: s.portfolio_volatility,
-                  monitoring_metrics: s.monitoring_metrics || {}
-                })),
-                accumulated_trades: (r.trades && Array.isArray(r.trades)) ? r.trades.map(t => ({
-                  time: t.time,
-                  thscode: t.thscode,
-                  side: t.side,
-                  quantity: t.quantity,
-                  price: t.price,
-                  commission: t.commission,
-                  slippage_cost: t.slippage_cost
-                })) : []
-              };
-              const extendResult = await this.$store.dispatch('strategy/runBacktest', { modelId: oidKey, data: extendPayload });
-              const extendData = (extendResult && extendResult.data !== undefined) ? extendResult.data : extendResult;
-              if (extendData && !extendData.phase) {
-                metricsList.push({
-                  strategyId: oidKey,
-                  strategyName: (completedEntry.strategy && completedEntry.strategy.name) || strategyName,
-                  total_return: extendData.total_return,
-                  annual_return: extendData.annual_return,
-                  volatility: extendData.volatility,
-                  max_drawdown: extendData.max_drawdown,
-                  sharpe_ratio: extendData.sharpe_ratio,
-                  calmar_ratio: extendData.calmar_ratio
-                });
-              } else {
-                metricsList.push({
-                  strategyId: oidKey,
-                  strategyName: (completedEntry.strategy && completedEntry.strategy.name) || strategyName,
-                  total_return: r.total_return,
-                  annual_return: r.annual_return,
-                  volatility: r.volatility,
-                  max_drawdown: r.max_drawdown,
-                  sharpe_ratio: r.sharpe_ratio,
-                  calmar_ratio: r.calmar_ratio
-                });
-              }
-            } catch (err) {
-              console.warn('延续已完成策略至对比日失败，使用原结果指标:', oidKey, err);
-              metricsList.push({
-                strategyId: oidKey,
-                strategyName: (completedEntry.strategy && completedEntry.strategy.name) || strategyName,
-                total_return: r.total_return,
-                annual_return: r.annual_return,
-                volatility: r.volatility,
-                max_drawdown: r.max_drawdown,
-                sharpe_ratio: r.sharpe_ratio,
-                calmar_ratio: r.calmar_ratio
-              });
-            }
-            continue;
-          }
-          if (endDateYyyymmdd && lastDateStr && lastDateStr > endDateYyyymmdd) {
-            try {
-              const isManual = completedEntry.strategy && ((completedEntry.strategy.template_code || '').toString().toLowerCase().includes('manual'));
-              if (isManual && snapshots.length > 0) {
-                const metricsRes = await computeMetricsFromSnapshots(snapshots, endDateYyyymmdd);
-                const dataAsOf = (metricsRes && metricsRes.data !== undefined) ? metricsRes.data : metricsRes;
-                if (dataAsOf && typeof dataAsOf === 'object') {
-                  metricsList.push({
-                    strategyId: oidKey,
-                    strategyName: (completedEntry.strategy && completedEntry.strategy.name) || strategyName,
-                    total_return: dataAsOf.total_return,
-                    annual_return: dataAsOf.annual_return,
-                    volatility: dataAsOf.volatility,
-                    max_drawdown: dataAsOf.max_drawdown,
-                    sharpe_ratio: dataAsOf.sharpe_ratio,
-                    calmar_ratio: dataAsOf.calmar_ratio
-                  });
-                  continue;
-                }
-              }
-              const start = (this.form.date_range && this.form.date_range[0]) ? this.form.date_range[0].replace(/-/g, '') : '';
-              const freqMapping = { '每日': 'daily', '每周': 'weekly', '每月': 'monthly', '每季度': 'quarterly', '每年': 'yearly', daily: 'daily', weekly: 'weekly', monthly: 'monthly', quarterly: 'quarterly', yearly: 'yearly' };
-              const rebalanceFreq = freqMapping[this.form.rebalance_freq] || this.form.rebalance_freq || 'monthly';
-              const baseData = {
-                start_date: start,
-                end_date: endDateYyyymmdd,
-                initial_cash: this.form.initial_cash,
-                rebalance_freq: rebalanceFreq,
-                commission_rate: this.form.commission_rate,
-                slippage: this.form.slippage,
-                lookback_days: 252,
-                enable_vol_reset: this.form.enable_vol_reset,
-                vol_reset_threshold: this.form.vol_reset_threshold
-              };
-              const runPayload = { ...baseData };
-              if (isManual) {
-                runPayload.step_phase = 'run_to_date';
-                runPayload.run_to_date = endDateYyyymmdd;
-              }
-              if (strategy.enable_momentum_selection) {
-                runPayload.enable_momentum_selection = true;
-                runPayload.asset_selection_count = strategy.asset_selection_count || 8;
-                const sp = this.form.multiStrategySelectionParams && this.form.multiStrategySelectionParams[oid];
-                if (sp) {
-                  runPayload.selector_type = sp.selector_type;
-                  runPayload.min_history_days = sp.min_history_days;
-                  runPayload.momentum_windows = sp.momentum_windows;
-                  runPayload.tie_break_window = sp.tie_break_window;
-                } else {
-                  runPayload.selector_type = strategy.selector_type || 'momentum';
-                  runPayload.min_history_days = strategy.min_history_days || 260;
-                  runPayload.momentum_windows = strategy.momentum_windows || '22,65,260';
-                  runPayload.tie_break_window = strategy.tie_break_window || 22;
-                }
-              }
-              const runResult = await this.$store.dispatch('strategy/runBacktest', { modelId: oidKey, data: runPayload });
-              const dataAsOf = (runResult && runResult.data !== undefined) ? runResult.data : runResult;
-              if (dataAsOf && !dataAsOf.phase) {
-                metricsList.push({
-                  strategyId: oidKey,
-                  strategyName: (completedEntry.strategy && completedEntry.strategy.name) || strategyName,
-                  total_return: dataAsOf.total_return,
-                  annual_return: dataAsOf.annual_return,
-                  volatility: dataAsOf.volatility,
-                  max_drawdown: dataAsOf.max_drawdown,
-                  sharpe_ratio: dataAsOf.sharpe_ratio,
-                  calmar_ratio: dataAsOf.calmar_ratio
-                });
-              } else {
-                metricsList.push({
-                  strategyId: oidKey,
-                  strategyName: (completedEntry.strategy && completedEntry.strategy.name) || strategyName,
-                  total_return: r.total_return,
-                  annual_return: r.annual_return,
-                  volatility: r.volatility,
-                  max_drawdown: r.max_drawdown,
-                  sharpe_ratio: r.sharpe_ratio,
-                  calmar_ratio: r.calmar_ratio
-                });
-              }
-            } catch (e) {
-              console.warn('按当前调仓日重算已完成策略绩效失败，使用原指标:', oidKey, e);
-              metricsList.push({
-                strategyId: oidKey,
-                strategyName: (completedEntry.strategy && completedEntry.strategy.name) || strategyName,
-                total_return: r.total_return,
-                annual_return: r.annual_return,
-                volatility: r.volatility,
-                max_drawdown: r.max_drawdown,
-                sharpe_ratio: r.sharpe_ratio,
-                calmar_ratio: r.calmar_ratio
-              });
-            }
-            continue;
-          }
-          metricsList.push({
-            strategyId: oidKey,
-            strategyName: (completedEntry.strategy && completedEntry.strategy.name) || strategyName,
-            total_return: r.total_return,
-            annual_return: r.annual_return,
-            volatility: r.volatility,
-            max_drawdown: r.max_drawdown,
-            sharpe_ratio: r.sharpe_ratio,
-            calmar_ratio: r.calmar_ratio
-          });
-          continue;
-        }
-        const start = (this.form.date_range && this.form.date_range[0]) ? this.form.date_range[0].replace(/-/g, '') : '';
-        const freqMapping = { '每日': 'daily', '每周': 'weekly', '每月': 'monthly', '每季度': 'quarterly', '每年': 'yearly', daily: 'daily', weekly: 'weekly', monthly: 'monthly', quarterly: 'quarterly', yearly: 'yearly' };
-        const rebalanceFreq = freqMapping[this.form.rebalance_freq] || this.form.rebalance_freq || 'monthly';
-        const baseData = {
-          start_date: start,
-          end_date: endDateYyyymmdd,
-          initial_cash: this.form.initial_cash,
-          rebalance_freq: rebalanceFreq,
-          commission_rate: this.form.commission_rate,
-          slippage: this.form.slippage,
-          lookback_days: 252,
-          enable_vol_reset: this.form.enable_vol_reset,
-          vol_reset_threshold: this.form.vol_reset_threshold
-        };
-        if (this.form.run_max_leverage != null && this.form.run_max_leverage !== '' && !Number.isNaN(Number(this.form.run_max_leverage))) {
-          const lev = Number(this.form.run_max_leverage);
-          if (lev >= 1) baseData.max_leverage = lev;
-        }
-        const backtestData = { ...baseData };
-        if (strategy.enable_momentum_selection) {
-          backtestData.enable_momentum_selection = true;
-          backtestData.asset_selection_count = strategy.asset_selection_count || 8;
-          const sp = this.form.multiStrategySelectionParams && this.form.multiStrategySelectionParams[oid];
-          if (sp) {
-            backtestData.selector_type = sp.selector_type;
-            backtestData.min_history_days = sp.min_history_days;
-            backtestData.momentum_windows = sp.momentum_windows;
-            backtestData.tie_break_window = sp.tie_break_window;
-          } else {
-            backtestData.selector_type = strategy.selector_type || 'momentum';
-            backtestData.min_history_days = strategy.min_history_days || 260;
-            backtestData.momentum_windows = strategy.momentum_windows || '22,65,260';
-            backtestData.tie_break_window = strategy.tie_break_window || 22;
-          }
-        }
-        try {
-          const result = await this.$store.dispatch('strategy/runBacktest', { modelId: oid, data: backtestData });
-          const data = (result && result.data !== undefined) ? result.data : result;
-          if (data && !data.phase) {
-            metricsList.push({
-              strategyId: oid,
-              strategyName: strategy.name || oid,
-              total_return: data.total_return,
-              annual_return: data.annual_return,
-              volatility: data.volatility,
-              max_drawdown: data.max_drawdown,
-              sharpe_ratio: data.sharpe_ratio,
-              calmar_ratio: data.calmar_ratio
-            });
-          }
-        } catch (e) {
-          console.warn('其他策略截至日指标拉取失败:', oid, e);
-        }
-      }
-      if (String(this.presetStepDialog.strategyId) === currentKey && this.presetStepDialog.visible) {
-        this.presetStepDialog.otherStrategiesMetrics = metricsList;
-      }
-      this.presetStepDialog.loading = false;
-    },
-    /** 从 multiManualPending 中选出 next_preset_date 最小的一个（按时间线顺序步进） */
-    pickNextMultiManualStep() {
-      const pending = this.multiManualPending;
-      if (!pending || Object.keys(pending).length === 0) return null;
-      let minDate = null;
-      let chosenId = null;
-      for (const [id, entry] of Object.entries(pending)) {
-        const d = entry.stepResponse && entry.stepResponse.next_preset_date;
-        if (!d) continue;
-        const ds = String(d);
-        if (minDate == null || ds < minDate) {
-          minDate = ds;
-          chosenId = id;
-        }
-      }
-      if (chosenId == null) return null;
-      return pending[chosenId];
-    },
-    /** 用指定 entry 填充并打开预设调仓日步进对话框（多主观策略按时间线顺序） */
-    openPresetStepDialogForEntry(entry) {
-      const d = this.presetStepDialog;
-      d.strategyId = entry.strategyId;
-      d.strategy = entry.strategy;
-      d.backtestData = { ...entry.backtestData };
-      d.stepResponse = entry.stepResponse;
-      const adjustmentsList = (this.form.multiStrategyManualAdjustments && this.form.multiStrategyManualAdjustments[entry.strategyId]) || [];
-      const presetForDate = adjustmentsList.find(adj => (adj.date || '').replace(/-/g, '').slice(0, 8) === (entry.stepResponse.next_preset_date || ''));
-      const codes = (entry.strategy.asset_codes || []);
-      const hasPreset = presetForDate && presetForDate.weights && Object.keys(presetForDate.weights).length > 0;
-      if (hasPreset) {
-        d.customWeights = codes.reduce((o, c) => ({ ...o, [c]: Number(presetForDate.weights[c]) || 0 }), {});
-      } else {
-        d.customWeights = codes.reduce((o, c) => ({ ...o, [c]: 0 }), {});
-        if (codes.length) d.customWeights[codes[0]] = 1;
-      }
-      d.autoNormalize = presetForDate ? presetForDate.auto_normalize === true : false;
-      // 主观策略步进：统一按预设权重调仓，不展示选项
-      d.decision = hasPreset ? 'use_preset' : 'custom';
-      d.otherStrategiesMetrics = [];
-      d.visible = true;
-      d.loading = !!entry.stepResponse.next_preset_date;
-      if (entry.stepResponse.next_preset_date) {
-        this.fetchOtherStrategiesMetricsForStep(entry.strategyId, entry.stepResponse.next_preset_date);
-      } else {
-        d.loading = false;
-      }
-    },
-    async confirmPresetStepAndContinue() {
-      const d = this.presetStepDialog;
-      if (!d.stepResponse || !d.backtestData) return;
-      // 主观策略步进：统一按预设权重调仓（有预设用 use_preset，无则用 custom+默认权重）
-      const effectiveDecision = this.hasPresetWeightsForCurrentDate ? 'use_preset' : 'custom';
-      if (effectiveDecision === 'custom') {
-        const sum = this.presetStepCustomSum;
-        if (sum === null || sum <= 0) {
-          this.$message.warning('实时输入时权重和须大于 0');
-          return;
-        }
-        const maxLev = this.getEffectiveMaxLeverage(d.strategy);
-        if (sum > maxLev) {
-          this.$message.warning(`总仓位权重不能超过最大杠杆 ${(maxLev * 100).toFixed(0)}%。当前步进调仓权重和 ${(sum * 100).toFixed(2)}%`);
-          return;
-        }
-      }
-      d.loading = true;
-      try {
-        const payload = { ...d.backtestData };
-        payload.step_phase = 'continue';
-        payload.step_state = {
-          state: d.stepResponse.state,
-          remaining_preset_dates: d.stepResponse.remaining_preset_dates || []
-        };
-        payload.preset_date_decision = {
-          date: d.stepResponse.next_preset_date,
-          action: effectiveDecision,
-          auto_normalize: d.autoNormalize === true
-        };
-        if (effectiveDecision === 'custom') {
-          payload.preset_date_decision.weights = { ...d.customWeights };
-        } else if (effectiveDecision === 'use_preset') {
-          const adjList = this.form.backtest_mode === 'multi' && d.strategyId
-            ? (this.form.multiStrategyManualAdjustments && this.form.multiStrategyManualAdjustments[d.strategyId]) || []
-            : (this.form.manual_weight_adjustments || []);
-          const preset = adjList.find(adj => (adj.date || '').replace(/-/g, '').slice(0, 8) === d.stepResponse.next_preset_date);
-          if (preset && preset.weights && Object.keys(preset.weights).length > 0) {
-            payload.preset_date_decision.weights = { ...preset.weights };
-          }
-        }
-        payload.accumulated_snapshots = d.stepResponse.snapshots || [];
-        payload.accumulated_trades = d.stepResponse.trades || [];
-        const result = await this.$store.dispatch('strategy/runBacktest', {
-          modelId: d.strategyId,
-          data: payload
-        });
-        const resultData = (result && result.data !== undefined) ? result.data : result;
-        if (resultData.phase === 'paused') {
-          if (this.form.backtest_mode === 'multi' && this.multiManualPending && this.multiManualPending[d.strategyId] !== undefined) {
-            const nextBacktestData = { ...payload };
-            nextBacktestData.step_state = { state: resultData.state, remaining_preset_dates: resultData.remaining_preset_dates || [] };
-            nextBacktestData.accumulated_snapshots = resultData.snapshots || [];
-            nextBacktestData.accumulated_trades = resultData.trades || [];
-            delete nextBacktestData.preset_date_decision;
-            this.$set(this.multiManualPending, d.strategyId, {
-              strategy: d.strategy,
-              strategyId: d.strategyId,
-              backtestData: nextBacktestData,
-              stepResponse: resultData
-            });
-            const nextEntry = this.pickNextMultiManualStep();
-            if (nextEntry) {
-              this.openPresetStepDialogForEntry(nextEntry);
-            }
-            this.$message.success('已继续至下一调仓日');
-          } else {
-            d.stepResponse = resultData;
-            const codes = (d.strategy && d.strategy.asset_codes) || [];
-            const adjListNext = this.form.backtest_mode === 'multi' && d.strategyId
-              ? (this.form.multiStrategyManualAdjustments && this.form.multiStrategyManualAdjustments[d.strategyId]) || []
-              : (this.form.manual_weight_adjustments || []);
-            const presetForNext = adjListNext.find(adj => (adj.date || '').replace(/-/g, '').slice(0, 8) === (resultData.next_preset_date || ''));
-            d.decision = (presetForNext && presetForNext.weights && Object.keys(presetForNext.weights).length > 0) ? 'use_preset' : 'custom';
-            if (presetForNext && presetForNext.weights && Object.keys(presetForNext.weights).length > 0) {
-              d.customWeights = codes.reduce((o, c) => ({ ...o, [c]: Number(presetForNext.weights[c]) || 0 }), {});
-            } else {
-              d.customWeights = codes.reduce((o, c) => ({ ...o, [c]: 0 }), {});
-              if (codes.length) d.customWeights[codes[0]] = 1;
-            }
-            d.autoNormalize = presetForNext ? presetForNext.auto_normalize === true : false;
-            d.otherStrategiesMetrics = [];
-            if (this.form.backtest_mode === 'multi' && resultData.next_preset_date) {
-              d.loading = true;
-              this.fetchOtherStrategiesMetricsForStep(d.strategyId, resultData.next_preset_date);
-            }
-            this.$message.success('已继续至下一调仓日');
-          }
-        } else {
-          let resultToStore = resultData;
-          const backtestEndDate = (this.form.date_range && this.form.date_range[1]) ? this.form.date_range[1].replace(/-/g, '') : '';
-          const snapshots = (resultData.snapshots && Array.isArray(resultData.snapshots)) ? resultData.snapshots : [];
-          const lastSnap = snapshots.length ? snapshots[snapshots.length - 1] : null;
-          const lastDateStr = lastSnap ? (typeof lastSnap.time === 'string' ? lastSnap.time.replace(/-/g, '').slice(0, 8) : (lastSnap.time && lastSnap.time.toString && lastSnap.time.toString().replace(/-/g, '').slice(0, 8))) : '';
-          const hasState = resultData.step_state_at_end && resultData.step_state_at_end.state && typeof resultData.step_state_at_end.state === 'object';
-          if (backtestEndDate && lastDateStr && lastDateStr < backtestEndDate && hasState) {
-            try {
-              const start = (this.form.date_range && this.form.date_range[0]) ? this.form.date_range[0].replace(/-/g, '') : '';
-              const freqMapping = { '每日': 'daily', '每周': 'weekly', '每月': 'monthly', '每季度': 'quarterly', '每年': 'yearly', daily: 'daily', weekly: 'weekly', monthly: 'monthly', quarterly: 'quarterly', yearly: 'yearly' };
-              const rebalanceFreq = freqMapping[this.form.rebalance_freq] || this.form.rebalance_freq || 'monthly';
-              const extendPayload = {
-                start_date: start,
-                end_date: backtestEndDate,
-                initial_cash: this.form.initial_cash,
-                rebalance_freq: rebalanceFreq,
-                commission_rate: this.form.commission_rate,
-                slippage: this.form.slippage,
-                lookback_days: 252,
-                enable_vol_reset: this.form.enable_vol_reset,
-                vol_reset_threshold: this.form.vol_reset_threshold,
-                step_phase: 'continue',
-                step_state: resultData.step_state_at_end,
-                accumulated_snapshots: snapshots.map(s => ({
-                  time: s.time,
-                  total_value: s.total_value,
-                  cash: s.cash,
-                  holdings_value: s.holdings_value,
-                  weights: (s.weights && typeof s.weights === 'object') ? s.weights : {},
-                  is_rebalance_day: s.is_rebalance_day,
-                  rebalance_type: s.rebalance_type,
-                  rebalance_reason: s.rebalance_reason,
-                  portfolio_volatility: s.portfolio_volatility,
-                  monitoring_metrics: s.monitoring_metrics || {}
-                })),
-                accumulated_trades: (resultData.trades && Array.isArray(resultData.trades)) ? resultData.trades.map(t => ({
-                  time: t.time,
-                  thscode: t.thscode,
-                  side: t.side,
-                  quantity: t.quantity,
-                  price: t.price,
-                  commission: t.commission,
-                  slippage_cost: t.slippage_cost
-                })) : []
-              };
-              const extendRes = await this.$store.dispatch('strategy/runBacktest', { modelId: d.strategyId, data: extendPayload });
-              const extended = (extendRes && extendRes.data !== undefined) ? extendRes.data : extendRes;
-              if (extended && !extended.phase) {
-                resultToStore = { ...extended, record_id: resultData.record_id != null ? resultData.record_id : extended.record_id, remark: resultData.remark != null ? resultData.remark : (extended.remark || '') };
-              }
-            } catch (err) {
-              console.warn('主观策略完成后延续至回测期末失败，使用最后调仓日结果:', d.strategyId, err);
-            }
-          }
-          let recordId = resultData.record_id != null ? String(resultData.record_id) : (resultToStore && resultToStore.record_id != null ? String(resultToStore.record_id) : null);
-          if (!recordId && d.strategyId) {
-            try {
-              const history = await this.$store.dispatch('strategy/fetchBacktestHistory', { modelId: d.strategyId, skip: 0, limit: 5 });
-              const list = Array.isArray(history) ? history : (history && history.data) ? history.data : [];
-              const latest = list[0];
-              if (latest && (latest.id || latest._id)) {
-                recordId = String(latest.id || latest._id);
-                if (resultToStore && typeof resultToStore === 'object') resultToStore.record_id = recordId;
-                console.log('[BacktestRecord] 主观策略步进完成 通过查询历史记录关联 record_id=', recordId);
-              }
-            } catch (e) {
-              console.warn('[BacktestRecord] 主观策略步进完成 查询历史记录失败', e);
-            }
-          }
-          const entry = {
-            result: resultToStore,
-            strategy: d.strategy,
-            remark: (resultToStore && resultToStore.remark != null) ? resultToStore.remark : (resultData.remark != null ? resultData.remark : ''),
-            record_id: recordId,
-            step_state_at_end: resultData.step_state_at_end || null
-          };
-          if (this.form.backtest_mode === 'multi' && this.multiManualPending && this.multiManualPending[d.strategyId] !== undefined) {
-            this.$delete(this.multiManualPending, d.strategyId);
-            const manualResultKey = d.strategyId;
-            if (this.backtestResults && typeof this.backtestResults === 'object') {
-              this.backtestResults = { ...this.backtestResults, [manualResultKey]: entry };
-            } else {
-              this.backtestResults = { [manualResultKey]: entry };
-            }
-            const snapCount = (entry.result && entry.result.snapshots && Array.isArray(entry.result.snapshots)) ? entry.result.snapshots.length : 0;
-            console.log('[多策略] 主观策略步进完成 已合并 key=', manualResultKey, 'strategyName=', d.strategy && d.strategy.name, 'snapshots=', snapCount, '当前总策略数=', Object.keys(this.backtestResults).length);
-            const nextEntry = this.pickNextMultiManualStep();
-            if (nextEntry) {
-              this.openPresetStepDialogForEntry(nextEntry);
-              this.$message.success(`「${d.strategy.name}」回测完成，请继续设置下一策略`);
-            } else {
-              this.presetStepDialog.visible = false;
-              this.presetStepDialog.stepResponse = null;
-              this.presetStepDialog.strategyId = null;
-              this.presetStepDialog.strategy = null;
-              this.presetStepDialog.backtestData = null;
-              this.multiManualPending = {};
-              this.$message.success('回测完成');
-              this.$nextTick(() => {
-                const el = document.querySelector('.backtest-result');
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              });
-            }
-          } else {
-            this.backtestModelId = d.strategyId;
-            if (this.form.backtest_mode === 'multi' && this.backtestResults && typeof this.backtestResults === 'object') {
-              this.backtestResults = { ...this.backtestResults, [d.strategyId]: entry };
-            } else {
-              this.backtestResults = { [d.strategyId]: entry };
-            }
-            console.log('[多策略] 主观策略步进完成(单策略或最后一策略) key=', d.strategyId, 'strategyName=', d.strategy && d.strategy.name);
-            this.$message.success('回测完成');
-            this.presetStepDialog.visible = false;
-            this.presetStepDialog.stepResponse = null;
-            this.presetStepDialog.strategyId = null;
-            this.presetStepDialog.strategy = null;
-            this.presetStepDialog.backtestData = null;
-            this.$nextTick(() => {
-              const el = document.querySelector('.backtest-result');
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            });
-          }
-        }
-      } catch (error) {
-        this.$message.error('继续回测失败：' + (error.response?.data?.detail || error.message));
-      } finally {
-        d.loading = false;
-      }
-    },
     /** 从策略模型的 parameters 中取 enable_vol_reset / vol_reset_threshold 作为回测表单默认值 */
     applyVolResetDefaultsFromStrategy(strategy) {
       if (!strategy || !strategy.parameters) return;
@@ -2652,20 +1317,9 @@ export default {
         }
       }
     },
-    // 初始化单策略的选择器参数
+    // 初始化单策略的权重上限（maxWeightDict）
     initSelectionParams(strategy) {
       if (!strategy) return;
-      // 兼容处理：将旧的选择器类型映射为 momentum（后端只支持 momentum）
-      const selectorType = strategy.selector_type || 'momentum';
-      this.form.selector_type = (selectorType === 'reversal' || selectorType === 'momentum_reversal') ? 'momentum' : selectorType;
-      // 默认选择资产数量为资产池大小（或策略配置值）
-      const poolSize = strategy.asset_codes?.length || 8;
-      this.form.asset_selection_count = Math.min(strategy.asset_selection_count || poolSize, poolSize);
-      this.form.min_history_days = strategy.min_history_days || 260;
-      this.form.momentum_windows = strategy.momentum_windows || '22,65,260';
-      this.form.tie_break_window = strategy.tie_break_window || 22;
-      // 清空手动选择的资产
-      this.form.selected_asset_codes = [];
       // 仅动量/量化策略拉取指数编制规则权重上限；主观策略不限制
       const code = (strategy.template_code || '').toString();
       const isManual = code === 'manual_allocation' || code === 'manual_allocation_strategy'
@@ -2681,34 +1335,7 @@ export default {
         this.maxWeightDict = {};
       }
     },
-    // 判断资产是否被选中
-    isAssetSelected(code) {
-      return this.form.selected_asset_codes.includes(code);
-    },
-    // 切换资产选中状态
-    toggleAssetSelection(code) {
-      const idx = this.form.selected_asset_codes.indexOf(code);
-      const maxCount = Number(this.form.asset_selection_count) || 1;
-      
-      if (idx >= 0) {
-        // 已选中，取消选中
-        this.form.selected_asset_codes.splice(idx, 1);
-      } else {
-        // 未选中
-        if (this.form.selected_asset_codes.length >= maxCount) {
-          this.$message.warning(`最多只能选择 ${maxCount} 个资产`);
-          return;
-        }
-        this.form.selected_asset_codes.push(code);
-      }
-    },
-    // 当「选择资产数量」变化时，清空已选资产（若已选数量超过新数量）
-    onAssetSelectionCountChange(newCount) {
-      if (this.form.selected_asset_codes.length > newCount) {
-        this.form.selected_asset_codes = this.form.selected_asset_codes.slice(0, newCount);
-        this.$message.info(`已自动调整为前 ${newCount} 个资产`);
-      }
-    },
+    // ========== 多策略模式的资产选择方法（已移除，选择器参数由策略模型配置） ==========
     // ========== 多策略模式的资产选择方法 ==========
     // 获取指定策略的资产池（多策略模式）
     getStrategyAssetPool(strategyId) {
@@ -2726,129 +1353,10 @@ export default {
       const strategy = this.strategyList.find(s => s.id === strategyId);
       return strategy?.asset_codes?.length || 100;
     },
-    // 判断多策略模式下指定资产是否被选中
-    isMultiStrategyAssetSelected(strategyId, code) {
-      const params = this.form.multiStrategySelectionParams[strategyId];
-      if (!params || !params.selected_asset_codes) {
-        return false;
-      }
-      return params.selected_asset_codes.includes(code);
-    },
-    // 切换多策略模式下指定资产的选中状态
-    toggleMultiStrategyAssetSelection(strategyId, code) {
-      if (!this.form.multiStrategySelectionParams[strategyId]) {
-        this.$set(this.form.multiStrategySelectionParams, strategyId, {
-          selected_asset_codes: []
-        });
-      }
-      const params = this.form.multiStrategySelectionParams[strategyId];
-      if (!params.selected_asset_codes) {
-        this.$set(params, 'selected_asset_codes', []);
-      }
-      
-      const idx = params.selected_asset_codes.indexOf(code);
-      const maxCount = Number(params.asset_selection_count) || 1;
-      
-      if (idx >= 0) {
-        // 已选中，取消选中
-        params.selected_asset_codes.splice(idx, 1);
-      } else {
-        // 未选中
-        if (params.selected_asset_codes.length >= maxCount) {
-          this.$message.warning(`最多只能选择 ${maxCount} 个资产`);
-          return;
-        }
-        params.selected_asset_codes.push(code);
-      }
-    },
-    // 多策略模式下「选择资产数量」变化时的处理
-    onMultiStrategyAssetSelectionCountChange(strategyId) {
-      const params = this.form.multiStrategySelectionParams[strategyId];
-      if (!params || !params.selected_asset_codes) {
-        return;
-      }
-      const newCount = Number(params.asset_selection_count) || 0;
-      if (params.selected_asset_codes.length > newCount) {
-        params.selected_asset_codes = params.selected_asset_codes.slice(0, newCount);
-        this.$message.info(`已自动调整为前 ${newCount} 个资产`);
-      }
-    },
-    // 获取多策略模式下指定策略的已选资产数量
-    getMultiStrategySelectedAssetCount(strategyId) {
-      const params = this.form.multiStrategySelectionParams[strategyId];
-      return params?.selected_asset_codes?.length || 0;
-    },
-    // 多策略模式下指定策略的已选资产数量是否匹配
-    getMultiStrategySelectedAssetCountMatch(strategyId) {
-      const params = this.form.multiStrategySelectionParams[strategyId];
-      if (!params) return false;
-      const selectedCount = params.selected_asset_codes?.length || 0;
-      const expectedCount = Number(params.asset_selection_count) || 0;
-      return selectedCount === expectedCount;
-    },
-    // 初始化多策略的选择器参数
-    async initMultiStrategySelectionParams() {
-      if (!this.form.multiStrategySelectionParams) {
-        this.$set(this.form, 'multiStrategySelectionParams', {});
-      }
-      
+    // ========== 多策略模式的资产选择方法（已移除，选择器参数由策略模型配置） ==========
+    // 清理已取消选择的策略的多策略参数（调仓日/权重）
+    cleanupDeselectedStrategies() {
       const selectedStrategies = this.selectedStrategies;
-      
-      // 为每个策略初始化选择器参数
-      for (const strategy of selectedStrategies) {
-        if (strategy.enable_momentum_selection) {
-          // 如果策略信息不完整，尝试获取完整信息
-          let fullStrategy = strategy;
-          if (!strategy.selector_type && !strategy.asset_selection_count) {
-            try {
-              fullStrategy = await this.$store.dispatch('strategy/fetchStrategyModel', strategy.id);
-            } catch (error) {
-              console.error(`获取策略 ${strategy.id} 详情失败:`, error);
-              // 使用列表中的信息
-            }
-          }
-          
-          // 初始化或更新该策略的选择器参数
-          if (!this.form.multiStrategySelectionParams[strategy.id]) {
-            // 兼容处理：将旧的选择器类型映射为 momentum（后端只支持 momentum）
-            const selectorType = fullStrategy.selector_type || 'momentum';
-            const normalizedSelectorType = (selectorType === 'reversal' || selectorType === 'momentum_reversal') ? 'momentum' : selectorType;
-            this.$set(this.form.multiStrategySelectionParams, strategy.id, {
-              selector_type: normalizedSelectorType,
-              asset_selection_count: Math.min(fullStrategy.asset_selection_count || 8, fullStrategy.asset_codes?.length || 8),
-              min_history_days: fullStrategy.min_history_days || 260,
-              momentum_windows: fullStrategy.momentum_windows || '22,65,260',
-              tie_break_window: fullStrategy.tie_break_window || 22,
-              selected_asset_codes: [] // 手动选择的资产代码列表
-            });
-          } else {
-            // 如果参数已存在但可能不完整，更新缺失的字段
-            const params = this.form.multiStrategySelectionParams[strategy.id];
-            if (!params.selector_type) {
-              // 兼容处理：将旧的选择器类型映射为 momentum（后端只支持 momentum）
-              const selectorType = fullStrategy.selector_type || 'momentum';
-              params.selector_type = (selectorType === 'reversal' || selectorType === 'momentum_reversal') ? 'momentum' : selectorType;
-            }
-            if (!params.asset_selection_count) {
-              params.asset_selection_count = Math.min(fullStrategy.asset_selection_count || 8, fullStrategy.asset_codes?.length || 8);
-            }
-            if (!params.min_history_days) params.min_history_days = fullStrategy.min_history_days || 260;
-            if (!params.momentum_windows) params.momentum_windows = fullStrategy.momentum_windows || '22,65,260';
-            if (!params.tie_break_window) params.tie_break_window = fullStrategy.tie_break_window || 22;
-            // 确保 selected_asset_codes 存在
-            if (!params.selected_asset_codes) {
-              this.$set(params, 'selected_asset_codes', []);
-            }
-          }
-        }
-      }
-      
-      // 清理已取消选择的策略的参数
-      Object.keys(this.form.multiStrategySelectionParams || {}).forEach(strategyId => {
-        if (!selectedStrategies.find(s => s.id === strategyId)) {
-          this.$delete(this.form.multiStrategySelectionParams, strategyId);
-        }
-      });
       Object.keys(this.form.multiStrategyManualAdjustments || {}).forEach(strategyId => {
         if (!selectedStrategies.find(s => s.id === strategyId)) {
           this.$delete(this.form.multiStrategyManualAdjustments, strategyId);
@@ -2869,11 +1377,6 @@ export default {
           this.$message.warning('请选择策略');
           return resolve(false);
         }
-        const nCash = Number(f.initial_cash);
-        if (f.initial_cash === undefined || f.initial_cash === null || f.initial_cash === '' || !Number.isFinite(nCash) || nCash < 100000) {
-          this.$message.warning('请输入初始资金（至少10万元）');
-          return resolve(false);
-        }
         if (!f.date_range || !Array.isArray(f.date_range) || f.date_range.length !== 2 || !f.date_range[0] || !f.date_range[1]) {
           this.$message.warning('请选择完整的回测时间范围');
           return resolve(false);
@@ -2889,7 +1392,7 @@ export default {
           return resolve(false);
         }
         if (!f.manual_weight_adjustments || f.manual_weight_adjustments.length === 0) {
-          this.$message.warning('主观策略需至少预设一个调仓日期（权重可留空，到该日再选择）');
+          this.$message.warning('主观策略需至少预设一个调仓日期');
           return resolve(false);
         }
         for (let i = 0; i < f.manual_weight_adjustments.length; i++) {
@@ -2911,13 +1414,8 @@ export default {
           this.$message.warning('多策略对比请至少选择 2 个策略');
           return resolve(false);
         }
-        if (ids.length > 5) {
-          this.$message.warning('多策略对比最多选择 5 个策略');
-          return resolve(false);
-        }
-        const nCash = Number(f.initial_cash);
-        if (f.initial_cash === undefined || f.initial_cash === null || f.initial_cash === '' || !Number.isFinite(nCash) || nCash < 100000) {
-          this.$message.warning('请输入初始资金（至少10万元）');
+        if (ids.length > 10) {
+          this.$message.warning('多策略对比最多选择 10 个策略');
           return resolve(false);
         }
         if (!f.date_range || !Array.isArray(f.date_range) || f.date_range.length !== 2 || !f.date_range[0] || !f.date_range[1]) {
@@ -2985,8 +1483,8 @@ export default {
             this.$message.warning('多策略对比模式需要选择至少2个策略');
             return;
           }
-          if (strategyIds.length > 5) {
-            this.$message.warning('多策略对比最多选择5个策略');
+          if (strategyIds.length > 10) {
+            this.$message.warning('多策略对比最多选择10个策略');
             return;
           }
         } else {
@@ -2998,7 +1496,7 @@ export default {
           }
           
           if (strategyIds.length === 0) {
-            this.$message.warning('请选择一个策略');
+            this.$message.warning('请选择一个策略或组合');
             return;
           }
         }
@@ -3023,7 +1521,7 @@ export default {
             return;
           }
           if (!this.form.manual_weight_adjustments || this.form.manual_weight_adjustments.length === 0) {
-            this.$message.warning('主观策略需至少预设一个调仓日期（权重可留空，到该日再选择）');
+            this.$message.warning('主观策略需至少预设一个调仓日期');
             return;
           }
           for (let i = 0; i < this.form.manual_weight_adjustments.length; i++) {
@@ -3053,7 +1551,7 @@ export default {
           for (const s of manualList) {
             const list = (this.form.multiStrategyManualAdjustments && this.form.multiStrategyManualAdjustments[s.id]) || [];
             if (list.length === 0) {
-              this.$message.warning(`主观策略「${s.name || s.id}」需至少预设一个调仓日期（权重可留空，到该日再选择）`);
+              this.$message.warning(`主观策略「${s.name || s.id}」需至少预设一个调仓日期`);
               return;
             }
             for (let i = 0; i < list.length; i++) {
@@ -3107,19 +1605,85 @@ export default {
           const results = {};
           // 多策略时先跑非主观策略（一次性到结束日），再跑主观策略（可能步进暂停），保证对比结果包含所有策略
           const isMulti = this.form.backtest_mode === 'multi';
+          // 组合ID不参与主观策略分类，始终作为非主观项处理
           const nonManualIds = isMulti ? strategyIds.filter(id => {
+            if (String(id).startsWith('portfolio:')) return true; // 组合视为非主观
             const s = this.strategyList.find(r => r.id === id);
             return s && !this.isStrategyManual(s);
           }) : [];
           const manualIds = isMulti ? strategyIds.filter(id => {
+            if (String(id).startsWith('portfolio:')) return false; // 组合不参与主观分类
             const s = this.strategyList.find(r => r.id === id);
             return s && this.isStrategyManual(s);
           }) : [];
           const runOrder = isMulti ? [...nonManualIds, ...manualIds] : strategyIds;
-          // 多主观策略同步步进：多个主观策略均 start 后按时间线顺序弹窗；暂存本轮回测的 pending
-          const multiManualPending = {};
 
           for (const strategyId of runOrder) {
+            // 组合ID：调用组合回测API
+            if (String(strategyId).startsWith('portfolio:')) {
+              const portfolioId = String(strategyId).replace(/^portfolio:/, '');
+              const portfolio = this.portfolioList.find(p => p.id === portfolioId);
+              try {
+                const { runPortfolioBacktest } = await import('@/api/portfolio');
+                const startDate = this.form.date_range[0].replace(/-/g, '');
+                const endDate = this.form.date_range[1].replace(/-/g, '');
+                const freqMapping = {
+                  '每日': 'daily', '每周': 'weekly', '每月': 'monthly',
+                  '每季度': 'quarterly', '每年': 'yearly',
+                  'daily': 'daily', 'weekly': 'weekly', 'monthly': 'monthly',
+                  'quarterly': 'quarterly', 'yearly': 'yearly'
+                };
+                const res = await runPortfolioBacktest(portfolioId, {
+                  start_date: startDate,
+                  end_date: endDate,
+                  initial_nav: this.form.initial_cash,
+                  rebalance_freq: freqMapping[this.form.rebalance_freq] || this.form.rebalance_freq || 'monthly',
+                  mother_vol_target: this.form.enable_vol_reset ? this.form.vol_reset_threshold : null
+                });
+                const data = res.data || res;
+                // 组合回测结果转换为与策略回测相同的结构
+                const portfolioName = portfolio ? portfolio.name : `组合${portfolioId}`;
+                results[strategyId] = {
+                  result: {
+                    total_return: data.total_return,
+                    annual_return: data.annual_return,
+                    annual_volatility: data.annual_volatility,
+                    // SingleStrategyResult 读的是 volatility 字段（单策略后端 BacktestResultOut 的命名），组合后端返回 annual_volatility，需映射
+                    volatility: data.annual_volatility,
+                    sharpe_ratio: data.sharpe_ratio,
+                    max_drawdown: data.max_drawdown,
+                    calmar_ratio: data.calmar_ratio,
+                    // 携带交易明细与胜率，避免交易次数/胜率为空
+                    trades: data.trades || [],
+                    win_rate: data.win_rate != null ? data.win_rate : null,
+                    // 后端如实上报的数据质量告警与子策略归因
+                    warnings: data.warnings || [],
+                    attribution: data.attribution || null,
+                    snapshots: (data.equity_curve || []).map(pt => ({
+                      time: pt.date,
+                      total_value: pt.value,
+                      // 携带后端已算好的回撤/调仓/穿透权重，避免 SingleStrategyResult 回撤图全为0、持仓图为空
+                      drawdown: pt.drawdown != null ? pt.drawdown : 0,
+                      is_rebalance_day: !!pt.is_rebalance_day,
+                      weights: pt.weights || {}
+                    }))
+                  },
+                  strategy: {
+                    id: strategyId,
+                    name: portfolioName,
+                    template_code: 'PORTFOLIO',
+                    status: '已发布'
+                  },
+                  record_id: data.backtest_record_id || null,
+                  remark: ''
+                };
+              } catch (error) {
+                console.error(`组合 ${portfolioId} 回测失败:`, error);
+                this.$message.error(`组合回测失败：${error.response?.data?.detail || error.message || '未知错误'}`);
+              }
+              continue; // 跳过后续策略回测逻辑
+            }
+
             const strategy = this.strategyList.find(s => s.id === strategyId);
             if (!strategy) continue;
 
@@ -3177,12 +1741,7 @@ export default {
                     date: (adj.date || '').replace(/-/g, '').slice(0, 8),
                     weights: adj.weights && Object.keys(adj.weights).length > 0 ? { ...adj.weights } : undefined,
                     auto_normalize: adj.auto_normalize === true
-                  }));
-                // 仅在勾选了调仓日步进暂停时才以 step 模式启动；否则一次执行到底，不传 step_phase
-                if (this.form.manual_preset_step) {
-                  backtestData.step_phase = 'start';
-                  backtestData.manual_preset_step = true;
-                }
+                  }));  
                 // 多策略主观：优先用本次回测权重初始化（multiStrategyRunManualWeights），无则用首个预设日权重
                 if (this.form.backtest_mode === 'multi') {
                   const runWeights = this.form.multiStrategyRunManualWeights && this.form.multiStrategyRunManualWeights[strategyId];
@@ -3199,33 +1758,10 @@ export default {
                 }
               }
 
-              // 动量选择器参数：单策略且界面显示「动量资产选择器配置」时始终提交表单值，保证与持仓权重资产数一致
-              const strategyHasSelection = strategy.enable_momentum_selection === true;
-              const singleModeWithSelection = this.form.backtest_mode === 'single' && this.hasMomentumSelection;
-              
-              if (singleModeWithSelection || strategyHasSelection) {
-                // 资产数量与具体资产由动量选择器根据策略配置自动决定，不传 selected_asset_codes
+              // 资产选择器：仅标记启用，具体参数由策略模型配置决定（后端从 model_data 读取）
+              if (strategy.enable_momentum_selection === true) {
                 backtestData.enable_momentum_selection = true;
-                backtestData.asset_selection_count = strategy.asset_selection_count || 8;
-                if (this.form.backtest_mode === 'multi') {
-                  const selectionParams = this.form.multiStrategySelectionParams[strategyId];
-                  if (selectionParams) {
-                    backtestData.selector_type = selectionParams.selector_type;
-                    backtestData.min_history_days = selectionParams.min_history_days;
-                    backtestData.momentum_windows = selectionParams.momentum_windows;
-                    backtestData.tie_break_window = selectionParams.tie_break_window;
-                  } else {
-                    backtestData.selector_type = strategy.selector_type || 'momentum';
-                    backtestData.min_history_days = strategy.min_history_days || 260;
-                    backtestData.momentum_windows = strategy.momentum_windows || '22,65,260';
-                    backtestData.tie_break_window = strategy.tie_break_window || 22;
-                  }
-                } else {
-                  backtestData.selector_type = this.form.selector_type;
-                  backtestData.min_history_days = this.form.min_history_days;
-                  backtestData.momentum_windows = this.form.momentum_windows;
-                  backtestData.tie_break_window = this.form.tie_break_window;
-                }
+                backtestData.asset_selection_count = strategy.asset_selection_count || (strategy.asset_codes && strategy.asset_codes.length) || 5;
               }
               
               const result = await this.$store.dispatch('strategy/runBacktest', {
@@ -3252,62 +1788,6 @@ export default {
                   }
                 } catch (e) {
                   console.warn('[BacktestRecord] 查询历史记录失败', e);
-                }
-              }
-
-              // 主观策略步进回测：到预设调仓日暂停，弹出对话框由用户选择 预设权重/实时输入/不调仓（支持单策略与多策略）
-              // 仅当用户勾选了 manual_preset_step 时才进入步进交互，否则视为一次执行到底
-              const manualPaused = this.form.manual_preset_step && resultData && resultData.phase === 'paused' && (
-                (this.form.backtest_mode === 'single' && this.isManualAllocationStrategy) ||
-                (this.form.backtest_mode === 'multi' && this.isStrategyManual(strategy))
-              );
-              if (manualPaused) {
-                if (this.form.backtest_mode === 'multi') {
-                  // 多主观策略同步步进：暂存该策略的步进状态（键统一为字符串，便于与 fetchOtherStrategiesMetricsForStep 一致）
-                  const idKey = String(strategyId);
-                  multiManualPending[idKey] = {
-                    strategy,
-                    strategyId: idKey,
-                    backtestData: { ...backtestData },
-                    stepResponse: resultData
-                  };
-                  continue;
-                }
-                // 单策略：先展示已有结果，再弹窗让步进
-                this.presetStepDialog.strategyId = strategyId;
-                this.presetStepDialog.strategy = strategy;
-                this.presetStepDialog.backtestData = { ...backtestData };
-                this.presetStepDialog.stepResponse = resultData;
-                this.presetStepDialog.decision = 'skip';
-                const adjustmentsListSingle = (this.form.manual_weight_adjustments || []);
-                const presetForDateSingle = adjustmentsListSingle.find(
-                  adj => (adj.date || '').replace(/-/g, '').slice(0, 8) === (resultData.next_preset_date || '')
-                );
-                const codesSingle = (strategy.asset_codes || []);
-                if (presetForDateSingle && presetForDateSingle.weights && Object.keys(presetForDateSingle.weights).length > 0) {
-                  this.presetStepDialog.customWeights = codesSingle.reduce((o, c) => ({ ...o, [c]: Number(presetForDateSingle.weights[c]) || 0 }), {});
-                } else {
-                  this.presetStepDialog.customWeights = codesSingle.reduce((o, c) => ({ ...o, [c]: 0 }), {});
-                  if (codesSingle.length) this.presetStepDialog.customWeights[codesSingle[0]] = 1;
-                }
-                this.presetStepDialog.autoNormalize = presetForDateSingle ? presetForDateSingle.auto_normalize === true : false;
-                this.presetStepDialog.otherStrategiesMetrics = [];
-                this.presetStepDialog.visible = true;
-                this.presetStepDialog.loading = false;
-                this.executing = false;
-                return;
-              }
-
-              // 单策略 + 启用波动率重置：若存在波动率重置日，弹出步进选择对话框，由用户逐日选择后重新回测
-              if (this.form.backtest_mode === 'single' && this.form.enable_vol_reset && resultData.snapshots) {
-                const volResetSnapshots = resultData.snapshots.filter(s =>
-                  s.is_rebalance_day && (s.rebalance_type === 'vol_reset' || (s.rebalance_reason && String(s.rebalance_reason).indexOf('波动率重置') >= 0))
-                );
-                if (volResetSnapshots.length > 0) {
-                  this.backtestModelId = strategyId;
-                  this.openVolResetDecisionDialog(strategyId, strategy, backtestData, resultData, volResetSnapshots);
-                  this.executing = false;
-                  return;
                 }
               }
 
@@ -3390,21 +1870,6 @@ export default {
             }
           }
 
-          // 多主观策略同步步进：所有主观策略均已 start 并暂存于 multiManualPending，按时间线顺序弹窗
-          if (isMulti && Object.keys(multiManualPending).length > 0) {
-            this.multiManualPending = multiManualPending;
-            if (Object.keys(results).length > 0) {
-              this.backtestResults = { ...results };
-            }
-            console.log('[多策略] 主观策略步进暂停 已收集策略数=', Object.keys(results).length, 'keys=', Object.keys(results), 'pending主观数=', Object.keys(multiManualPending).length);
-            const nextEntry = this.pickNextMultiManualStep();
-            if (nextEntry) {
-              this.openPresetStepDialogForEntry(nextEntry);
-            }
-            this.executing = false;
-            return;
-          }
-
           if (Object.keys(results).length > 0) {
             this.backtestResults = results;
             const keys = Object.keys(results);
@@ -3449,14 +1914,6 @@ export default {
         slippage: 0.0005,
         enable_vol_reset: false,  // 所有策略默认关闭波动率重置
         vol_reset_threshold: 0.06,
-        // 动量选择器参数（单策略模式使用）
-        selector_type: 'momentum',
-        asset_selection_count: 8,
-        min_history_days: 260,
-        momentum_windows: '22,65,260',
-        tie_break_window: 22,
-        // 多策略模式的选择器参数
-        multiStrategySelectionParams: {},
         enable_interactive_adjustment: false,
         manual_weight_adjustments: [],
         run_manual_weights: {},
@@ -3479,64 +1936,6 @@ export default {
         '已归档': 'warning'
       };
       return statusMap[status] || 'info';
-    },
-    getParameterLabel(key) {
-      // 获取参数的中文标签
-      if (this.selectedStrategyInfo && this.selectedStrategyInfo.parameter_labels) {
-        return this.selectedStrategyInfo.parameter_labels[key] || key;
-      }
-      // 如果没有 parameter_labels，尝试使用常见的参数名称映射
-      const commonLabels = {
-        'target_return': '目标年化收益率',
-        'target_vol': '目标年化波动率',
-        'lookback_days': '历史数据回看期',
-        'risk_free_rate': '无风险利率',
-        'min_weight': '单资产最小权重',
-        'max_weight': '单资产最大权重',
-        'maxiter': '最大迭代次数',
-        'optimization_mode': '优化模式',
-        'risk_budget_both': '交集资产风险预算',
-        'risk_budget_single': '单一模型资产风险预算',
-        'max_total_leverage': '最大杠杆倍数',
-        'max_weight_dict': '单资产最大权重配置',
-        'min_history_days': '最小历史数据要求',
-        'enable_vol_reset': '启用波动率阈值重置',
-        'vol_reset_threshold': '波动率重置阈值',
-        'rebalance_frequency': '调仓频率'
-      };
-      return commonLabels[key] || key;
-    },
-    formatParameterValue(value) {
-      // 格式化参数值显示
-      if (value === null || value === undefined) {
-        return '-';
-      }
-      
-      // 如果是对象（如字典），格式化为 JSON 字符串
-      if (typeof value === 'object') {
-        try {
-          return JSON.stringify(value, null, 2);
-        } catch (e) {
-          return String(value);
-        }
-      }
-      
-      // 如果是数字，保留适当的小数位数
-      if (typeof value === 'number') {
-        // 如果是整数，不显示小数
-        if (Number.isInteger(value)) {
-          return value.toString();
-        }
-        // 如果是小数，保留最多4位小数
-        return value.toFixed(4).replace(/\.?0+$/, '');
-      }
-      
-      // 如果是布尔值
-      if (typeof value === 'boolean') {
-        return value ? '是' : '否';
-      }
-      
-      return String(value);
     }
   }
 };
@@ -3607,17 +2006,5 @@ export default {
   font-size: 14px;
   font-weight: 600;
   color: #303133;
-}
-
-/* 主观调仓策略参数折叠摘要行 */
-.manual-params-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  line-height: 32px;
-}
-.manual-params-summary .summary-text {
-  color: #606266;
-  font-size: 13px;
 }
 </style>

@@ -1,46 +1,56 @@
 <template>
   <div class="agent-workspace">
-    <!-- 左栏：对话列表 -->
-    <div class="sidebar-panel">
+    <!-- 左栏：对话列表（可折叠） -->
+    <div :class="['sidebar-panel', { collapsed: sidebarCollapsed }]">
       <div class="sidebar-header">
         <el-button
-          type="primary"
+          v-show="!sidebarCollapsed"
           icon="el-icon-plus"
           size="small"
           class="new-chat-btn"
           @click="handleNewChat"
         >新建对话</el-button>
+        <button
+          class="collapse-btn"
+          :title="sidebarCollapsed ? '展开对话列表' : '收起对话列表'"
+          @click="sidebarCollapsed = !sidebarCollapsed"
+        >
+          <i :class="sidebarCollapsed ? 'el-icon-s-unfold' : 'el-icon-s-fold'"></i>
+        </button>
       </div>
 
-      <div class="conversation-list" v-loading="sidebarLoading">
-        <div
-          v-for="conv in sortedConversations"
-          :key="conv.id"
-          :class="['conversation-item', { active: conv.id === currentConversationId }]"
-          @click="handleSelectConversation(conv)"
-        >
-          <div class="conv-info">
-            <div class="conv-top-row">
-              <span class="conv-title" :title="conv.title || '新对话'">
-                {{ conv.title || '新对话' }}
-              </span>
-              <el-tag
-                v-if="getConversationScene(conv.id)"
-                size="mini"
-                :color="getSceneColor(conv.id)"
-                effect="dark"
-                class="conv-scene-tag"
-              >{{ getSceneLabel(conv.id) }}</el-tag>
+      <div v-show="!sidebarCollapsed" class="conversation-list" v-loading="sidebarLoading">
+        <div v-for="group in groupedConversations" :key="group.label" class="conv-group">
+          <div class="conv-group-label">{{ group.label }}</div>
+          <div
+            v-for="conv in group.items"
+            :key="conv.id"
+            :class="['conversation-item', { active: conv.id === currentConversationId }]"
+            @click="handleSelectConversation(conv)"
+          >
+            <div class="conv-info">
+              <div class="conv-top-row">
+                <span class="conv-title" :title="conv.title || '新对话'">
+                  {{ conv.title || '新对话' }}
+                </span>
+                <el-tag
+                  v-if="getConversationScene(conv.id)"
+                  size="mini"
+                  :color="getSceneColor(conv.id)"
+                  effect="dark"
+                  class="conv-scene-tag"
+                >{{ getSceneLabel(conv.id) }}</el-tag>
+              </div>
+              <div class="conv-time">{{ formatTime(conv.updated_at || conv.created_at) }}</div>
             </div>
-            <div class="conv-time">{{ formatTime(conv.updated_at || conv.created_at) }}</div>
+            <el-button
+              class="conv-delete-btn"
+              type="text"
+              icon="el-icon-delete"
+              size="mini"
+              @click.stop="handleDeleteConversation(conv)"
+            ></el-button>
           </div>
-          <el-button
-            class="conv-delete-btn"
-            type="text"
-            icon="el-icon-delete"
-            size="mini"
-            @click.stop="handleDeleteConversation(conv)"
-          ></el-button>
         </div>
 
         <!-- 空状态 -->
@@ -66,49 +76,18 @@
         />
       </div>
     </div>
-
-    <!-- 右栏：场景信息 + 快捷问题 -->
-    <div :class="['info-panel', { collapsed: infoPanelCollapsed }]">
-      <div class="info-toggle" @click="infoPanelCollapsed = !infoPanelCollapsed">
-        <i :class="infoPanelCollapsed ? 'el-icon-arrow-left' : 'el-icon-arrow-right'"></i>
-      </div>
-      <template v-if="!infoPanelCollapsed">
-        <div class="info-section">
-          <div class="info-section-title">
-            <i :class="activeSceneConfig.icon" :style="{ color: activeSceneConfig.color }"></i>
-            <span>{{ activeSceneConfig.label }}</span>
-          </div>
-          <p class="info-desc">{{ activeSceneConfig.description }}</p>
-        </div>
-        <div class="info-section" v-if="activeSceneConfig.quickQuestions && activeSceneConfig.quickQuestions.length">
-          <div class="info-section-title">
-            <i class="el-icon-chat-line-round"></i>
-            <span>快捷问题</span>
-          </div>
-          <div class="quick-question-list">
-            <div
-              v-for="(q, idx) in activeSceneConfig.quickQuestions"
-              :key="idx"
-              class="quick-question-item"
-              @click="handleQuickQuestion(q)"
-            >{{ quickQuestionLabel(q) }}</div>
-          </div>
-        </div>
-      </template>
-    </div>
   </div>
 </template>
 
 <script>
 /**
  * 数智平台AI助手 — 工作区主页面
- * 三栏布局：左对话列表 + 中间场景选择&聊天 + 右场景信息
+ * 两栏布局：左对话列表 + 中间场景选择&聊天
  */
 import { mapState, mapGetters } from 'vuex'
 import AgentChatPanel from '@/components/AgentChatPanel.vue'
 import SceneSelector from '@/components/SceneSelector.vue'
 import { AGENT_SCENES, getSceneByKey } from '@/config/agentScenes'
-import { quickQuestionLabel } from '@/config/creditRatingQuickAddons'
 
 export default {
   name: 'AgentWorkspace',
@@ -123,7 +102,7 @@ export default {
   data() {
     return {
       scenes: AGENT_SCENES,
-      infoPanelCollapsed: false
+      sidebarCollapsed: false
     }
   },
   computed: {
@@ -132,9 +111,29 @@ export default {
     sidebarLoading() {
       return this.$store.state.agent.loading
     },
-    /** 当前激活的场景配置对象 */
-    activeSceneConfig() {
-      return getSceneByKey(this.currentScene) || AGENT_SCENES[0]
+    /** 对话按时间分组（今天/昨天/更早），仅用于展示 */
+    groupedConversations() {
+      const groups = [
+        { label: '今天', items: [] },
+        { label: '昨天', items: [] },
+        { label: '更早', items: [] }
+      ]
+      const now = new Date()
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+      const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000
+      for (const conv of this.sortedConversations) {
+        const t = new Date(conv.updated_at || conv.created_at).getTime()
+        if (Number.isNaN(t)) {
+          groups[2].items.push(conv)
+        } else if (t >= startOfToday) {
+          groups[0].items.push(conv)
+        } else if (t >= startOfYesterday) {
+          groups[1].items.push(conv)
+        } else {
+          groups[2].items.push(conv)
+        }
+      }
+      return groups.filter(g => g.items.length)
     }
   },
   watch: {
@@ -156,10 +155,6 @@ export default {
     }
   },
   methods: {
-    quickQuestionLabel(q) {
-      return quickQuestionLabel(q)
-    },
-
     /** 切换场景：更新 store，不清空对话 */
     handleSceneChange(sceneKey) {
       this.$store.commit('agent/SET_CURRENT_SCENE', sceneKey)
@@ -221,18 +216,6 @@ export default {
       this.$store.dispatch('agent/loadConversations', { silent: true })
     },
 
-    /** 快捷问题：直接发送（与中间栏空状态快捷问题一致，须传入文案给 handleSend） */
-    handleQuickQuestion(question) {
-      const panel = this.$refs.chatPanel
-      if (!panel || !question) return
-      const inputRef = panel.$refs.chatInput
-      const label = quickQuestionLabel(question)
-      if (inputRef && typeof inputRef.setText === 'function') {
-        inputRef.setText(label)
-      }
-      panel.handleSend(question)
-    },
-
     /** 获取对话关联场景的配置对象 */
     getConversationScene(convId) {
       return this.conversationScenes[convId] || null
@@ -284,12 +267,12 @@ export default {
   display: flex;
   height: calc(100vh - 100px);
   background: #fff;
-  border-radius: 4px;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
   overflow: hidden;
 }
 
-/* ===== 左侧对话列表 ===== */
+/* ===== 左侧对话列表（可折叠） ===== */
 .sidebar-panel {
   width: 280px;
   min-width: 280px;
@@ -297,15 +280,62 @@ export default {
   display: flex;
   flex-direction: column;
   background: #fafbfc;
+  transition: width 0.25s ease, min-width 0.25s ease;
+}
+
+.sidebar-panel.collapsed {
+  width: 48px;
+  min-width: 48px;
 }
 
 .sidebar-header {
   padding: 16px;
   border-bottom: 1px solid #ebeef5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-panel.collapsed .sidebar-header {
+  padding: 16px 8px;
+  justify-content: center;
+}
+
+.collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #606266;
+  font-size: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s, color 0.2s;
+}
+
+.collapse-btn:hover {
+  background: #eef1f6;
+  color: #409eff;
 }
 
 .new-chat-btn {
   width: 100%;
+  border: 1px dashed #c3d0e5;
+  background: #fff;
+  color: #409eff;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.new-chat-btn:hover,
+.new-chat-btn:focus {
+  border-color: #409eff;
+  background: #f0f6ff;
+  color: #409eff;
 }
 
 .conversation-list {
@@ -314,24 +344,50 @@ export default {
   padding: 8px;
 }
 
+/* 侧栏自定义滚动条 */
+.conversation-list::-webkit-scrollbar {
+  width: 5px;
+}
+.conversation-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.conversation-list::-webkit-scrollbar-thumb {
+  background: #dcdfe6;
+  border-radius: 3px;
+}
+.conversation-list::-webkit-scrollbar-thumb:hover {
+  background: #c0c4cc;
+}
+
+.conv-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #98a2b3;
+  padding: 10px 12px 4px;
+  letter-spacing: 0.5px;
+}
+
+.conv-group:first-child .conv-group-label {
+  padding-top: 4px;
+}
+
 .conversation-item {
   display: flex;
   align-items: center;
-  padding: 12px;
-  border-radius: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s ease;
   margin-bottom: 2px;
 }
 
 .conversation-item:hover {
-  background: #edf2f7;
+  background: #f0f2f5;
 }
 
 .conversation-item.active {
-  background: #ecf5ff;
-  border-left: 3px solid #409EFF;
-  padding-left: 9px;
+  background: #e8f1ff;
+  box-shadow: inset 3px 0 0 0 #409eff;
 }
 
 .conv-info {
@@ -358,11 +414,12 @@ export default {
 
 .conv-scene-tag {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 10px;
   padding: 0 4px;
-  height: 18px;
-  line-height: 18px;
+  height: 16px;
+  line-height: 16px;
   border: none;
+  opacity: 0.7;
 }
 
 .conv-time {
@@ -406,106 +463,12 @@ export default {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  background: #f7f8fa;
 }
 
 .chat-panel-wrapper {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-}
-
-/* ===== 右侧信息面板 ===== */
-.info-panel {
-  width: 240px;
-  min-width: 240px;
-  border-left: 1px solid #ebeef5;
-  background: #fafbfc;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  transition: width 0.25s ease, min-width 0.25s ease;
-  overflow: hidden;
-}
-
-.info-panel.collapsed {
-  width: 32px;
-  min-width: 32px;
-}
-
-.info-toggle {
-  position: absolute;
-  top: 12px;
-  left: 8px;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #909399;
-  font-size: 14px;
-  z-index: 1;
-  border-radius: 50%;
-  transition: background 0.2s;
-}
-
-.info-toggle:hover {
-  background: #ebeef5;
-  color: #606266;
-}
-
-.info-panel.collapsed .info-toggle {
-  left: 6px;
-}
-
-.info-section {
-  padding: 16px;
-  border-bottom: 1px solid #ebeef5;
-}
-
-.info-panel.collapsed .info-section {
-  display: none;
-}
-
-.info-section-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 8px;
-}
-
-.info-section-title i {
-  font-size: 16px;
-}
-
-.info-desc {
-  font-size: 13px;
-  color: #606266;
-  line-height: 1.6;
-  margin: 0;
-}
-
-.quick-question-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.quick-question-item {
-  font-size: 13px;
-  color: #409EFF;
-  cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 4px;
-  background: #ecf5ff;
-  line-height: 1.4;
-  transition: background 0.2s;
-}
-
-.quick-question-item:hover {
-  background: #d9ecff;
 }
 </style>

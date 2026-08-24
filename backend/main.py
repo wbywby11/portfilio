@@ -3,6 +3,7 @@ Portfolio Backend - FastAPI 主程序入口
 """
 
 import os
+from contextlib import asynccontextmanager
 
 try:
     from dotenv import load_dotenv
@@ -49,25 +50,21 @@ from app.config.database import Database
 from app.api.asset import router as asset_router
 from app.api.model_template import router as model_template_router
 from app.api.strategy_model import router as strategy_model_router
-from app.api.portfolio import router as portfolio_router
-from app.api.benchmark import router as benchmark_router
-from app.api.strategies import router as strategies_router  # 新增：策略服务API
+from app.portfolio import portfolio_router
 from app.api.backtests import router as backtests_router  # 新增：回测服务API
 from app.api.analysis import router as analysis_router  # 新增：数据分析服务API
-from app.api.scheduler import router as scheduler_router  # 新增：定时任务管理API
 from app.api.market import router as market_router  # 行情同步 SSE
 from app.api.fx import router as fx_router  # 汇率数据导入
 from app.api.trade_calendar import router as trade_calendar_router  # 交易日历
-from app.api.asset_index import router as asset_index_router  # 大类资产指数
 from app.api.monitor import router as monitor_router  # 监控模块
-from app.api.financial_product import router as financial_product_router  # 理财产品
-from app.api.investment_manager import router as investment_manager_router  # 投资经理
 from app.api.subject_risk import router as subject_risk_router  # 主体观点风险
 from app.api.data_hub import router as data_hub_router  # 通用数据接入 Hub
-from app.api.zy_data import router as zy_data_router  # ZY通用数据域
 from app.api.api_data_asset import router as data_asset_router  # 数据资产管理
-from app.api.semantic_api import router as semantic_router  # 语义画像
+from app.api.option_pricing import router as option_pricing_router  # 收益凭证估值
+from app.api.option_accounting import router as option_accounting_router  # 收益凭证会计辅助
+from app.portfolio import sim_trade_router as sim_trade_router  # 模拟交易
 from app.agent.api.agent_router import router as agent_router  # AI Agent
+from app.agent.api.knowledge_router import router as knowledge_router  # 知识库
 from app.api.exception_handlers import (
     http_exception_handler,
     validation_exception_handler,
@@ -75,10 +72,60 @@ from app.api.exception_handlers import (
 )
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期：启动 / 关闭事件（替代废弃的 on_event）。"""
+    # ── startup ──
+    from loguru import logger
+    Database.connect()
+
+    logger.info("========== 初始化内置策略模板 ==========")
+    from app.services.template_init_service import init_builtin_templates
+    try:
+        result = await init_builtin_templates()
+        logger.info(
+            "初始化完成: 总数={}, 新创建={}, 已存在={}, 模板列表={}",
+            result["total"], result["created"], result["skipped"], ", ".join(result["templates"]),
+        )
+        logger.info("应用启动成功 - {} v{} 已就绪，可接受请求", settings.APP_NAME, settings.APP_VERSION)
+    except Exception as e:
+        logger.exception("初始化内置模板失败: {}", e)
+        logger.error("应用启动失败，请检查上述错误后重启")
+
+    # 数据资产扫描（幂等，不阻塞启动）
+    try:
+        from app.services.api_data_asset_service import ApiDataAssetService
+        asset_service = ApiDataAssetService()
+        scan_result = await asset_service.scan_database()
+        logger.info(
+            "数据资产扫描完成: {} 个集合, {} 条记录",
+            scan_result.get("total", 0),
+            scan_result.get("total_records", 0),
+        )
+    except Exception as e:
+        logger.warning("数据资产扫描失败（不影响启动）: {}", e)
+
+    # 知识库索引初始化（幂等，不阻塞启动）
+    try:
+        from app.agent.knowledge import KnowledgeStore
+        await KnowledgeStore().ensure_indexes()
+    except Exception as e:
+        logger.warning("知识库索引初始化失败（不影响启动）: {}", e)
+
+    logger.info("========================================")
+
+    yield
+
+    # ── shutdown ──
+    Database.close()
+    logger.info("应用已关闭")
+
+
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     swagger_ui_use_local_assets=True,
+    lifespan=lifespan,
 )
 
 # 注册全局异常处理器
@@ -96,51 +143,6 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-async def on_startup():
-    """应用启动事件"""
-    from loguru import logger
-    Database.connect()
-
-    logger.info("========== 初始化内置策略模板 ==========")
-    from app.services.template_init_service import init_builtin_templates
-    from app.services.scheduler_service import scheduler_service
-    try:
-        result = await init_builtin_templates()
-        logger.info(
-            "初始化完成: 总数={}, 新创建={}, 已存在={}, 模板列表={}",
-            result["total"], result["created"], result["skipped"], ", ".join(result["templates"]),
-        )
-        await scheduler_service.start()
-        logger.info("应用启动成功 - {} v{} 已就绪，可接受请求", settings.APP_NAME, settings.APP_VERSION)
-    except Exception as e:
-        logger.exception("初始化内置模板失败: {}", e)
-        logger.error("应用启动失败，请检查上述错误后重启")
-
-    # 启动时自动同步数据资产表（幂等，不阻塞启动）
-    try:
-        from app.services.api_data_asset_service import ApiDataAssetService
-        asset_service = ApiDataAssetService()
-        seed_result = await asset_service.seed_from_connectors()
-        logger.info(
-            "数据资产同步完成: 新建 {} 条, 跳过 {} 条",
-            seed_result.get("created", 0),
-            seed_result.get("skipped", 0),
-        )
-    except Exception as e:
-        logger.warning("数据资产自动同步失败（不影响启动）: {}", e)
-
-    logger.info("========================================")
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    """应用关闭事件"""
-    from loguru import logger
-    Database.close()
-    logger.info("应用已关闭")
-
-
 # 挂载各业务模块路由
 
 app.include_router(asset_router, prefix=f"{settings.API_PREFIX}/assets", tags=["资产池管理"])
@@ -154,26 +156,22 @@ app.include_router(
     include_in_schema=False,
 )
 app.include_router(portfolio_router, prefix=f"{settings.API_PREFIX}/portfolios", tags=["模拟组合"])
-app.include_router(benchmark_router, prefix=f"{settings.API_PREFIX}/benchmarks", tags=["业绩基准"])
 
-# 新增：策略服务、回测服务和数据分析服务API
-app.include_router(strategies_router, prefix=f"{settings.API_PREFIX}/strategies", tags=["策略服务"])
+# 新增：回测服务和数据分析服务API
 app.include_router(backtests_router, prefix=f"{settings.API_PREFIX}/backtests", tags=["回测服务"])
 app.include_router(analysis_router, prefix=f"{settings.API_PREFIX}/analysis", tags=["数据分析"])
-app.include_router(scheduler_router, prefix=f"{settings.API_PREFIX}/scheduler", tags=["定时任务管理"])
 app.include_router(market_router, prefix=f"{settings.API_PREFIX}/market", tags=["行情同步"])
 app.include_router(fx_router, prefix=f"{settings.API_PREFIX}/fx", tags=["汇率数据"])
 app.include_router(trade_calendar_router, prefix=f"{settings.API_PREFIX}/trade-calendar", tags=["交易日历"])
-app.include_router(asset_index_router, prefix=f"{settings.API_PREFIX}", tags=["大类资产指数"])
 app.include_router(monitor_router, prefix=f"{settings.API_PREFIX}/monitor", tags=["监控模块"])
-app.include_router(financial_product_router, prefix=f"{settings.API_PREFIX}/financial-products", tags=["理财产品"])
-app.include_router(investment_manager_router, prefix=f"{settings.API_PREFIX}/investment-managers", tags=["投资经理"])
 app.include_router(subject_risk_router, prefix=f"{settings.API_PREFIX}/subject-risk", tags=["主体观点风险"])
 app.include_router(data_hub_router, prefix=f"{settings.API_PREFIX}/data-hub", tags=["通用数据接入"])
-app.include_router(zy_data_router, prefix=f"{settings.API_PREFIX}/zy-data", tags=["ZY通用数据"])
 app.include_router(data_asset_router, prefix=f"{settings.API_PREFIX}/data-assets", tags=["数据资产管理"])
-app.include_router(semantic_router, prefix=f"{settings.API_PREFIX}/semantic", tags=["语义画像"])
+app.include_router(option_pricing_router, prefix=f"{settings.API_PREFIX}/options", tags=["收益凭证估值"])
+app.include_router(option_accounting_router, prefix=f"{settings.API_PREFIX}/options/accounting", tags=["收益凭证会计辅助"])
+app.include_router(sim_trade_router, prefix=f"{settings.API_PREFIX}/sim-trade", tags=["模拟交易"])
 app.include_router(agent_router, prefix=f"{settings.API_PREFIX}/agent", tags=["AI Agent"])
+app.include_router(knowledge_router, prefix=f"{settings.API_PREFIX}/knowledge", tags=["知识库"])
 if __name__ == "__main__":
     import uvicorn
 
@@ -182,5 +180,6 @@ if __name__ == "__main__":
         host=settings.API_HOST,
         port=settings.API_PORT,
         reload=True,
+        reload_excludes=["scripts/*", "tests/*"],
         timeout_keep_alive=600,  # 长连接保活10分钟，支持数据导入等耗时操作
     )

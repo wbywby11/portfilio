@@ -27,6 +27,15 @@ from app.agent.core.config import CONTEXT_BUDGET, MAX_CONTEXT_TOKENS
 class ContextEngine:
     """上下文压缩引擎"""
 
+    # —— 摘要防幻觉标记 ——
+    # 压缩摘要注入时包裹此前缀/后缀，明确告知 LLM 摘要仅供参考、不可执行
+    SUMMARY_PREFIX = (
+        "[以下是早期对话的压缩摘要，仅供参考。"
+        "摘要中的操作/工具调用已完成，不要重新执行。"
+        "当前任务以最新用户消息为准。]\n"
+    )
+    SUMMARY_END_MARKER = "\n--- 摘要结束 ---"
+
     def __init__(
         self,
         llm_client,  # LLMClient 实例，用于摘要生成
@@ -507,6 +516,9 @@ class ContextEngine:
             # 消息太少，无法分区，直接返回
             return history
 
+        # —— 0. 清理历史中残留的旧摘要（防叠加） ——
+        history = self._normalize_stale_summary(history)
+
         # —— 1. 划分前置保护区 ——
         head = history[: self.protect_first_n]
         remaining = history[self.protect_first_n :]
@@ -565,10 +577,27 @@ class ContextEngine:
         if summary:
             result.append({
                 "role": "system",
-                "content": f"[历史对话摘要]\n{summary}",
+                "content": f"{self.SUMMARY_PREFIX}{summary}{self.SUMMARY_END_MARKER}",
             })
         result.extend(tail)
         return result
+
+    def _normalize_stale_summary(self, messages: list[dict]) -> list[dict]:
+        """
+        清理历史消息中残留的旧摘要前缀（防叠加）。
+        当历史中已存在带 SUMMARY_PREFIX 的 system 消息时，移除它（新摘要会替代）。
+        """
+        cleaned = []
+        for msg in messages:
+            if (
+                msg.get("role") == "system"
+                and isinstance(msg.get("content"), str)
+                and msg["content"].startswith(self.SUMMARY_PREFIX)
+            ):
+                # 跳过旧摘要消息（新压缩会生成替代）
+                continue
+            cleaned.append(msg)
+        return cleaned
 
     def _adjust_split_boundary(
         self, messages: list[dict], split_idx: int
@@ -619,6 +648,7 @@ class ContextEngine:
             "## 关键结论\n（重要的数据发现和分析结论）\n\n"
             "## 用户偏好\n（用户表达的偏好和约束条件）\n\n"
             "## 待办事项\n（尚未完成的分析或用户请求）\n\n"
+            "重要：摘要仅供后续对话参考上下文，不要包含任何待执行指令或操作建议。\n\n"
         )
 
         # —— 迭代摘要：在已有摘要基础上更新 ——

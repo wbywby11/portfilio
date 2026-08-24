@@ -208,12 +208,16 @@ def extract_monitor_scoped_from_published_snapshot(
         snap["parameters"] = {}
     snap["parameters"] = normalize_parameters_to_flat_dict(snap.get("parameters"))
     codes = normalize_strategy_asset_codes(snap.get("asset_codes"))
+    # 从模型获取 asset_names（code→name 映射）
+    an = getattr(model_for_overlay, "asset_names", None) if model_for_overlay else None
+    _asset_names = dict(an) if isinstance(an, dict) and an else None
     rt = monitor_runtime_from_snapshot(
         snap,
         live_volatility_threshold,
         current_parameters=snap["parameters"],
         current_asset_codes=codes,
         model_for_selection=model_for_overlay,
+        asset_names=_asset_names,
     )
     if rt is None:
         return {}
@@ -243,12 +247,16 @@ def extract_monitor_scoped_from_model(model: Any) -> Dict[str, Any]:
         else:
             snap["parameters"] = normalize_parameters_to_flat_dict(snap.get("parameters"))
     codes = normalize_strategy_asset_codes(getattr(model, "asset_codes", None))
+    # 从模型获取 asset_names（code→name 映射）
+    an = getattr(model, "asset_names", None)
+    _asset_names = dict(an) if isinstance(an, dict) and an else None
     rt = monitor_runtime_from_snapshot(
         snap,
         getattr(model, "live_volatility_threshold", None),
         current_parameters=normalize_parameters_to_flat_dict(getattr(model, "parameters", None)),
         current_asset_codes=codes,
         model_for_selection=model,
+        asset_names=_asset_names,
     )
     if rt is None:
         return {
@@ -501,8 +509,8 @@ def summarize_monitor_scoped_diff_zh(diff: Dict[str, Dict[str, Any]]) -> str:
         "volatility_threshold": "波动率阈值",
         "max_total_leverage": "总杠杆上限",
         "max_leverage": "最大杠杆",
-        "weight_caps": "单资产权重上限",
-        "max_weight_dict": "单资产权重上限",
+        "weight_caps": "资产权重约束",
+        "max_weight_dict": "资产权重约束",
         "mom_windows": "MOM窗口",
         "posi_windows": "POSI窗口",
         "smom_windows": "SMOM窗口",

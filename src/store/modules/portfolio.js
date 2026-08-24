@@ -1,3 +1,5 @@
+import * as portfolioApi from '@/api/portfolio';
+
 const state = {
   portfolioList: [],
   currentPortfolio: null,
@@ -33,8 +35,6 @@ const mutations = {
   }
 };
 
-import * as portfolioApi from '@/api/portfolio';
-
 const actions = {
   async fetchPortfolioList({ commit }) {
     try {
@@ -47,43 +47,59 @@ const actions = {
       return [];
     }
   },
-  
+
   async createPortfolio({ commit }, portfolio) {
+    const res = await portfolioApi.createPortfolio(portfolio);
+    // 重新获取列表
+    const list = await portfolioApi.getPortfolioList();
+    commit('SET_PORTFOLIO_LIST', list.data || []);
+    return res.data;
+  },
+
+  async createFromModel({ commit }, data) {
+    const res = await portfolioApi.createFromModel(data);
+    const list = await portfolioApi.getPortfolioList();
+    commit('SET_PORTFOLIO_LIST', list.data || []);
+    return res.data;
+  },
+
+  async createFromPortfolioModel({ commit }, data) {
+    const res = await portfolioApi.createFromPortfolioModel(data);
+    const list = await portfolioApi.getPortfolioList();
+    commit('SET_PORTFOLIO_LIST', list.data || []);
+    return res.data;
+  },
+
+  async createFromStrategies({ commit }, data) {
+    const res = await portfolioApi.createFromStrategies(data);
+    const list = await portfolioApi.getPortfolioList();
+    commit('SET_PORTFOLIO_LIST', list.data || []);
+    return res.data;
+  },
+
+  async adjustWeights({ commit }, { portfolioId, data }) {
+    const res = await portfolioApi.adjustWeights(portfolioId, data);
+    const list = await portfolioApi.getPortfolioList();
+    commit('SET_PORTFOLIO_LIST', list.data || []);
+    return res.data;
+  },
+
+  async fetchPortfolioDetails({ commit }, id) {
     try {
-      const res = await portfolioApi.createPortfolio(portfolio);
-      // 重新获取列表以更新状态
-      const list = await portfolioApi.getPortfolioList();
-      commit('SET_PORTFOLIO_LIST', list.data || []);
-      return res.data;
+      const res = await portfolioApi.getPortfolioDetails(id);
+      const detail = res.data || null;
+      commit('SET_CURRENT_PORTFOLIO', detail);
+      return detail;
     } catch (error) {
-      console.error('创建组合失败:', error);
-      throw error;
+      console.error('获取组合详情失败:', error);
+      return null;
     }
   },
-  
-  async updatePortfolio({ commit }, portfolio) {
-    commit('UPDATE_PORTFOLIO', portfolio);
-    return portfolio;
-  },
-  
+
   async deletePortfolio({ commit }, id) {
-    try {
-      await portfolioApi.deletePortfolio(id);
-      commit('DELETE_PORTFOLIO', id);
-      return true;
-    } catch (error) {
-      console.error('删除组合失败:', error);
-      throw error;
-    }
-  },
-  
-  async fetchPortfolioDetail({ commit }, id) {
-    // 模拟API调用获取详细信息
-    const portfolio = state.portfolioList.find(p => p.id === id);
-    if (portfolio) {
-      commit('SET_CURRENT_PORTFOLIO', portfolio);
-    }
-    return portfolio;
+    await portfolioApi.deletePortfolio(id);
+    commit('DELETE_PORTFOLIO', id);
+    return true;
   }
 };
 

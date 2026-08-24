@@ -1,7 +1,7 @@
 """
 通用数据接入 Hub：HTTP 执行、导入、查询、统计
 
-由 SubjectRiskService 与各连接器配置驱动；集合名 / 主键 / 图表配方均来自连接器注册表。
+由各 API 路由按 connector_id 直接驱动；集合名 / 主键 / 图表配方均来自连接器注册表。
 """
 
 from __future__ import annotations
@@ -22,8 +22,6 @@ from app.models.data_hub import (
     DataHubQueryRequest,
     DataHubImportJsonBody,
     build_get_py_result_payload,
-    PtlInfoImportRequest,
-    build_ptl_param_maps_payload,
 )
 from app.models.subject_risk import SubjectRiskImportRequest, SubjectRiskQueryRequest
 from app.models.data_hub import DataHubFilterClause
@@ -292,28 +290,21 @@ class DataHubService:
             return {"status": "failed_unknown", "error": f"未知连接器: {connector_id}"}
 
         if conn.family == "get_py_result":
-            style = getattr(conn, "import_param_style", "date_range")
-            if style == "ptl_param_maps":
-                m = PtlInfoImportRequest(**body)
-                url = (m.upstream_url or conn.default_upstream_url).strip()
-                payload = build_ptl_param_maps_payload(m, conn.resource_default)
-                timeout = m.timeout
-            else:
-                m = SubjectRiskImportRequest(**body)
-                url = (m.upstream_url or conn.default_upstream_url).strip()
-                payload = build_get_py_result_payload(
-                    DataHubImportJsonBody(
-                        startDate=m.startDate,
-                        endDate=m.endDate,
-                        rownum=m.rownum,
-                        startrow=m.startrow,
-                        resource=m.resource or conn.resource_default,
-                        timeout=m.timeout,
-                        upstream_url=m.upstream_url,
-                    ),
-                    conn.resource_default,
-                )
-                timeout = m.timeout
+            m = SubjectRiskImportRequest(**body)
+            url = (m.upstream_url or conn.default_upstream_url).strip()
+            payload = build_get_py_result_payload(
+                DataHubImportJsonBody(
+                    startDate=m.startDate,
+                    endDate=m.endDate,
+                    rownum=m.rownum,
+                    startrow=m.startrow,
+                    resource=m.resource or conn.resource_default,
+                    timeout=m.timeout,
+                    upstream_url=m.upstream_url,
+                ),
+                conn.resource_default,
+            )
+            timeout = m.timeout
         else:
             return {"status": "failed_unknown", "error": "暂不支持的 family"}
 

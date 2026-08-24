@@ -15,11 +15,15 @@ from app.models.subject_risk import (
     SubjectRiskQueryRequest,
 )
 from app.schemas.response import Response
-from app.services.subject_risk_service import SubjectRiskService
+from app.services.data_hub_service import DataHubService, subject_risk_legacy_query_to_hub
 
 
-def get_service() -> SubjectRiskService:
-    return SubjectRiskService()
+# 主体观点风险对应的数据接入连接器（集合名/主键/字段白名单均由连接器注册表驱动）
+SUBJECT_CONNECTOR_ID = "subject_opinion_risk"
+
+
+def get_hub() -> DataHubService:
+    return DataHubService()
 
 
 router = APIRouter()
@@ -28,7 +32,7 @@ router = APIRouter()
 @router.post("/import", response_model=Response[dict], summary="从上游拉取并导入主体观点风险数据")
 async def import_subject_risk(
     req: SubjectRiskImportRequest = Body(...),
-    service: SubjectRiskService = Depends(get_service),
+    hub: DataHubService = Depends(get_hub),
 ):
     """
     调用上游 `getPyResult` 接口，按 `risk_id` 为唯一键 upsert 入库。
@@ -42,7 +46,9 @@ async def import_subject_risk(
         - `success` 全量成功
     """
     try:
-        result = await service.import_from_upstream(req)
+        result = await hub.import_from_upstream(
+            SUBJECT_CONNECTOR_ID, req.model_dump(mode="json")
+        )
         status = result.get("status", "unknown")
         if status in ("failed_network", "failed_upstream"):
             return Response(code=502, message=result.get("error") or "上游导入失败", data=result)
@@ -60,10 +66,12 @@ async def import_subject_risk(
 @router.post("/records", response_model=Response[dict], summary="分页查询主体观点风险记录")
 async def query_records(
     q: SubjectRiskQueryRequest = Body(default_factory=SubjectRiskQueryRequest),
-    service: SubjectRiskService = Depends(get_service),
+    hub: DataHubService = Depends(get_hub),
 ):
     try:
-        data = await service.query_records(q)
+        data = await hub.query_records(
+            SUBJECT_CONNECTOR_ID, subject_risk_legacy_query_to_hub(q)
+        )
         return Response.success(data=data)
     except HTTPException:
         raise
@@ -75,10 +83,10 @@ async def query_records(
 @router.get("/records/{risk_id}", response_model=Response[dict], summary="按 risk_id 查询单条记录")
 async def get_record(
     risk_id: str = Path(..., description="风险记录唯一标识"),
-    service: SubjectRiskService = Depends(get_service),
+    hub: DataHubService = Depends(get_hub),
 ):
     try:
-        doc = await service.get_record(risk_id)
+        doc = await hub.get_record_by_pk(SUBJECT_CONNECTOR_ID, risk_id)
         if not doc:
             raise HTTPException(status_code=404, detail="记录不存在")
         return Response.success(data=doc)
@@ -93,10 +101,10 @@ async def get_record(
 async def list_batches(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    service: SubjectRiskService = Depends(get_service),
+    hub: DataHubService = Depends(get_hub),
 ):
     try:
-        data = await service.list_batches(page=page, page_size=page_size)
+        data = await hub.list_batches(SUBJECT_CONNECTOR_ID, page=page, page_size=page_size)
         return Response.success(data=data)
     except Exception as e:
         logger.exception("[subject-risk] /batches 查询异常: {}", e)
@@ -106,10 +114,10 @@ async def list_batches(
 @router.get("/batches/{batch_id}", response_model=Response[dict], summary="批次详情")
 async def get_batch(
     batch_id: str = Path(..., description="批次 ID"),
-    service: SubjectRiskService = Depends(get_service),
+    hub: DataHubService = Depends(get_hub),
 ):
     try:
-        doc = await service.get_batch(batch_id)
+        doc = await hub.get_batch(SUBJECT_CONNECTOR_ID, batch_id)
         if not doc:
             raise HTTPException(status_code=404, detail="批次不存在")
         return Response.success(data=doc)
@@ -121,9 +129,9 @@ async def get_batch(
 
 
 @router.get("/stats/overview", response_model=Response[dict], summary="统计概览")
-async def stats_overview(service: SubjectRiskService = Depends(get_service)):
+async def stats_overview(hub: DataHubService = Depends(get_hub)):
     try:
-        data = await service.stats_overview()
+        data = await hub.stats_overview(SUBJECT_CONNECTOR_ID)
         return Response.success(data=data)
     except Exception as e:
         logger.exception("[subject-risk] /stats/overview 查询异常: {}", e)
@@ -131,9 +139,9 @@ async def stats_overview(service: SubjectRiskService = Depends(get_service)):
 
 
 @router.get("/fields", response_model=Response[dict], summary="字段元数据（来自最近批次）")
-async def get_fields(service: SubjectRiskService = Depends(get_service)):
+async def get_fields(hub: DataHubService = Depends(get_hub)):
     try:
-        ind_name_list = await service.get_latest_fields()
+        ind_name_list = await hub.get_latest_fields(SUBJECT_CONNECTOR_ID)
         return Response.success(data={"ind_name_list": ind_name_list})
     except Exception as e:
         logger.exception("[subject-risk] /fields 查询异常: {}", e)
@@ -144,10 +152,10 @@ async def get_fields(service: SubjectRiskService = Depends(get_service)):
 async def distinct_values(
     field: str = Query(..., description="字段名，例如 risk_signal_level/affiliated_province"),
     limit: int = Query(200, ge=1, le=2000),
-    service: SubjectRiskService = Depends(get_service),
+    hub: DataHubService = Depends(get_hub),
 ):
     try:
-        values = await service.distinct_values(field, limit=limit)
+        values = await hub.distinct_values(SUBJECT_CONNECTOR_ID, field, limit=limit)
         return Response.success(data={"field": field, "values": values})
     except Exception as e:
         logger.exception("[subject-risk] /distinct 查询异常 field={}: {}", field, e)

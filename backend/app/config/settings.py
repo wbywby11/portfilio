@@ -33,15 +33,11 @@ class Settings(BaseSettings):
     AGENT_HUB_IMPORT_TIMEOUT: float = 120.0
     # 主体舆情：同一会话内上游同步成功过一次后，后续 subject_risk_search 默认仅查本地库（避免重复大流量 API）；工具参数 force_upstream_sync=true 可强制再拉取
     AGENT_SUBJECT_RISK_ONE_SYNC_PER_CONVERSATION: bool = True
-    # 产品 Hub（zysc_dwd_ptl_info / holder）：同一会话每 connector 仅成功同步一次上游，后续默认仅查本地
-    AGENT_PRODUCT_HUB_ONE_SYNC_PER_CONVERSATION: bool = True
 
     # Data Hub 上游数据接入配置
     DATA_HUB_UPSTREAM_URL: str = "http://zylcorms.wmverify.com:8080/jxdatamid/apiManage/getPyResult"
     DATA_HUB_UPSTREAM_TIMEOUT: float = 180.0
     SUBJECT_RISK_RESOURCE: str = "adm_subject_opinion_risk_stats"
-    PTL_INFO_RESOURCE: str = "ZYSC_DWD_PTL_INFO"
-    HOLDER_RESOURCE: str = "ZYSC_DWD_PTL_HOLDER_SUMMARY"
 
     class Config:
         env_file = ".env"

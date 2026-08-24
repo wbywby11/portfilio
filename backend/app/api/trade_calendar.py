@@ -48,7 +48,7 @@ async def import_trade_calendar(
 async def add_trade_dates(
     data: Dict[str, Any] = Body(
         ...,
-        example={"dates": ["2026-01-05", "2026-01-06"]},
+        examples=[{"dates": ["2026-01-05", "2026-01-06"]}],
         description="支持 {date: 'YYYY-MM-DD'} 或 {dates: ['YYYY-MM-DD', ...]}",
     ),
     service: TradeCalendarService = Depends(get_trade_calendar_service),

@@ -59,7 +59,7 @@
           <el-col :span="4">
             <div class="metric-box">
               <div class="metric-label">夏普比率</div>
-              <div class="metric-value" :style="{ color: record.result.sharpe_ratio > 1 ? '#67c23a' : '#909399' }">
+              <div class="metric-value" :style="{ color: record.result.sharpe_ratio > 1 ? '#f56c6c' : '#909399' }">
                 {{ record.result.sharpe_ratio != null ? record.result.sharpe_ratio.toFixed(3) : '-' }}
               </div>
             </div>
@@ -539,7 +539,7 @@ export default {
                 symbol: 'none',
                 lineStyle: {
                   width: 2,
-                  color: '#67c23a'
+                  color: '#f56c6c'
                 },
                 areaStyle: {
                   color: {
@@ -549,8 +549,8 @@ export default {
                     x2: 0,
                     y2: 1,
                     colorStops: [
-                      { offset: 0, color: 'rgba(103, 194, 58, 0.3)' },
-                      { offset: 1, color: 'rgba(103, 194, 58, 0.05)' }
+                      { offset: 0, color: 'rgba(245, 108, 108, 0.3)' },
+                      { offset: 1, color: 'rgba(245, 108, 108, 0.05)' }
                     ]
                   }
                 }
@@ -578,7 +578,7 @@ export default {
                 symbol: 'none',
                 lineStyle: {
                   width: 2,
-                  color: this.chartType === 'return' ? '#67c23a' : '#409eff'
+                  color: this.chartType === 'return' ? '#f56c6c' : '#409eff'
                 },
                 areaStyle: this.chartType === 'return' ? {
                   color: {
@@ -588,8 +588,8 @@ export default {
                     x2: 0,
                     y2: 1,
                     colorStops: [
-                      { offset: 0, color: 'rgba(103, 194, 58, 0.3)' },
-                      { offset: 1, color: 'rgba(103, 194, 58, 0.05)' }
+                      { offset: 0, color: 'rgba(245, 108, 108, 0.3)' },
+                      { offset: 1, color: 'rgba(245, 108, 108, 0.05)' }
                     ]
                   }
                 } : undefined
@@ -672,12 +672,25 @@ export default {
         }));
       }
       
-      // 杠杆时权重和可能大于 1，纵轴上限取「各日权重和」的最大值（比例），大于 1 时向上取整到 0.1，否则为 1
-      const maxWeightSum = weightChanges.reduce((max, change) => {
-        const sum = Object.values(change.weights || {}).reduce((s, w) => s + (Number(w) || 0), 0);
-        return Math.max(max, sum);
-      }, 0);
-      const yAxisMax = maxWeightSum <= 1 ? 1 : Math.ceil(maxWeightSum * 10) / 10;
+      // 纵轴边界：做空策略存在负权重，下界取「各日权重和」最小值（堆叠模式下即负向堆叠底边）；
+      // 上限同时覆盖「单资产最大权重」，避免做空对冲场景单权重超出日权重和被裁剪；
+      // 纯多头策略（无负权重）上下界行为与历史一致
+      let maxWeightSum = 0;
+      let minWeightSum = 0;
+      let maxSingleWeight = 0;
+      weightChanges.forEach(change => {
+        const ws = Object.values(change.weights || {});
+        const sum = ws.reduce((s, w) => s + (Number(w) || 0), 0);
+        maxWeightSum = Math.max(maxWeightSum, sum);
+        minWeightSum = Math.min(minWeightSum, sum);
+        ws.forEach(w => {
+          const v = Number(w) || 0;
+          if (v > maxSingleWeight) maxSingleWeight = v;
+        });
+      });
+      const upperBound = Math.max(maxWeightSum, maxSingleWeight);
+      const yAxisMax = upperBound <= 1 ? 1 : Math.ceil(upperBound * 10) / 10;
+      const yAxisMin = minWeightSum >= 0 ? 0 : Math.floor(minWeightSum * 10) / 10;
 
       const option = {
         tooltip: {
@@ -726,7 +739,7 @@ export default {
           type: 'value',
           name: '权重 (%)',
           nameGap: 25,
-          min: 0,
+          min: yAxisMin,
           max: yAxisMax,
           axisLabel: {
             formatter: (value) => {
@@ -767,7 +780,7 @@ export default {
     },
     getReturnColor(value) {
       if (value == null) return '#909399';
-      return value >= 0 ? '#67c23a' : '#f56c6c';
+      return value >= 0 ? '#f56c6c' : '#67c23a';
     },
     getCorrelationColor(value) {
       if (value == null) return '#909399';
@@ -914,7 +927,6 @@ export default {
 
       const dates = sampledVolData.map(item => dayjs(item.date).format('MM-DD'));
       const values = sampledVolData.map(item => item.value);
-      const targetVolPercent = 5; // 目标波动率默认 5%，可从 record 扩展
       const volResetPoints = sampledVolData
         .map((item, i) => (item.isVolReset ? { name: '波动率重置', coord: [i, item.value] } : null))
         .filter(Boolean);
@@ -930,7 +942,7 @@ export default {
             const value = params[0].value;
             const idx = params[0].dataIndex;
             const isReset = sampledVolData[idx] && sampledVolData[idx].isVolReset;
-            return `${date}<br />组合波动率: ${(value != null ? value : 0).toFixed(2)}%<br />目标波动率: ${targetVolPercent}%${isReset ? '<br /><span style="color:#E6A23C">◆ 波动率重置调仓日</span>' : ''}`;
+            return `${date}<br />组合波动率: ${(value != null ? value : 0).toFixed(2)}%${isReset ? '<br /><span style="color:#E6A23C">◆ 波动率重置调仓日</span>' : ''}`;
           }
         },
         grid: {
@@ -976,11 +988,6 @@ export default {
                   { offset: 1, color: 'rgba(230, 162, 60, 0.1)' }
                 ]
               }
-            },
-            markLine: {
-              data: [
-                { yAxis: targetVolPercent, name: `目标波动率 (${targetVolPercent}%)`, lineStyle: { color: '#67C23A', type: 'dashed' }, label: { formatter: `目标 ${targetVolPercent}%`, position: 'end' } }
-              ]
             },
             markPoint: volResetPoints.length > 0 ? {
               symbol: 'pin',

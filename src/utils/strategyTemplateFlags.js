@@ -1,5 +1,6 @@
 /**
- * 风险预算目标波动率模板：部分参数固定为产品默认，前端不展示、保存时强制写入。
+ * 目标波动率预算旧模板（仅匹配已退役的旧 code，新统一模板 vol_scaled_budget 不再隐藏参数）。
+ * 旧模板参数固定为产品默认，前端不展示、保存时强制写入。
  */
 export function isRiskBudgetTargetVolTemplateCode(templateCode) {
   const c = (templateCode || '').toString();
@@ -24,6 +25,40 @@ export const RISK_BUDGET_TARGET_VOL_HIDDEN_PARAMETER_NAMES = [
 
 export function isRiskBudgetTargetVolHiddenTemplateParameter(name) {
   return RISK_BUDGET_TARGET_VOL_HIDDEN_PARAMETER_NAMES.includes(name);
+}
+
+/** 夏普率风险预算策略模板（仅匹配旧 code，新 code vol_scaled_budget 已统一参数） */
+export function isSharpeRiskBudgetTemplateCode(templateCode) {
+  const c = (templateCode || '').toString();
+  return c === 'sharpe_risk_budget';
+}
+
+export const SHARPE_RISK_BUDGET_FIXED = {
+  min_history_days: 260,
+  vol_reset_threshold: 0.06,
+  tie_break_window: 22,
+  enable_vol_reset: true,
+  selector_type: 'sharpe',
+  asset_selection_count: 13,
+  sharp_windows: '22,65,260',
+  target_vol: 0.05,
+  vol_trigger_threshold: 0.06
+};
+
+/** 夏普率风险预算策略：「模型参数」schema 中不在前端展示的参数（已固化或由资产选择卡片管理） */
+export const SHARPE_RISK_BUDGET_HIDDEN_SCHEMA_PARAMETER_NAMES = [
+  'target_vol',
+  'max_leverage',
+  'select_count',
+  'vol_windows',
+  'sharp_windows',
+  'min_history_days',
+  'enable_vol_reset',
+  'vol_reset_threshold'
+];
+
+export function isSharpeRiskBudgetHiddenSchemaParameter(name) {
+  return SHARPE_RISK_BUDGET_HIDDEN_SCHEMA_PARAMETER_NAMES.includes(name);
 }
 
 /** 主观配置 manual_allocation / manual_allocation_strategy */

@@ -60,14 +60,15 @@ class PortfolioTracker:
             self.traditional_mode = False
             return
         self.asset_list = list(rt.asset_list)
+        an = rt.asset_names  # code→name 映射（来自策略模型/资产主数据）
         self.asset_currency = {
-            a: resolve_asset_currency_for_monitor(a) for a in self.asset_list
+            a: resolve_asset_currency_for_monitor(a, asset_names=an) for a in self.asset_list
         }
         self.trading_cost = {
-            a: resolve_trading_cost_for_asset(a) for a in self.asset_list
+            a: resolve_trading_cost_for_asset(a, asset_names=an) for a in self.asset_list
         }
         self.replication_cost = {
-            a: resolve_replication_cost_for_asset(a) for a in self.asset_list
+            a: resolve_replication_cost_for_asset(a, asset_names=an) for a in self.asset_list
         }
         # 主观/手动配置策略 → 启用与回测 engine.py 一致的传统持仓模型。
         self.traditional_mode = bool(getattr(rt, "manual_allocation_mode", False))
@@ -423,6 +424,7 @@ class PortfolioTracker:
             price = prices_use.get(asset, 0.0)
             mv = qty * price
             state.positions_cny[asset] = mv
+            state.positions_cny_base[asset] = mv  # 传统模型基准持仓 = 当日市值
             state.positions_local[asset] = mv  # 传统模型不变币种，两者一致
             state.apl_local[asset] = 0.0
 
@@ -495,12 +497,19 @@ class PortfolioTracker:
     
     def get_all_fx_rates(self, date, fx_df: pd.DataFrame) -> Dict[str, float]:
         """
-        获取所有货币的当日汇率
-        
+        获取所有相关货币的当日汇率（动态收集资产宇宙中所有计价货币）
+
+        与原型 get_fx_rates(fx_df, date, assets) 对齐：按每个资产的计价货币
+        获取汇率。必须覆盖 asset_currency 中出现的所有货币（含 JPY 等），
+        否则该货币资产的 FX 变动完全不生效、持仓/交易费/PnL 全部错误。
+
         Returns:
-            {'HKD': rate, 'USD': rate, 'EUR': rate, 'CNH': 1.0}
+            {'HKD': rate, 'USD': rate, 'EUR': rate, 'JPY': rate, 'CNH': 1.0, ...}
         """
-        currencies = ['HKD', 'USD', 'EUR', 'CNH']
+        # 动态收集当前资产宇宙中所有计价货币（修复硬编码 4 币种遗漏 JPY 的 bug）
+        currencies = set(['HKD', 'USD', 'EUR', 'CNH'])
+        if hasattr(self, 'asset_currency') and self.asset_currency:
+            currencies.update(self.asset_currency.values())
         return {currency: self.get_fx_rate(currency, date, fx_df) for currency in currencies}
     
     def get_asset_fx_rate(self, asset: str, date, fx_df: pd.DataFrame) -> float:
@@ -611,6 +620,7 @@ class PortfolioTracker:
             
             # 设置持仓
             state.positions_cny[asset] = state.nav * weight
+            state.positions_cny_base[asset] = state.nav * weight   # 与原型 handle_index_start 对齐
             state.positions_local[asset] = state.positions_cny[asset] / fx_rate
             state.apl_local[asset] = 0.0
             state.target_weights[asset] = weight
@@ -656,7 +666,7 @@ class PortfolioTracker:
 
             # 2. 复制费用（本币）
             rc = self._resolve_replication_cost(asset)
-            rc_cost_local = abs(state.positions_local.get(asset, 0.0)) * (rc / 365.0) * days_between
+            rc_cost_local = state.positions_local.get(asset, 0.0) * (rc / 365.0) * days_between
             daily_replication_cost += rc_cost_local * fx_rate
 
             # 3. 本币累计损益更新（扣除复制费用）
@@ -665,6 +675,7 @@ class PortfolioTracker:
             # 4. 持仓更新（复利）
             state.positions_local[asset] = state.positions_local.get(asset, 0.0) * (1 + r_local)
             state.positions_cny[asset] = state.positions_cny.get(asset, 0.0) * (1 + r_cny)
+            # positions_cny_base 不变（调仓日设定的基准持仓，日内不更新，与原型一致）
 
         # 5. 净值计算：nav = nav_base + sum(本币累计损益 × 当日汇率)
         # 必须遵循 state.apl_local 的全量键，避免遗留资产损益被丢弃导致 NAV 跳动
@@ -712,7 +723,7 @@ class PortfolioTracker:
 
         - traditional_mode=True 且传入 prices_today 时：走与回测 engine.py 一致的
           传统持仓调仓路径（NAV = cash + Σ(qty×close)，交易费 = Σ|ΔV|*tc）。
-        - 其他情况：走原 APL 路径（与回测 IndexNavCalculator.on_rebalance 对齐）。
+        - 其他情况：走原 APL 路径（监控域自有的权重台账调仓逻辑）。
 
         前置条件：调用本方法之前，必须已通过 update_daily_pnl 用旧权重
         计算了当日市场收益，state.nav 已反映「调仓前但含当日市场收益」的净值。
@@ -737,21 +748,25 @@ class PortfolioTracker:
                 prev_nav=prev_nav,
             )
 
-        # 调仓基准 = 当日已含市场收益的净值（与回测 on_rebalance 中 self.current_nav 一致）
-        rebalance_base_nav = state.nav
-
+        # 调仓基准：与原型 handle_rebalance_execute 完全一致
+        # - 持仓定标使用 prev_nav（前一日净值 nav[t-1]）
+        # - 交易费从 state.nav 扣除（state.nav 已含当日 PnL，由 update_daily_pnl 更新）
+        # - nav_base = state.nav（扣费后的当日净值）
+        # prev_nav 由调用方（_process_single_day）传入，即上一处理日结束后的 state.nav
+        rebalance_base_nav = prev_nav if (prev_nav is not None and prev_nav > 0) else state.nav
+        
         trade_cost = 0.0
-
+        
         # 资产并集：当前 asset_list ∪ state 中遗留非零持仓。
         # 遗留资产（不在 asset_list）的目标权重为 0，调仓时会被卖出，apl/positions 一并清零，
-        # 以保证调仓后 nav_base = nav 是干净的、后续计算不会重复记入遗留损益。
+        # 以保证调仓后 nav_base = nav 是干净的、后续计算不会重复计入遗留损益。
         active_assets = self._active_assets(state)
-
-        # 1. 计算交易费用（基于今日已含市场收益的 state.nav，按本币计算后转换为人民币）
+        
+        # 1. 计算交易费用（基于 nav[t-1]，按本币计算后转换为人民币）
         for asset in active_assets:
             currency = self._resolve_currency(asset)
             fx_rate = fx_rates.get(currency, 1.0)
-
+        
             # 目标持仓（本币）：遗留资产不在 new_weights 中，取 0
             target_pos_local = rebalance_base_nav * new_weights.get(asset, 0.0) / fx_rate
             # 自然增长后的当前持仓（本币）：update_daily_pnl 已应用 1+r_local
@@ -761,25 +776,28 @@ class PortfolioTracker:
             # 交易费用（转为人民币）
             tc = self._resolve_trading_cost(asset)
             trade_cost += trade_amount_local * tc * fx_rate
-
-        # 2. 扣除交易费用，得到调仓后净值（last_rebalance_nav）
+        
+        # 2. 扣除交易费用（与原型一致：从 state.nav 扣除，state.nav 已含当日 PnL）
+        #    原型: state.nav -= trading_cost  (state.nav = nav_base + sum(apl*fx) 已更新)
         state.nav -= trade_cost
-        nav_after_cost = state.nav
 
-        # 3. 基于扣费后的净值重置持仓：asset_list 中资产按 new_weights、遗留资产权重为 0
+        # 3. 基于 prev_nav（前一日净值）重置持仓（与原型 handle_rebalance_execute 完全一致）
+        #    原型: state.positions_cny[asset] = nav_for_position * weight
+        #    其中 nav_for_position = prev_nav（前一日净值）
         for asset in active_assets:
             weight = new_weights.get(asset, 0.0)
             currency = self._resolve_currency(asset)
             fx_rate = fx_rates.get(currency, 1.0)
 
-            state.positions_cny[asset] = nav_after_cost * weight
+            state.positions_cny[asset] = rebalance_base_nav * weight
+            state.positions_cny_base[asset] = rebalance_base_nav * weight  # 与原型 nav_for_position * weight 对齐
             state.positions_local[asset] = state.positions_cny[asset] / fx_rate if fx_rate else 0.0
 
         # 4. 重置累计损益（包含遗留资产，避免 nav_base 包括老 apl 后下一日双重计入）
         for asset in active_assets:
             state.apl_local[asset] = 0.0
 
-        # 5. 更新净值基准（即 last_rebalance_nav）和调仓日汇率
+        # 5. 更新净值基准（与原型一致：nav_base = state.nav，即当日扣费后净值）
         state.nav_base = state.nav
         # 保存以资产名为键的汇率
         fx_rates_asset = {}

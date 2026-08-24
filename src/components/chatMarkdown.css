@@ -3,33 +3,69 @@
 .markdown-body {
   white-space: normal;
   overflow-x: auto;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #303133;
+  word-break: break-word;
 }
 
 .markdown-body h1,
 .markdown-body h2,
-.markdown-body h3 {
-  margin: 12px 0 8px;
+.markdown-body h3,
+.markdown-body h4 {
+  margin: 20px 0 10px;
   font-weight: 600;
+  line-height: 1.4;
+  color: #1f2937;
 }
 
-.markdown-body h1 { font-size: 1.3em; }
-.markdown-body h2 { font-size: 1.15em; }
-.markdown-body h3 { font-size: 1.05em; }
+.markdown-body h1 {
+  font-size: 1.5em;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e8ebf0;
+}
+
+.markdown-body h2 {
+  font-size: 1.25em;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.markdown-body h3 { font-size: 1.1em; }
+.markdown-body h4 { font-size: 1em; }
+
+.markdown-body h1:first-child,
+.markdown-body h2:first-child,
+.markdown-body h3:first-child {
+  margin-top: 0;
+}
 
 .markdown-body p {
-  margin: 4px 0;
+  margin: 0 0 12px;
+}
+
+.markdown-body p:last-child {
+  margin-bottom: 0;
 }
 
 .markdown-body ul,
 .markdown-body ol {
-  padding-left: 20px;
+  padding-left: 22px;
+  margin: 0 0 12px;
+}
+
+.markdown-body li {
   margin: 4px 0;
 }
 
+.markdown-body li > p {
+  margin-bottom: 4px;
+}
+
 .markdown-body code {
-  background: #e8eaed;
+  background: #eef1f5;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: 4px;
   font-size: 13px;
   font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
 }
@@ -38,9 +74,9 @@
   background: #282c34;
   color: #abb2bf;
   padding: 14px 16px;
-  border-radius: 6px;
+  border-radius: 10px;
   overflow-x: auto;
-  margin: 8px 0;
+  margin: 0 0 14px;
 }
 
 .markdown-body pre code {
@@ -55,19 +91,19 @@
   border-collapse: collapse;
   width: 100%;
   max-width: 100%;
-  margin: 12px 0;
+  margin: 0 0 14px;
   font-size: 13px;
   line-height: 1.5;
   display: table;
 }
 
 .markdown-body .md-table thead {
-  background-color: #f6f8fa;
+  background-color: #fafbfc;
 }
 
 .markdown-body .md-table th,
 .markdown-body .md-table td {
-  border: 1px solid #dfe2e5;
+  border: 1px solid #e8ebf0;
   padding: 8px 12px;
   text-align: left;
   white-space: nowrap;
@@ -76,24 +112,25 @@
 
 .markdown-body .md-table th {
   font-weight: 600;
-  background-color: #f6f8fa;
-  color: #24292e;
+  background-color: #fafbfc;
+  color: #4b5563;
 }
 
 .markdown-body .md-table tbody tr:nth-child(even) {
-  background-color: #f9fafb;
+  background-color: #fcfcfd;
 }
 
 .markdown-body .md-table tbody tr:hover {
-  background-color: #f0f4f8;
+  background-color: #f5f8fc;
 }
 
 .markdown-body blockquote {
-  border-left: 4px solid #409EFF;
-  padding: 8px 12px;
-  margin: 8px 0;
-  background: #f0f7ff;
-  color: #606266;
+  border-left: 3px solid #a5b4fc;
+  padding: 8px 14px;
+  margin: 0 0 14px;
+  background: #f6f7fc;
+  color: #5f6b7d;
+  border-radius: 0 8px 8px 0;
 }
 
 .markdown-body a {
@@ -109,11 +146,11 @@
    导出时仍能拿到完整表格 DOM */
 .table-wrapper {
   position: relative;
-  margin: 12px 0;
+  margin: 0 0 14px;
   overflow: auto;
   max-height: 360px;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
+  border: 1px solid #e8ebf0;
+  border-radius: 10px;
   background: #fff;
 }
 

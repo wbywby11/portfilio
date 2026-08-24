@@ -117,17 +117,17 @@ def _prices_pivot_from_records(
 
 
 def _normalize_fx_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """与 portfolio_tracker 约定一致：列 HKD/USD/EUR/CNH，索引为日历日。"""
+    """与 portfolio_tracker 约定一致：列 HKD/USD/EUR/JPY/CNH，索引为日历日。"""
     if df is None or df.empty:
-        return pd.DataFrame(columns=["HKD", "USD", "EUR", "CNH"])
+        return pd.DataFrame(columns=["HKD", "USD", "EUR", "JPY", "CNH"])
     out = df.copy()
     out.index = normalize_datetime_index(pd.to_datetime(out.index))
     out.index.name = "date"
-    for col in ("HKD", "USD", "EUR"):
+    for col in ("HKD", "USD", "EUR", "JPY"):
         if col not in out.columns:
             out[col] = 1.0
     out["CNH"] = 1.0
-    out = out[["HKD", "USD", "EUR", "CNH"]]
+    out = out[["HKD", "USD", "EUR", "JPY", "CNH"]]
     if out.index.has_duplicates:
         out = out[~out.index.duplicated(keep="last")]
     return out.sort_index()
@@ -141,7 +141,7 @@ def _fx_from_xlsx(
     try:
         from app.services.fx_service import FxService
     except ImportError:
-        return pd.DataFrame(columns=["HKD", "USD", "EUR", "CNH"])
+        return pd.DataFrame(columns=["HKD", "USD", "EUR", "JPY", "CNH"])
     raw = FxService._load_from_xlsx(start_date=start_date, end_date=end_date)
     return _normalize_fx_dataframe(raw)
 
@@ -200,14 +200,14 @@ class MongoDataProvider:
         db = self._get_db()
         collection = db[config.MONGO_COLLECTIONS['prices']]
         
-        # 构建查询条件
+        # 构建查询条件（asset_prices.date 为 YYYY-MM-DD 字符串，直接用字符串比较）
         query: Dict = {}
         if start_date or end_date:
             query['date'] = {}
             if start_date:
-                query['date']['$gte'] = datetime.strptime(start_date, '%Y-%m-%d')
+                query['date']['$gte'] = start_date
             if end_date:
-                query['date']['$lte'] = datetime.strptime(end_date, '%Y-%m-%d')
+                query['date']['$lte'] = end_date
         
         pivot_columns: Optional[List[str]] = asset_columns
         if asset_columns is None or _is_full_legacy_chinese_universe(asset_columns):
@@ -259,19 +259,19 @@ class MongoDataProvider:
         Returns
         -------
         pd.DataFrame
-            索引为日期(pd.Timestamp)，列为 HKD, USD, EUR, CNH
+            索引为日期(pd.Timestamp)，列为 HKD, USD, EUR, JPY, CNH
         """
         db = self._get_db()
         collection = db[config.MONGO_COLLECTIONS['fx']]
         
-        # 构建查询条件
+        # 构建查询条件（fx_rates.date 为 YYYY-MM-DD 字符串，直接用字符串比较）
         query = {}
         if start_date or end_date:
             query['date'] = {}
             if start_date:
-                query['date']['$gte'] = datetime.strptime(start_date, '%Y-%m-%d')
+                query['date']['$gte'] = start_date
             if end_date:
-                query['date']['$lte'] = datetime.strptime(end_date, '%Y-%m-%d')
+                query['date']['$lte'] = end_date
         
         # 查询数据
         cursor = collection.find(query).sort('date', 1)
@@ -295,7 +295,7 @@ class MongoDataProvider:
         df.index.name = 'date'
         
         # 确保包含必需的汇率列
-        required_columns = ['HKD', 'USD', 'EUR']
+        required_columns = ['HKD', 'USD', 'EUR', 'JPY']
         for col in required_columns:
             if col not in df.columns:
                 df[col] = 1.0
@@ -304,7 +304,7 @@ class MongoDataProvider:
         df['CNH'] = 1.0
         
         # 只保留需要的列
-        df = df[['HKD', 'USD', 'EUR', 'CNH']]
+        df = df[['HKD', 'USD', 'EUR', 'JPY', 'CNH']]
         
         return _normalize_fx_dataframe(df)
     
@@ -483,13 +483,14 @@ class SyncDataProvider:
         db = self._get_db()
         collection = db[config.MONGO_COLLECTIONS['prices']]
         
+        # asset_prices.date 为 YYYY-MM-DD 字符串，直接用字符串比较
         query: Dict = {}
         if start_date or end_date:
             query['date'] = {}
             if start_date:
-                query['date']['$gte'] = datetime.strptime(start_date, '%Y-%m-%d')
+                query['date']['$gte'] = start_date
             if end_date:
-                query['date']['$lte'] = datetime.strptime(end_date, '%Y-%m-%d')
+                query['date']['$lte'] = end_date
         
         pivot_columns: Optional[List[str]] = asset_columns
         if asset_columns is None or _is_full_legacy_chinese_universe(asset_columns):
@@ -517,19 +518,19 @@ class SyncDataProvider:
         Returns
         -------
         pd.DataFrame
-            索引为日期(pd.Timestamp)，列为 HKD, USD, EUR, CNH
+            索引为日期(pd.Timestamp)，列为 HKD, USD, EUR, JPY, CNH
         """
         db = self._get_db()
         collection = db[config.MONGO_COLLECTIONS['fx']]
         
-        # 构建查询条件
+        # 构建查询条件（fx_rates.date 为 YYYY-MM-DD 字符串，直接用字符串比较）
         query = {}
         if start_date or end_date:
             query['date'] = {}
             if start_date:
-                query['date']['$gte'] = datetime.strptime(start_date, '%Y-%m-%d')
+                query['date']['$gte'] = start_date
             if end_date:
-                query['date']['$lte'] = datetime.strptime(end_date, '%Y-%m-%d')
+                query['date']['$lte'] = end_date
         
         # 查询数据
         records = list(collection.find(query).sort('date', 1))
@@ -552,7 +553,7 @@ class SyncDataProvider:
         df.index.name = 'date'
         
         # 确保包含必需的汇率列
-        for col in ['HKD', 'USD', 'EUR']:
+        for col in ['HKD', 'USD', 'EUR', 'JPY']:
             if col not in df.columns:
                 df[col] = 1.0
         
@@ -560,7 +561,7 @@ class SyncDataProvider:
         df['CNH'] = 1.0
         
         # 只保留需要的列
-        df = df[['HKD', 'USD', 'EUR', 'CNH']]
+        df = df[['HKD', 'USD', 'EUR', 'JPY', 'CNH']]
         
         return _normalize_fx_dataframe(df)
     

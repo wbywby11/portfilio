@@ -51,39 +51,3 @@ def build_get_py_result_payload(body: DataHubImportJsonBody, resource_default: s
         "rownum": body.rownum,
         "startrow": body.startrow,
     }
-
-
-def _ptl_nullable_tree(val: Optional[str]) -> Optional[str]:
-    if val is None:
-        return None
-    s = str(val).strip()
-    return None if s == "" else s
-
-
-class PtlInfoImportRequest(BaseModel):
-    """产品信息表 getPyResult：paramMaps 为 SYS_ID / PROD_CDS / asset_tree / port_tree"""
-
-    SYS_ID: str = Field("", description="系统号，可空")
-    PROD_CDS: str = Field("", description="产品代码，可空（全量时可能触发上游行数限制）")
-    asset_tree: Optional[str] = Field(None, description="维度树 code，可空")
-    port_tree: Optional[str] = Field(None, description="组合树 code，可空")
-    rownum: int = Field(100000, ge=1, le=1_000_000)
-    startrow: int = Field(1, ge=1)
-    resource: Optional[str] = Field(None, description="上游 resource，默认连接器 resource_default")
-    timeout: float = Field(180.0, ge=5.0, le=600.0)
-    upstream_url: Optional[str] = None
-
-
-def build_ptl_param_maps_payload(body: PtlInfoImportRequest, resource_default: str) -> dict:
-    res = (body.resource or "").strip() or resource_default
-    return {
-        "resource": res,
-        "paramMaps": {
-            "SYS_ID": (body.SYS_ID or "").strip(),
-            "PROD_CDS": (body.PROD_CDS or "").strip(),
-            "asset_tree": _ptl_nullable_tree(body.asset_tree),
-            "port_tree": _ptl_nullable_tree(body.port_tree),
-        },
-        "rownum": body.rownum,
-        "startrow": body.startrow,
-    }

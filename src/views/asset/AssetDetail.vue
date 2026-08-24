@@ -8,10 +8,21 @@
         {{ asset.name }}
       </el-descriptions-item>
       
-      <el-descriptions-item label="资产分类" :span="1">
-        <el-tag :type="getAssetTypeTagType(asset.asset_type)">
-          {{ asset.asset_type }}
+      <el-descriptions-item label="工具形态" :span="1">
+        <el-tag :type="getInstrumentTypeTagType(asset.instrument_type)">
+          {{ asset.instrument_type || legacyInstrumentType }}
         </el-tag>
+      </el-descriptions-item>
+      <el-descriptions-item label="资产大类" :span="1">
+        <el-tag :type="getAssetClassTagType(asset.asset_class)" effect="plain">
+          {{ asset.asset_class || legacyAssetClass }}
+        </el-tag>
+      </el-descriptions-item>
+      <el-descriptions-item label="证券细分" :span="1">
+        <el-tag v-if="asset.security_type" type="info" effect="plain">
+          {{ asset.security_type }}
+        </el-tag>
+        <span v-else>-</span>
       </el-descriptions-item>
       <el-descriptions-item label="交易所" :span="1">
         {{ asset.exchange || '-' }}
@@ -34,11 +45,11 @@
       </el-descriptions-item>
     </el-descriptions>
 
-    <!-- 期货类特殊参数 -->
-    <el-divider content-position="left" v-if="asset && asset.asset_type === '期货类'">
+    <!-- 期货型特殊参数 -->
+    <el-divider content-position="left" v-if="asset && instrumentType === '期货型'">
       <span style="font-size: 16px; font-weight: 600;">期货展期参数</span>
     </el-divider>
-    <el-descriptions :column="2" border v-if="asset && asset.asset_type === '期货类'">
+    <el-descriptions :column="2" border v-if="asset && instrumentType === '期货型'">
       <el-descriptions-item label="展期天数 k" :span="1">
         <span>{{ asset.rollover_days !== null && asset.rollover_days !== undefined ? asset.rollover_days : '-' }}</span>
         <el-tooltip content="展期天数，用于计算期货合约展期时的加权平均收益率" placement="top">
@@ -65,11 +76,11 @@
       </el-descriptions-item>
     </el-descriptions>
 
-    <!-- 现货类特殊参数 -->
-    <el-divider content-position="left" v-if="asset && asset.asset_type === '现货类'">
+    <!-- 现货型特殊参数 -->
+    <el-divider content-position="left" v-if="asset && instrumentType === '现货型'">
       <span style="font-size: 16px; font-weight: 600;">现货替代参数</span>
     </el-divider>
-    <el-descriptions :column="2" border v-if="asset && asset.asset_type === '现货类'">
+    <el-descriptions :column="2" border v-if="asset && instrumentType === '现货型'">
       <el-descriptions-item label="替代标的代码" :span="1">
         <el-tag v-if="asset.substitute_code" type="info">{{ asset.substitute_code }}</el-tag>
         <span v-else>-</span>
@@ -114,6 +125,40 @@ export default {
       loading: false
     };
   },
+  computed: {
+    // 兼容：从旧字段推断 instrument_type
+    legacyInstrumentType() {
+      if (!this.asset) return '';
+      if (this.asset.instrument_type) return this.asset.instrument_type;
+      const t = this.asset.asset_type;
+      if (t === '指数类' || t === '指数型') return '指数型';
+      if (t === '现货类' || t === '现货型') return '现货型';
+      if (t === '期货类' || t === '期货型') return '期货型';
+      if (['股票', '债券', '基金', '货币'].includes(t)) return '现货型';
+      return '指数型';
+    },
+    // 兼容：从旧字段推断 asset_class
+    legacyAssetClass() {
+      if (!this.asset) return '';
+      if (this.asset.asset_class) return this.asset.asset_class;
+      const t = this.asset.asset_type || '';
+      const n = this.asset.name || '';
+      const combined = n + ' ' + t;
+      if (combined.includes('债')) return '固收';
+      if (['黄金', '白银', '原油', '螺纹', '铁矿', '有色', '豆粕', '棉花', '沪', '商品'].some(k => combined.includes(k))) return '商品';
+      if (combined.includes('货币')) return '货币';
+      if (['BTC', 'ETH', '加密', '数字货币'].some(k => combined.includes(k))) return '另类';
+      if (t === '债券') return '固收';
+      if (t === '货币') return '货币';
+      if (t === '数字货币') return '另类';
+      return '权益';
+    },
+    // 统一的 instrument_type（优先新字段，兼容旧字段）
+    instrumentType() {
+      if (!this.asset) return '';
+      return this.asset.instrument_type || this.legacyInstrumentType;
+    }
+  },
   created() {
     if (this.assetId) {
       this.loadAsset();
@@ -153,20 +198,25 @@ export default {
         this.loading = false;
       }
     },
-    getAssetTypeTagType(assetType) {
-      const typeMap = {
+    getInstrumentTypeTagType(it) {
+      return {
+        '指数型': 'primary',
+        '现货型': 'success',
+        '期货型': 'warning',
+        // 兼容旧值
         '指数类': 'primary',
         '现货类': 'success',
-        '期货类': 'warning',
-        '股票': 'info',
-        '债券': '',
+        '期货类': 'warning'
+      }[it] || '';
+    },
+    getAssetClassTagType(ac) {
+      return {
+        '权益': 'primary',
+        '固收': 'success',
         '商品': 'warning',
-        '货币': 'success',
-        '基金': 'primary',
-        '指数': 'primary',
-        '数字货币': 'danger'
-      };
-      return typeMap[assetType] || '';
+        '货币': 'info',
+        '另类': 'danger'
+      }[ac] || '';
     },
     formatDate(dateStr) {
       if (!dateStr) return '-';

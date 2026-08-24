@@ -8,15 +8,6 @@
 - 可以通过 GET /{model_id}/backtest-request 接口获取回测请求参数
 """
 from typing import Any, Dict, List, Optional, Tuple
-import pandas as pd
-
-from app.monitor.monitor_runtime import (
-    config_baseline_eligible_strategy_dict,
-    live_effective_display_bundle,
-    live_effective_asset_display_labels,
-    live_effective_structured_params,
-    normalize_strategy_asset_codes,
-)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from bson import ObjectId
@@ -26,38 +17,30 @@ from app.schemas.strategy_model import (
     StrategyModelUpdate,
     StrategyModelOut,
     WeightChangesOut,
-    AssetWeight,
     BacktestRecordOut,
     LivePublishRequest,
     LiveConfigUpdate,
     ManualRebalanceDecisionRequest,
     LiveChangeLogOut,
 )
+from app.schemas.param_version import ParamVersionOut
 from app.schemas.response import Response
 from app.services.strategy_model_service import StrategyModelService
+from app.services.strategy_model_service import resolve_full_params
+from app.services.live_publish_service import LivePublishService
+from app.services.backtest_service import BacktestService
+from app.services.param_version_service import ParamVersionService
+from app.services.strategy_model_monitoring import (
+    get_model_monitoring_core,
+    get_weight_changes_core,
+)
+# 监控回测与权重变化编排已下沉 app/services/strategy_model_monitoring.py（P9 治理）
 from app.models.strategy_model import (
     StrategyModel,
     ModelStatus,
-    EquityPoint,
-    ReturnPoint,
-    WeightChangePoint,
-    BacktestResult as ModelBacktestResult,
-    BacktestRecord,
-    AssetPosition,
-    PositionRecord,
-    TodayNav,
-    TodayPlannedRebalance,
 )
 from app.services.asset_service import AssetService
 from app.services.market_service import MarketService
-from app.backtesting.config import BacktestConfig
-from app.backtesting.data_feed import DataFeed
-from app.backtesting.engine import BacktestEngine
-from app.backtesting.risk import RiskManager, RiskConfig
-from app.backtesting.execution import ExecutionEngine
-from app.backtesting.strategy_api import StrategiesWrapper
-from app.backtesting.analytics import PerformanceAnalyzer
-from app.strategies.services.registry import create_strategy_service_from_database
 
 
 router = APIRouter()
@@ -103,6 +86,18 @@ def get_model_service() -> StrategyModelService:
     return StrategyModelService()
 
 
+def get_live_publish_service() -> LivePublishService:
+    return LivePublishService()
+
+
+def get_backtest_service() -> BacktestService:
+    return BacktestService()
+
+
+def get_param_version_service() -> ParamVersionService:
+    return ParamVersionService()
+
+
 def get_asset_service() -> AssetService:
     return AssetService()
 
@@ -115,41 +110,8 @@ def _live_effective_fields(
     model: StrategyModel,
     asset_names: Optional[Dict[str, str]] = None,
 ) -> Tuple[Optional[str], Optional[List[str]], Optional[List[str]]]:
-    """实盘摘要文案 + 监控资产标识列表 + 同序展示名称列表（仅已实盘发布快照，不含未发布草稿）。"""
-    codes_list = normalize_strategy_asset_codes(getattr(model, "asset_codes", None))
-    summary, assets = live_effective_display_bundle(
-        model.live_publish_enabled,
-        model.live_snapshot or {},
-        model.live_volatility_threshold,
-        current_parameters=model.parameters,
-        current_asset_codes=codes_list,
-        asset_names=asset_names,
-        published_only=True,
-    )
-    labels = live_effective_asset_display_labels(assets, asset_names)
-    return summary, assets, labels
-
-
-@router.get(
-    "/defaults/risk_budget_target_vol_hybrid_momentum",
-    response_model=Response[dict],
-    summary="获取 risk_budget_target_vol 混合动量策略默认参数",
-)
-async def get_hybrid_momentum_rbtv_defaults(
-    asset_codes: str | None = Query(
-        None,
-        description="资产代码列表，逗号分隔，用于预填 max_weight_dict；不传则 max_weight_dict 为空",
-    ),
-):
-    """
-    依据浙银理财-申万指数编制规则 B.1 关键参数精确值，返回 risk_budget_target_vol 混合动量策略的默认参数。
-    新建策略时，前端可调用此接口预填表单。
-    """
-    from app.config.hybrid_momentum_rbtv_defaults import get_hybrid_momentum_rbtv_defaults as _get_defaults
-
-    codes = [c.strip() for c in asset_codes.split(",") if c.strip()] if asset_codes else None
-    defaults = _get_defaults(asset_codes=codes)
-    return Response.success(data=defaults, message="默认参数获取成功")
+    """实盘展示字段计算已下沉 LivePublishService，API 层仅保留转发。"""
+    return LivePublishService.live_effective_fields(model, asset_names)
 
 
 @router.post("/", response_model=Response[str], summary="创建策略模型")
@@ -164,23 +126,6 @@ async def create_model(
     # 移除基准代码字段（因为它不再存在于模型中）
     model_data = model_in.dict()
     model_data.pop('benchmark_code', None)  # 移除基准代码字段
-    
-    # risk_budget_target_vol + 混合动量：按 B.1 编制规则初始化默认参数（仅填充未提供的键）
-    params = model_data.get("parameters") or {}
-    if (
-        model_data.get("template_code") == "risk_budget_target_vol"
-        and (
-            model_data.get("enable_momentum_selection") is True
-            or params.get("enable_momentum_selection") is True
-            or params.get("selector_type") in ("momentum_reversal", "hybrid")
-        )
-    ):
-        from app.config.hybrid_momentum_rbtv_defaults import get_hybrid_momentum_rbtv_defaults
-        defaults = get_hybrid_momentum_rbtv_defaults(asset_codes=model_data.get("asset_codes"))
-        for k, v in defaults.items():
-            if k not in params or params[k] is None:
-                params[k] = v
-        model_data["parameters"] = params
     
     model = StrategyModel(**model_data)
     model_id = await service.create_model(model)
@@ -223,10 +168,11 @@ async def list_models(
     status: str | None = Query(None, description="模型状态(草稿/已发布/已归档)，空字符串表示不筛选"),
     template_code: str | None = Query(None, description="模板代码"),
     rebalance_frequency: str | None = Query(None, description="调仓频率(日/周/月/季/年 或 自定义格式如 '1天', '2周', '3月' 等)"),
+    include_portfolio: bool = Query(False, description="是否包含组合模型（is_portfolio=True），默认排除"),
     service: StrategyModelService = Depends(get_model_service),
     asset_service: AssetService = Depends(get_asset_service)
 ):
-    """查询策略模型列表，支持按状态和模板代码筛选"""
+    """查询策略模型列表，支持按状态和模板代码筛选（默认排除组合模型）"""
     # 将空字符串转换为 None（不筛选）
     status_filter = None if not status or status.strip() == "" else status
     template_filter = None if not template_code or template_code.strip() == "" else template_code
@@ -249,7 +195,12 @@ async def list_models(
     if frequency_filter:
         validate_rebalance_frequency(frequency_filter)
     
-    models = await service.list_models(status=status_enum, template_code=template_filter, rebalance_frequency=frequency_filter)
+    models = await service.list_models(
+        status=status_enum,
+        template_code=template_filter,
+        rebalance_frequency=frequency_filter,
+        include_portfolio=include_portfolio,
+    )
     
     # 获取所有唯一资产代码、模板代码
     all_asset_codes = set()
@@ -303,6 +254,8 @@ async def list_models(
         # 但为了确保完整性，也可以从数据库直接读取（如果需要）
         
         le_sum, le_assets, le_labels = _live_effective_fields(model, current_asset_names)
+        # 结构化参数：三层解耦聚合
+        rp = resolve_full_params(model)
         model_out = StrategyModelOut(
             **model_dict,
             asset_names=current_asset_names,
@@ -311,6 +264,7 @@ async def list_models(
             live_effective_summary=le_sum,
             live_effective_assets=le_assets,
             live_effective_asset_labels=le_labels,
+            resolved_params=rp,
         )
         data.append(model_out)
     
@@ -371,6 +325,7 @@ async def get_model(
             "macd_windows",
             "macd_long_window",
             "reversal_windows",
+            "sharp_windows",
         ):
             if _wk in model_data:
                 model_dict[_wk] = model_data[_wk]
@@ -378,6 +333,8 @@ async def get_model(
             model_dict["tie_break_window"] = model_data["tie_break_window"]
     
     le_sum, le_assets, le_labels = _live_effective_fields(model, asset_names)
+    # 结构化参数：三层解耦聚合，前端可直接渲染
+    rp = resolve_full_params(model)
     model_out = StrategyModelOut(
         **model_dict,
         asset_names=asset_names,
@@ -386,6 +343,7 @@ async def get_model(
         live_effective_summary=le_sum,
         live_effective_assets=le_assets,
         live_effective_asset_labels=le_labels,
+        resolved_params=rp,
     )
     
     return Response.success(data=model_out)
@@ -454,6 +412,8 @@ async def update_model(
     model_dict.pop('parameter_labels', None)
     
     le_sum, le_assets, le_labels = _live_effective_fields(updated_model, asset_names)
+    # 结构化参数：三层解耦聚合
+    rp = resolve_full_params(updated_model)
     model_out = StrategyModelOut(
         **model_dict,
         asset_names=asset_names,
@@ -462,15 +422,16 @@ async def update_model(
         live_effective_summary=le_sum,
         live_effective_assets=le_assets,
         live_effective_asset_labels=le_labels,
+        resolved_params=rp,
     )
     
     return Response.success(data=model_out, message="策略模型更新成功")
 
 
 @router.post("/{model_id}/publish", response_model=Response[bool], summary="发布模型")
-async def publish_model(model_id: str, service: StrategyModelService = Depends(get_model_service)):
+async def publish_model(model_id: str, live_service: LivePublishService = Depends(get_live_publish_service)):
     validate_object_id(model_id)
-    success = await service.publish_model(model_id)
+    success = await live_service.publish_model(model_id)
     return Response.success(data=success, message="模型发布成功")
 
 
@@ -479,9 +440,19 @@ async def live_publish_model(
     model_id: str,
     body: LivePublishRequest = Body(default=LivePublishRequest()),
     service: StrategyModelService = Depends(get_model_service),
+    live_service: LivePublishService = Depends(get_live_publish_service),
 ):
     validate_object_id(model_id)
-    success = await service.live_publish_model(
+    # 自动检测组合模型，走组合发布逻辑
+    model = await service.get_model(model_id)
+    if model and model.is_portfolio:
+        success = await live_service.live_publish_portfolio_model(
+            model_id=model_id,
+            source=body.source,
+            operator=body.operator,
+        )
+        return Response.success(data=success, message="组合模型发布成功")
+    success = await live_service.live_publish_model(
         model_id=model_id,
         source=body.source,
         operator=body.operator,
@@ -496,10 +467,10 @@ async def live_unpublish_model(
     model_id: str,
     source: str = Query("strategy", description="操作来源"),
     operator: str | None = Query(None, description="操作人"),
-    service: StrategyModelService = Depends(get_model_service),
+    live_service: LivePublishService = Depends(get_live_publish_service),
 ):
     validate_object_id(model_id)
-    success = await service.live_unpublish_model(model_id=model_id, source=source, operator=operator)
+    success = await live_service.live_unpublish_model(model_id=model_id, source=source, operator=operator)
     return Response.success(data=success, message="已取消实盘发布")
 
 
@@ -507,13 +478,14 @@ async def live_unpublish_model(
 async def get_live_config(
     model_id: str,
     service: StrategyModelService = Depends(get_model_service),
+    live_service: LivePublishService = Depends(get_live_publish_service),
 ):
     """返回当前实盘配置及从策略 parameters 提取的建议波动率阈值"""
     validate_object_id(model_id)
     model = await service.get_model(model_id)
     if not model:
         raise HTTPException(status_code=404, detail=f"策略模型不存在: {model_id}")
-    suggested = service._extract_volatility_from_params(model)
+    suggested = live_service._extract_volatility_from_params(model)
     data = {
         "live_volatility_threshold": model.live_volatility_threshold,
         "live_rebalance_mode": str(model.live_rebalance_mode) if model.live_rebalance_mode else "auto",
@@ -526,10 +498,10 @@ async def get_live_config(
 async def update_live_config(
     model_id: str,
     body: LiveConfigUpdate,
-    service: StrategyModelService = Depends(get_model_service),
+    live_service: LivePublishService = Depends(get_live_publish_service),
 ):
     validate_object_id(model_id)
-    success = await service.update_live_config(
+    success = await live_service.update_live_config(
         model_id=model_id,
         source=body.source,
         operator=body.operator,
@@ -543,10 +515,10 @@ async def update_live_config(
 async def list_live_published_models(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    service: StrategyModelService = Depends(get_model_service),
+    live_service: LivePublishService = Depends(get_live_publish_service),
     asset_service: AssetService = Depends(get_asset_service),
 ):
-    models = await service.list_live_models(skip=skip, limit=limit)
+    models = await live_service.list_live_models(skip=skip, limit=limit)
     data = []
     for model in models:
         asset_names = {}
@@ -580,10 +552,10 @@ async def list_live_published_models(
 async def list_live_eligible_monitor_models(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    service: StrategyModelService = Depends(get_model_service),
+    live_service: LivePublishService = Depends(get_live_publish_service),
     asset_service: AssetService = Depends(get_asset_service),
 ):
-    models = await service.list_live_eligible_monitor_models(skip=skip, limit=limit)
+    models = await live_service.list_live_eligible_monitor_models(skip=skip, limit=limit)
     strategies: List[Dict[str, Any]] = []
     for model in models:
         asset_names: Dict[str, str] = {}
@@ -592,16 +564,7 @@ async def list_live_eligible_monitor_models(
             if asset_info:
                 asset_names[asset_code] = asset_info.name
         le_sum, le_assets, le_labels = _live_effective_fields(model, asset_names)
-        codes_list = normalize_strategy_asset_codes(getattr(model, "asset_codes", None))
-        le_params = live_effective_structured_params(
-            model.live_publish_enabled,
-            model.live_snapshot or {},
-            model.live_volatility_threshold,
-            current_parameters=model.parameters,
-            current_asset_codes=codes_list,
-            model_for_selection=model,
-            published_only=True,
-        )
+        le_params = LivePublishService.live_effective_params(model)
         strategies.append(
             {
                 "id": model.id,
@@ -619,16 +582,7 @@ async def list_live_eligible_monitor_models(
             }
         )
 
-    from app.monitor import config as monitor_config
-
-    baseline_asset_names: Dict[str, str] = {}
-    for nm in monitor_config.ASSET_LIST:
-        code = monitor_config.ASSET_NAME_TO_CODE.get(nm)
-        if not code:
-            continue
-        asset_info = await asset_service.get_asset_by_code(code)
-        baseline_asset_names[code] = asset_info.name if asset_info else code
-    strategies.append(config_baseline_eligible_strategy_dict(baseline_asset_names))
+    strategies.append(await live_service.build_config_baseline_strategy(asset_service))
 
     display_name = "、".join([m["name"] for m in strategies]) if strategies else ""
     return Response.success(
@@ -645,10 +599,10 @@ async def list_live_change_logs(
     model_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    service: StrategyModelService = Depends(get_model_service),
+    live_service: LivePublishService = Depends(get_live_publish_service),
 ):
     validate_object_id(model_id)
-    rows = await service.list_live_change_logs(model_id=model_id, skip=skip, limit=limit)
+    rows = await live_service.list_live_change_logs(model_id=model_id, skip=skip, limit=limit)
     data = [
         LiveChangeLogOut(
             id=row["_id"],
@@ -672,12 +626,12 @@ async def list_live_change_logs(
 async def confirm_manual_rebalance(
     model_id: str,
     body: ManualRebalanceDecisionRequest,
-    service: StrategyModelService = Depends(get_model_service),
+    live_service: LivePublishService = Depends(get_live_publish_service),
 ):
     validate_object_id(model_id)
     if body.decision not in {"confirm", "skip"}:
         raise HTTPException(status_code=400, detail="decision 仅支持 confirm 或 skip")
-    ok = await service.confirm_manual_rebalance(
+    ok = await live_service.confirm_manual_rebalance(
         model_id=model_id,
         decision=body.decision,
         operator=body.operator,
@@ -708,7 +662,8 @@ async def get_backtest_request(
     start_date: str = Query(..., description="回测开始日期（格式：YYYYMMDD）"),
     end_date: str = Query(..., description="回测结束日期（格式：YYYYMMDD）"),
     initial_cash: float = Query(10_000_000.0, description="初始资金"),
-    service: StrategyModelService = Depends(get_model_service)
+    service: StrategyModelService = Depends(get_model_service),
+    backtest_service: BacktestService = Depends(get_backtest_service)
 ):
     """
     从策略模型生成回测请求参数
@@ -741,7 +696,7 @@ async def get_backtest_request(
         raise HTTPException(status_code=404, detail=f"策略模型不存在: {model_id}")
     
     # 生成回测请求参数
-    request_data = service.to_backtest_request(
+    request_data = backtest_service.to_backtest_request(
         model=model,
         start_date=start_date,
         end_date=end_date,
@@ -771,6 +726,7 @@ async def get_model_backtests(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     service: StrategyModelService = Depends(get_model_service),
+    backtest_service: BacktestService = Depends(get_backtest_service),
     asset_service: AssetService = Depends(get_asset_service)
 ):
     """
@@ -788,7 +744,7 @@ async def get_model_backtests(
         raise HTTPException(status_code=404, detail=f"策略模型不存在: {model_id}")
     
     # 查询回测记录（按 created_at 倒序，第一条为最新）
-    records = await service.list_backtest_records(model_id=model_id, skip=skip, limit=limit)
+    records = await backtest_service.list_backtest_records(model_id=model_id, skip=skip, limit=limit)
     if records:
         print(f"[BacktestRecord] GET 回测记录列表 model_id={model_id} count={len(records)} first_id={getattr(records[0], 'id', getattr(records[0], '_id', None))}")
     
@@ -830,14 +786,14 @@ async def update_backtest_record_remark(
     model_id: str,
     record_id: str,
     body: dict = Body(..., embed=False),
-    service: StrategyModelService = Depends(get_model_service),
+    backtest_service: BacktestService = Depends(get_backtest_service),
 ):
     """更新指定回测记录的备注信息"""
     validate_object_id(model_id)
     validate_object_id(record_id)
     remark = body.get("remark")
     print(f"[BacktestRecord] PATCH 更新备注 model_id={model_id} record_id={record_id} remark_len={len(remark) if remark else 0}")
-    updated = await service.update_backtest_record_remark(record_id=record_id, model_id=model_id, remark=remark)
+    updated = await backtest_service.update_backtest_record_remark(record_id=record_id, model_id=model_id, remark=remark)
     if not updated:
         print(f"[BacktestRecord] PATCH 更新备注失败 404 record_id={record_id}")
         raise HTTPException(status_code=404, detail="回测记录不存在或不属于该模型")
@@ -860,230 +816,13 @@ async def get_model_monitoring(
     use_live_snapshot: 实盘监控时使用 live_snapshot 配置，不触发实盘发布。
     """
     validate_object_id(model_id)
-
-    # 1. 获取并校验模型
-    model = await service.get_model(model_id)
-    if not model:
-        raise HTTPException(status_code=404, detail=f"策略模型不存在: {model_id}")
-
-    if model.status != ModelStatus.PUBLISHED and not model.live_publish_enabled:
-        raise HTTPException(status_code=400, detail="仅支持对已发布或已实盘发布的策略进行监控")
-
-    # 2. 确定建仓日与结束日；实盘监控时使用 live_snapshot 配置
-    from datetime import datetime
-
-    if use_live_snapshot and model.live_publish_enabled and model.live_snapshot:
-        snap = model.live_snapshot
-        asset_codes = snap.get("asset_codes") or model.asset_codes
-        parameters = snap.get("parameters") or model.parameters
-        rebalance_frequency = snap.get("rebalance_frequency") or model.rebalance_frequency
-        if model.live_effective_date:
-            start_dt = model.live_effective_date
-        else:
-            start_dt = model.inception_date or model.published_at or model.created_at
-    else:
-        asset_codes = model.asset_codes
-        parameters = model.parameters
-        rebalance_frequency = model.rebalance_frequency
-        if model.inception_date:
-            start_dt = model.inception_date
-        elif model.published_at:
-            start_dt = model.published_at
-        else:
-            start_dt = model.created_at
-
-    start_date_str = start_dt.strftime("%Y%m%d")
-    end_dt = datetime.now()
-    end_date_str = end_dt.strftime("%Y%m%d")
-
-    # 3. 构造回测配置（尽量复用现有回测逻辑）
-    config = BacktestConfig(
-        name=f"monitoring_{model_id}",
-        thscodes=asset_codes,
-        start_date=start_date_str,
-        end_date=end_date_str,
-        rebalance_freq=rebalance_frequency,
-        initial_cash=10_000_000.0,
-    )
-
-    # 4. 创建数据源
-    data_feed = await DataFeed.from_market_service(
-        market_service=market_service,
-        config=config,
-        lookback_days=500,
-    )
-    if data_feed.prices.empty:
-        raise HTTPException(status_code=400, detail="无法获取历史行情数据，请检查资产代码和日期范围")
-
-    # 5. 创建策略实例（从数据库模板加载）
-    strategy_service = await create_strategy_service_from_database(market_service=market_service)
-    try:
-        strategy_cls = strategy_service.get_strategy_class(model.template_code)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"策略类型不存在: {model.template_code}")
-
-    strategy_impl = strategy_cls()
-    strategy = StrategiesWrapper(strategy_impl=strategy_impl, params=parameters)
-
-    # 6. 创建风控和执行引擎
-    risk_manager = RiskManager(config=RiskConfig())
-    execution_engine = ExecutionEngine(config=config)
-
-    # 7. 运行回测引擎（监控视角）
-    engine = BacktestEngine(
-        config=config,
-        data_feed=data_feed,
-        strategy=strategy,
-        risk_manager=risk_manager,
-        execution_engine=execution_engine,
-    )
-
-    result = engine.run()
-
-    # 8. 计算绩效指标
-    analyzer = PerformanceAnalyzer(risk_free_rate=0.03)
-    performance = analyzer.from_results(result.snapshots, result.trades)
-
-    # 9. 构造 BacktestResult 模型（用于输出）
-    snapshots = result.snapshots
-    if not snapshots:
-        raise HTTPException(status_code=400, detail="监控期间无有效交易日")
-
-    initial_val = snapshots[0].total_value or config.initial_cash
-
-    # 计算回撤序列
-    from app.analysis.formulas.drawdown import calculate_drawdown_series
-    total_values_series = pd.Series([s.total_value for s in snapshots])
-    drawdown_series = calculate_drawdown_series(total_values_series) if not total_values_series.empty else pd.Series()
-
-    # 净值曲线
-    equity_curve = [
-        EquityPoint(
-            date=s.time,
-            value=s.total_value,
-            unit_value=s.total_value / initial_val if initial_val != 0 else 1.0,
-            cumulative_return=(s.total_value / initial_val - 1) if initial_val != 0 else 0.0,
-            portfolio_volatility=getattr(s, "portfolio_volatility", None),
-            drawdown=float(drawdown_series.iloc[i]) if i < len(drawdown_series) else 0.0
-        )
-        for i, s in enumerate(snapshots)
-    ]
-
-    # 收益率曲线（简化：累计收益）
-    return_curve = [
-        ReturnPoint(
-            date=s.time,
-            daily_return=0.0,
-            cumulative_return=(s.total_value / initial_val - 1) if initial_val != 0 else 0.0,
-        )
-        for s in snapshots
-    ]
-
-    # 持仓记录：只保留调仓日
-    positions_record = [
-        PositionRecord(
-            date=s.time,
-            portfolio_value=s.total_value,
-            cash=s.cash,
-            rebalance_reason=getattr(s, "rebalance_reason", None),
-            positions=[
-                AssetPosition(
-                    asset_code=code,
-                    asset_name=None,  # 监控场景下名称可选，如需可通过 asset_service 补全
-                    weight=weight,
-                    market_value=s.total_value * weight,
-                )
-                for code, weight in s.weights.items()
-            ],
-        )
-        for s in snapshots
-        if s.is_rebalance_day
-    ]
-
-    # 权重变化记录
-    weight_changes = [
-        WeightChangePoint(
-            date=s.time.strftime("%Y-%m-%d"),
-            weights=s.weights,
-        )
-        for s in snapshots
-        if s.is_rebalance_day
-    ]
-
-    # 资产名称映射
-    asset_names = {}
-    for code in asset_codes:
-        info = await asset_service.get_asset_by_code(code)
-        if info:
-            asset_names[code] = info.name
-
-    # 当日净值、权重、计划调仓
-    last_snap = snapshots[-1]
-    date_str = last_snap.time.strftime("%Y-%m-%d")
-    today_nav = TodayNav(
-        date=date_str,
-        unit_value=last_snap.total_value / initial_val if initial_val != 0 else 1.0,
-        total_value=last_snap.total_value,
-    )
-    today_weights = dict(last_snap.weights) if last_snap.weights else {}
-    today_planned_rebalance = None
-    if last_snap.is_rebalance_day and len(snapshots) >= 2:
-        prev_snap = snapshots[-2]
-        prev_weights = prev_snap.weights or {}
-        target_weights = last_snap.weights or {}
-        all_codes = set(prev_weights.keys()) | set(target_weights.keys())
-        weight_deltas = {c: target_weights.get(c, 0) - prev_weights.get(c, 0) for c in all_codes}
-        today_planned_rebalance = TodayPlannedRebalance(
-            date=date_str,
-            is_rebalance_day=True,
-            current_weights=dict(prev_weights),
-            target_weights=dict(target_weights),
-            weight_deltas={c: d for c, d in weight_deltas.items() if abs(d) > 1e-8},
-        )
-
-    model_result = ModelBacktestResult(
-        total_return=performance.total_return,
-        annual_return=performance.annual_return,
-        annual_volatility=performance.annual_volatility,
-        sharpe_ratio=performance.sharpe_ratio,
-        max_drawdown=performance.max_drawdown,
-        calmar_ratio=performance.calmar_ratio,
-        equity_curve=equity_curve,
-        return_curve=return_curve,
-        positions=positions_record,
-        weight_changes=weight_changes,
-        asset_names=asset_names,
-        today_nav=today_nav,
-        today_weights=today_weights,
-        today_planned_rebalance=today_planned_rebalance,
-    )
-
-    monitor_record = BacktestRecord(
-        model_id=model_id,
-        start_date=start_dt,
-        end_date=end_dt,
-        initial_capital=config.initial_cash,
-        result=model_result,
-    )
-
-    # 构造输出模型（不落库，id 使用占位）
-    monitor_out = BacktestRecordOut(
-        id="monitoring",
-        model_id=model_id,
-        start_date=start_dt,
-        end_date=end_dt,
-        initial_capital=config.initial_cash,
-        result=model_result,
-        created_at=end_dt,
-    )
-
-    return Response.success(data=monitor_out, message="策略监控数据生成成功")
+    return await get_model_monitoring_core(model_id, service, market_service, asset_service, use_live_snapshot)
 
 
 @router.get("/{model_id}/weight-changes", response_model=Response[List[WeightChangesOut]], summary="获取权重变化")
 async def get_weight_changes(
     model_id: str,
-    service: StrategyModelService = Depends(get_model_service),
+    backtest_service: BacktestService = Depends(get_backtest_service),
     asset_service: AssetService = Depends(get_asset_service)
 ):
     """
@@ -1134,58 +873,45 @@ async def get_weight_changes(
     ]
     """
     validate_object_id(model_id)
-    
-    # 获取最新的回测记录
-    records = await service.list_backtest_records(model_id=model_id, skip=0, limit=1)
-    
-    if not records:
-        raise HTTPException(status_code=404, detail="未找到回测记录")
-    
-    latest_record = records[0]
-    # 由于BacktestResultOut中的weight_changes是WeightChangePoint格式，我们需要转换为WeightChangesOut格式
-    weight_changes_raw = latest_record.result.weight_changes
-    
-    # 获取资产名称映射，以便填充权重变化中的名称
-    asset_names_map = getattr(latest_record.result, 'asset_names', {})
-    if not asset_names_map:
-        # 如果记录里没有，尝试从资产服务获取（兜底）
-        all_codes = set()
-        for item in weight_changes_raw:
-            if hasattr(item, 'weights'):
-                all_codes.update(item.weights.keys())
-            elif isinstance(item, dict):
-                all_codes.update(item.get('weights', {}).keys())
-        
-        asset_names_map = {}
-        for code in all_codes:
-            info = await asset_service.get_asset_by_code(code)
-            if info:
-                asset_names_map[code] = info.name
-    
-    # 转换数据格式：从WeightChangePoint对象转换为WeightChangesOut对象
-    weight_changes_formatted = []
-    for item in weight_changes_raw:
-        # 处理兼容性：item 可能是 WeightChangePoint 对象
-        if hasattr(item, 'date') and hasattr(item, 'weights'):
-            # WeightChangePoint 对象
-            date = item.date
-            weights_dict = item.weights
-        elif isinstance(item, dict):
-            # 字典格式（兼容旧数据）
-            date = item.get('date', '')
-            weights_dict = item.get('weights', {})
-        else:
-            # 其他格式，跳过
-            continue
-        
-        weights_list = [
-            AssetWeight(
-                asset_code=code, 
-                asset_name=asset_names_map.get(code),
-                weight=weight
-            )
-            for code, weight in weights_dict.items()
-        ]
-        weight_changes_formatted.append(WeightChangesOut(date=date, weights=weights_list))
-    
-    return Response.success(data=weight_changes_formatted)
+    return await get_weight_changes_core(model_id, backtest_service, asset_service)
+
+
+@router.get(
+    "/{model_id}/param-versions",
+    response_model=Response[List[ParamVersionOut]],
+    summary="获取策略参数版本列表",
+)
+async def list_param_versions(
+    model_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    service: StrategyModelService = Depends(get_model_service),
+    pv_service: ParamVersionService = Depends(get_param_version_service),
+):
+    """获取策略的参数版本快照列表（按版本号倒序，最新版本在前）"""
+    validate_object_id(model_id)
+    model = await service.get_model(model_id)
+    if not model:
+        raise HTTPException(status_code=404, detail=f"策略模型不存在: {model_id}")
+    rows = await pv_service.list_param_versions(model_id, skip=skip, limit=limit)
+    data = [ParamVersionOut(**row) for row in rows]
+    return Response.success(data=data)
+
+
+@router.get(
+    "/{model_id}/param-versions/{version_id}",
+    response_model=Response[ParamVersionOut],
+    summary="获取单个参数版本详情",
+)
+async def get_param_version(
+    model_id: str,
+    version_id: str,
+    pv_service: ParamVersionService = Depends(get_param_version_service),
+):
+    """获取某个参数版本的完整快照"""
+    validate_object_id(model_id)
+    validate_object_id(version_id)
+    doc = await pv_service.get_param_version(version_id)
+    if not doc or doc.get("model_id") != model_id:
+        raise HTTPException(status_code=404, detail="参数版本不存在或不属于该模型")
+    return Response.success(data=ParamVersionOut(**doc))

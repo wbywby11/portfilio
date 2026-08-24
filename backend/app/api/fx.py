@@ -21,7 +21,7 @@ router = APIRouter()
 
 @router.post("/import", response_model=Response[dict], summary="导入汇率数据")
 async def import_fx_rates(
-    file: UploadFile = File(..., description="fx.xlsx 文件（第一列日期，后续列 EUR/USD/HKD/CNH）"),
+    file: UploadFile = File(..., description="fx.xlsx 文件（第一列日期，后续列 EUR/USD/HKD/JPY/CNH）"),
     mode: str = Form(
         "replace",
         description="replace=清空后全量覆盖；incremental=仅填补无记录日期及已有记录中的空币种列，不覆盖已有数值",
@@ -33,7 +33,7 @@ async def import_fx_rates(
 
     文件格式（与 portfilio-end/大类资产模型备份/fx.xlsx 一致）：
     - 第一列：日期（作为行索引）
-    - 后续列：EUR、USD、HKD、CNH，单元格为该货币对人民币的汇率
+    - 后续列：EUR、USD、HKD、JPY、CNH，单元格为该货币对人民币的汇率
     - 读取方式：pd.read_excel(path, index_col=0, parse_dates=True)
 
     导入模式 **mode**：
@@ -115,7 +115,7 @@ async def upsert_fx_manual(
     try:
         await service.upsert_manual_rates(
             d,
-            {"EUR": body.EUR, "USD": body.USD, "HKD": body.HKD, "CNH": body.CNH},
+            {"EUR": body.EUR, "USD": body.USD, "HKD": body.HKD, "JPY": body.JPY, "CNH": body.CNH},
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -126,18 +126,26 @@ async def upsert_fx_manual(
 async def get_fx_stats(
     service: FxService = Depends(get_fx_service),
 ):
-    """获取汇率数据条数及日期范围"""
+    """获取汇率数据条数、日期范围及实际有数据的币种列"""
     cursor = service.collection.find({}).sort("date", 1)
     dates = []
+    has_columns: set = set()
     async for doc in cursor:
         dates.append(doc.get("date"))
+        for col in FxService.FX_COLUMNS:
+            v = doc.get(col)
+            if v is not None:
+                has_columns.add(col)
+    # 保持 FX_COLUMNS 声明顺序
+    columns = [c for c in FxService.FX_COLUMNS if c in has_columns]
     if not dates:
-        return Response.success(data={"count": 0, "start_date": None, "end_date": None})
+        return Response.success(data={"count": 0, "start_date": None, "end_date": None, "columns": columns})
     return Response.success(
         data={
             "count": len(dates),
             "start_date": dates[0],
             "end_date": dates[-1],
+            "columns": columns,
         }
     )
 
@@ -148,12 +156,14 @@ async def get_fx_rates(
     end_date: Optional[str] = Query(None, description="结束日期 YYYY-MM-DD"),
     service: FxService = Depends(get_fx_service),
 ):
-    """获取汇率时序数据，用于前端图表展示"""
+    """获取汇率时序数据，用于前端图表展示。返回 columns 告知前端实际可用的币种列。"""
     df = await service.get_rates_dataframe(start_date=start_date, end_date=end_date)
     if df.empty:
-        return Response.success(data={"rows": []})
+        return Response.success(data={"rows": [], "columns": list(FxService.FX_COLUMNS)})
+    # 检测哪些列实际有非空数据
+    active_cols = [c for c in FxService.FX_COLUMNS if df[c].notna().any()]
     df = df.reset_index()
     df["date"] = df["date"].dt.strftime("%Y-%m-%d")
     df = df.replace({np.nan: None})
     rows = df.to_dict(orient="records")
-    return Response.success(data={"rows": rows})
+    return Response.success(data={"rows": rows, "columns": active_cols})

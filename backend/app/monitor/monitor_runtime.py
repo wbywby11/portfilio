@@ -40,7 +40,11 @@ class MonitorRuntimeConfig:
     # 主观配置模板：仅按预设调仓日 + 初始化权重，不走混合动量月末映射与波动率重置
     manual_allocation_mode: bool = False
     template_code: str = "risk_budget_target_vol"  # 策略模板类型
+    selector_type: Optional[str] = None  # 资产选择器类型（sharpe/hybrid 等），monitor 路由键
     strategy_params: Dict[str, Any] = field(default_factory=dict)  # 策略特有参数透传
+    asset_names: Optional[Dict[str, str]] = None  # code→name 映射（来自策略模型/资产主数据）
+    trading_costs: Optional[Dict[str, float]] = None   # 策略自带交易费率（代码→单次费率）
+    replication_costs: Optional[Dict[str, float]] = None  # 策略自带复制费率（代码→年化费率）
 
 
 def _parse_json_if_string(val: Any) -> Any:
@@ -262,63 +266,107 @@ def _resolve_config_scalar_by_asset_key(
     asset_key: str,
     name_keyed_map: Dict[str, Any],
     default: Any,
+    asset_names: Optional[Dict[str, str]] = None,
 ) -> Any:
     """
     编制规则表（WEIGHT_CAPS / TRADING_COST 等）以中文资产名为键；
     策略模型监控使用 Mongo asset_code 时，需映射到同一数值，否则与 config.py 基准监控不一致。
+
+    查找顺序：
+    1. name_keyed_map 直接命中（中文名为键）
+    2. asset_names（策略模型/资产主数据 code→name）→ 中文名 → name_keyed_map
+    3. 全局 ASSET_CODE_TO_NAME → 中文名 → name_keyed_map
+    4. 夏普率 SHARPE_CODE_TO_NAME → 中文名 → name_keyed_map
+    5. canonical_price_code 规范化后重试 3 & 4
+    6. _TEST 后缀剥离后重试
+    7. 返回 default
     """
     if not asset_key:
         return default
     k = str(asset_key).strip()
     if k in name_keyed_map:
         return name_keyed_map[k]
-    base = canonical_price_code(k)
-    for code in (k, base):
+    # 辅助：通过 code_to_name 映射表查找中文名后取值
+    def _lookup_via_code_map(code: str) -> Any:
+        # 优先使用策略模型的 asset_names（code→name）
+        if asset_names and code in asset_names:
+            cn = asset_names[code]
+            if cn in name_keyed_map:
+                return name_keyed_map[cn]
+        # 再查全局 12 资产映射
         if code in config.ASSET_CODE_TO_NAME:
             cn = config.ASSET_CODE_TO_NAME[code]
             if cn in name_keyed_map:
                 return name_keyed_map[cn]
-    if k.endswith("_TEST") and len(k) > len("_TEST"):
-        bare = k[: -len("_TEST")]
-        if bare in config.ASSET_CODE_TO_NAME:
-            cn = config.ASSET_CODE_TO_NAME[bare]
+        # 再查夏普率 18 资产映射
+        if code in config.SHARPE_CODE_TO_NAME:
+            cn = config.SHARPE_CODE_TO_NAME[code]
             if cn in name_keyed_map:
                 return name_keyed_map[cn]
+        return None
+    # 原始 code 查找
+    result = _lookup_via_code_map(k)
+    if result is not None:
+        return result
+    # canonical code 查找
+    base = canonical_price_code(k)
+    if base != k:
+        result = _lookup_via_code_map(base)
+        if result is not None:
+            return result
+    # _TEST 后缀剥离
+    if k.endswith("_TEST") and len(k) > len("_TEST"):
+        bare = k[: -len("_TEST")]
+        result = _lookup_via_code_map(bare)
+        if result is not None:
+            return result
     return default
 
 
-def resolve_weight_cap_for_asset(asset_key: str) -> float:
-    v = _resolve_config_scalar_by_asset_key(asset_key, config.WEIGHT_CAPS, 1.0)
+def resolve_weight_cap_for_asset(asset_key: str, asset_names: Optional[Dict[str, str]] = None) -> float:
+    # 合并全局 + 夏普率权重上限表（夏普率资产优先）
+    merged = dict(config.WEIGHT_CAPS)
+    merged.update(config.SHARPE_WEIGHT_CAPS)
+    v = _resolve_config_scalar_by_asset_key(asset_key, merged, 1.0, asset_names=asset_names)
     try:
         return float(v)
     except (TypeError, ValueError):
         return 1.0
 
 
-def resolve_trading_cost_for_asset(asset_key: str) -> float:
-    v = _resolve_config_scalar_by_asset_key(asset_key, config.TRADING_COST, 0.001)
+def resolve_trading_cost_for_asset(asset_key: str, asset_names: Optional[Dict[str, str]] = None) -> float:
+    # 合并全局 + 夏普率交易费率表
+    merged = dict(config.TRADING_COST)
+    merged.update(config.SHARPE_TRADING_COST)
+    v = _resolve_config_scalar_by_asset_key(asset_key, merged, 0.001, asset_names=asset_names)
     try:
         return float(v)
     except (TypeError, ValueError):
         return 0.001
 
 
-def resolve_replication_cost_for_asset(asset_key: str) -> float:
-    v = _resolve_config_scalar_by_asset_key(asset_key, config.REPLICATION_COST, 0.005)
+def resolve_replication_cost_for_asset(asset_key: str, asset_names: Optional[Dict[str, str]] = None) -> float:
+    # 合并全局 + 夏普率复制费率表
+    merged = dict(config.REPLICATION_COST)
+    merged.update(config.SHARPE_REPLICATION_COST)
+    v = _resolve_config_scalar_by_asset_key(asset_key, merged, 0.005, asset_names=asset_names)
     try:
         return float(v)
     except (TypeError, ValueError):
         return 0.005
 
 
-def resolve_asset_currency_for_monitor(asset_key: str) -> str:
-    v = _resolve_config_scalar_by_asset_key(asset_key, config.ASSET_CURRENCY, "CNH")
+def resolve_asset_currency_for_monitor(asset_key: str, asset_names: Optional[Dict[str, str]] = None) -> str:
+    # 合并全局 + 夏普率资产货币映射表
+    merged = dict(config.ASSET_CURRENCY)
+    merged.update(config.SHARPE_ASSET_CURRENCY)
+    v = _resolve_config_scalar_by_asset_key(asset_key, merged, "CNH", asset_names=asset_names)
     return str(v) if v is not None else "CNH"
 
 
-def _merge_weight_caps(asset_list: List[str], params: Dict[str, Any]) -> Dict[str, float]:
-    caps = {a: resolve_weight_cap_for_asset(a) for a in asset_list}
-    raw = params.get("max_weight_dict")
+def _merge_weight_caps(asset_list: List[str], params: Dict[str, Any], asset_names: Optional[Dict[str, str]] = None) -> Dict[str, float]:
+    caps = {a: resolve_weight_cap_for_asset(a, asset_names=asset_names) for a in asset_list}
+    raw = params.get("weight_caps", params.get("max_weight_dict"))
     if isinstance(raw, str):
         raw = _parse_json_if_string(raw)
     if not isinstance(raw, dict):
@@ -410,6 +458,7 @@ def monitor_runtime_from_snapshot(
     current_parameters: Optional[Dict[str, Any]] = None,
     current_asset_codes: Optional[List[str]] = None,
     model_for_selection: Optional[Any] = None,
+    asset_names: Optional[Dict[str, str]] = None,
 ) -> Optional[MonitorRuntimeConfig]:
     """由 live_snapshot 构建运行时配置；快照无效时返回 None。
 
@@ -417,6 +466,7 @@ def monitor_runtime_from_snapshot(
     以便编辑器中修改的 target_vol、vol_reset_threshold、monitor_asset_codes 等与监控计算、展示联动。
     current_asset_codes 为模型顶层 asset_codes（表单「选择资产」），优先于 parameters 与快照内 asset_codes。
     model_for_selection 为完整 StrategyModel 时，合并顶层动量/反转窗口字段（与日常监控联动）。
+    asset_names 为 code→name 映射（来自策略模型或资产主数据），用于查找编制规则表中的配置值。
     """
     if not isinstance(snap, dict) or not snap:
         return None
@@ -442,7 +492,11 @@ def monitor_runtime_from_snapshot(
     if vol_trigger is None:
         vol_trigger = float(config.VOL_TRIGGER_THRESHOLD)
 
-    max_leverage = _float_param(params, "max_total_leverage")
+    # 优先读取策略模型保存的 max_leverage（前端/后端强制固化写入），
+    # 兼容旧快照中的 max_total_leverage 字段名，再回退全局配置。
+    max_leverage = _float_param(params, "max_leverage")
+    if max_leverage is None:
+        max_leverage = _float_param(params, "max_total_leverage")
     if max_leverage is None:
         max_leverage = float(config.MAX_LEVERAGE)
 
@@ -451,13 +505,16 @@ def monitor_runtime_from_snapshot(
     rb_both = float(leg.risk_budget_both)
     rb_single = float(leg.risk_budget_single)
 
-    weight_caps = _merge_weight_caps(asset_list, params)
+    weight_caps = _merge_weight_caps(asset_list, params, asset_names=asset_names)
 
     mw = _resolve_selection_windows_from_params(params)
 
     tc = str(snap.get("template_code") or "").strip().lower()
+    sel_type = str(snap.get("selector_type") or "").strip().lower() or None
+    # 兼容：若快照未存 selector_type，从模型顶层读取
+    if not sel_type and model_for_selection:
+        sel_type = getattr(model_for_selection, 'selector_type', None)
     manual_allocation_mode = tc in ("manual_allocation", "manual_allocation_strategy")
-    allocation_only_mode = tc in ("etf_cycle_rotation", "risk_parity")
 
     if manual_allocation_mode:
         weight_caps = {a: 1.0 for a in asset_list}
@@ -481,39 +538,17 @@ def monitor_runtime_from_snapshot(
             min_history_reversal=mw[7],
             manual_allocation_mode=manual_allocation_mode,
             template_code=tc or "manual_allocation",
+            selector_type=sel_type,
             strategy_params={},
+            asset_names=asset_names,
         )
 
-    if allocation_only_mode:
-        # etf_cycle_rotation / risk_parity：不解析动量/反转窗口，仅做权重分配
-        # weight_caps 正常解析，未配置则各资产默认 1.0
-        if not any(v != 1.0 for v in weight_caps.values()):
-            weight_caps = {a: weight_caps.get(a, 1.0) for a in asset_list}
-        # 收集策略特有参数供后续 allocate() 使用
-        strategy_params: Dict[str, Any] = {}
-        for k, v in params.items():
-            strategy_params[k] = v
-        return MonitorRuntimeConfig(
-            asset_list=asset_list,
-            target_vol=target_vol,
-            vol_trigger_threshold=vol_trigger,
-            max_leverage=max_leverage,
-            weight_caps=weight_caps,
-            risk_budget_both=rb_both,
-            risk_budget_single=rb_single,
-            # 不设置动量/反转窗口（保持 None）
-            mom_windows=None,
-            posi_windows=None,
-            smom_windows=None,
-            macd_windows=None,
-            macd_long_window=None,
-            reversal_windows=None,
-            min_history_momentum=None,
-            min_history_reversal=None,
-            manual_allocation_mode=False,
-            template_code=tc,
-            strategy_params=strategy_params,
-        )
+    # 通用路径：所有其他策略（包括 etf_cycle_rotation、risk_parity 等）
+    # 不再区分 allocation_only_mode，统一透传 template_code 和 strategy_params
+    # 由下游 engine_adapter 动态解析 allocator
+    strategy_params: Dict[str, Any] = {}
+    for k, v in params.items():
+        strategy_params[k] = v
 
     return MonitorRuntimeConfig(
         asset_list=asset_list,
@@ -532,8 +567,10 @@ def monitor_runtime_from_snapshot(
         min_history_momentum=mw[6],
         min_history_reversal=mw[7],
         manual_allocation_mode=False,
-        template_code=tc or "risk_budget_target_vol",
-        strategy_params={},
+        template_code=tc or "vol_scaled_budget",
+        selector_type=sel_type,
+        strategy_params=strategy_params,
+        asset_names=asset_names,
     )
 
 
@@ -547,12 +584,16 @@ def monitor_runtime_from_model(model: Any) -> Optional[MonitorRuntimeConfig]:
     snap = getattr(model, "live_snapshot", None) or {}
     cur_codes = getattr(model, "asset_codes", None)
     codes_list = normalize_strategy_asset_codes(cur_codes)
+    # 从模型获取 code→name 映射，优先使用模型配置的资产名称
+    an = getattr(model, "asset_names", None)
+    asset_names = dict(an) if isinstance(an, dict) and an else None
     return monitor_runtime_from_snapshot(
         snap if isinstance(snap, dict) else {},
         getattr(model, "live_volatility_threshold", None),
         current_parameters=getattr(model, "parameters", None),
         current_asset_codes=codes_list,
         model_for_selection=model,
+        asset_names=asset_names,
     )
 
 
@@ -793,6 +834,9 @@ def live_effective_structured_params(
         "max_total_leverage": round(float(rt.max_leverage), 4),
         "asset_classes": classes,
     }
+    # 夏普率风险预算策略：实盘参数已固化，日常监控不展示详细参数
+    if getattr(rt, "selector_type", "") == "sharpe":
+        return out
     # 与 run_daily 使用的 MonitorRuntimeConfig 一致，展示各因子窗口与最小历史长度
     if rt.mom_windows:
         out["mom_windows"] = ",".join(str(x) for x in rt.mom_windows)

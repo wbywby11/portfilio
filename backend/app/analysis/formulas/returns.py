@@ -1,42 +1,13 @@
 """收益率计算公式.
 
-包含简单收益率、对数收益率、累计收益率、年化收益率等。
+包含累计收益率、年化收益率等 analysis 独有公式。
+简单收益率和对数收益率已统一由 app.formula.returns 提供，
+通过 __init__.py 中的薄包装保持 calculate_* 命名兼容。
 """
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
-
-
-def calculate_simple_returns(prices: pd.Series) -> pd.Series:
-    """计算简单收益率（百分比收益率）.
-    
-    公式: r_t = (P_t / P_{t-1}) - 1
-    
-    参数:
-        prices: 价格序列（index=时间）
-    
-    返回:
-        收益率序列（去除第一个NaN）
-    """
-    returns = prices.pct_change()
-    return returns.dropna()
-
-
-def calculate_log_returns(prices: pd.Series) -> pd.Series:
-    """计算对数收益率.
-    
-    公式: r_t = ln(P_t / P_{t-1})
-    
-    参数:
-        prices: 价格序列（index=时间）
-    
-    返回:
-        对数收益率序列（去除第一个NaN）
-    """
-    log_returns = np.log(prices / prices.shift(1))
-    return log_returns.dropna()
 
 
 def calculate_cumulative_return(prices: pd.Series) -> float:
@@ -64,15 +35,15 @@ def calculate_cumulative_return(prices: pd.Series) -> float:
 
 def calculate_annualized_return(
     prices: pd.Series,
-    freq_factor: int = 252
+    freq_factor: int = 260
 ) -> float:
     """计算年化收益率（几何平均）.
     
-    公式: (1 + cum_return) ^ (252 / n_days) - 1
+    公式: (1 + cum_return) ^ (260 / n_days) - 1
     
     参数:
         prices: 价格序列
-        freq_factor: 年化因子（默认252个交易日）
+        freq_factor: 年化因子（默认260个交易日）
     
     返回:
         年化收益率

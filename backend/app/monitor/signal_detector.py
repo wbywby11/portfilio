@@ -21,7 +21,8 @@ from app.monitor import config
 if TYPE_CHECKING:
     from app.monitor.monitor_runtime import MonitorRuntimeConfig
 from app.monitor.time_norm import normalize_calendar_timestamp
-from app.monitor.strategy_engine import StrategyEngine
+from app.monitor.engine_adapter import MonitorEngineAdapter
+from app.monitor.monitor_runtime import resolve_asset_currency_for_monitor
 from app.monitor.types import (
     PortfolioState, AssetSelectionResult, WeightResult,
     RebalanceSignal, VolResetSignal, DeviationInfo, TradeOrder
@@ -33,12 +34,27 @@ logger = logging.getLogger(__name__)
 _ALLOCATION_ONLY_TEMPLATES = frozenset({"etf_cycle_rotation", "risk_parity"})
 
 
+def _build_weight_result(weights_dict: Dict[str, float], calc_date_str: str) -> WeightResult:
+    """从权重字典构造 WeightResult（兼容旧接口）。"""
+    total_leverage = sum(abs(w) for w in weights_dict.values())
+    return WeightResult(
+        calc_date=calc_date_str,
+        weights=weights_dict,
+        risk_budgets={a: 0.0 for a in weights_dict},
+        asset_vols={a: 0.0 for a in weights_dict},
+        initial_weights=dict(weights_dict),
+        scaled_weights=dict(weights_dict),
+        portfolio_vol=0.0,
+        scale_factor=1.0,
+        total_leverage=total_leverage,
+    )
+
+
 class SignalDetector:
     """信号检测器 - 检测调仓信号并生成交易指令"""
     
     def __init__(self):
         """初始化信号检测器"""
-        self.engine = StrategyEngine()  # 用于月度调仓时的资产选择和权重计算
         self._annualize_factor = np.sqrt(config.ANNUALIZE_FACTOR)
     
     # =========================================================================
@@ -112,16 +128,17 @@ class SignalDetector:
                 if not self._is_month_end_trade_date(date_ts, trade_dates):
                     return None
 
-            weight_result = self.engine.run_weight_calculation_for_allocation_strategy(
-                prices_df, date_ts, rt
-            )
+            # 使用三层引擎适配器计算权重
+            adapter = MonitorEngineAdapter.from_runtime_config(rt)
+            weights_dict = adapter.compute_weights(prices_df, date_ts)
             date_str = date_ts.strftime('%Y-%m-%d')
+            weight_result = _build_weight_result(weights_dict, date_str)
             signal_type = 'weekly' if rebalance_frequency == 'weekly' else 'monthly'
             return RebalanceSignal(
                 signal_type=signal_type,
                 signal_date=date_str,
                 execute_date=date_str,
-                new_weights=weight_result.weights,
+                new_weights=weights_dict,
                 selection_result=None,
                 weight_result=weight_result,
             )
@@ -131,22 +148,19 @@ class SignalDetector:
         if not self._is_month_end_trade_date(date_ts, trade_dates):
             return None
         
-        # 执行资产选择
-        selection_result = self.engine.run_asset_selection(prices_df, date_ts, rt=rt)
-        
-        # 执行权重计算
-        weight_result = self.engine.run_weight_calculation(
-            prices_df, selection_result, date_ts, rt=rt
-        )
+        # 使用三层引擎适配器计算权重（Selection + Allocation 一体化）
+        adapter = MonitorEngineAdapter.from_runtime_config(rt)
+        weights_dict = adapter.compute_weights(prices_df, date_ts)
         
         date_str = date_ts.strftime('%Y-%m-%d')
+        weight_result = _build_weight_result(weights_dict, date_str)
         
         return RebalanceSignal(
             signal_type='monthly',
             signal_date=date_str,
             execute_date=date_str,
-            new_weights=weight_result.weights,
-            selection_result=selection_result,
+            new_weights=weights_dict,
+            selection_result=None,
             weight_result=weight_result,
         )
     
@@ -208,7 +222,8 @@ class SignalDetector:
                                 monthly_rebalance_dates: set = None,
                                 prices_df: pd.DataFrame = None,
                                 vol_reset_execute_dates: set = None,
-                                rt: Optional["MonitorRuntimeConfig"] = None) -> Optional[VolResetSignal]:
+                                rt: Optional["MonitorRuntimeConfig"] = None,
+                                fx_df: pd.DataFrame = None) -> Optional[VolResetSignal]:
         """
         检查是否触发波动率重置
         
@@ -249,9 +264,19 @@ class SignalDetector:
         vol_trigger_threshold = (
             float(rt.vol_trigger_threshold) if rt else float(config.VOL_TRIGGER_THRESHOLD)
         )
+        # 波动率监控起始日：优先使用策略参数，回退全局配置
+        monitor_start_days = (
+            int(rt.strategy_params.get("monitor_start_days", config.MONITOR_START_DAYS))
+            if rt and rt.strategy_params else config.MONITOR_START_DAYS
+        )
         
-        # 前提条件1：day_count > MONITOR_START_DAYS
-        if state.day_count <= config.MONITOR_START_DAYS:
+        # 前提条件1：trade_day_count > monitor_start_days（与原型 trade_day_idx 对齐）
+        # 原型使用 trade_day_idx（仅计数交易日），而非总处理日计数
+        effective_day_count = getattr(state, 'trade_day_count', None)
+        if effective_day_count is None or effective_day_count == 0:
+            # 向后兼容：旧 state 无此字段时回退到 day_count
+            effective_day_count = state.day_count
+        if effective_day_count <= monitor_start_days:
             return None
         
         # 前提条件3：没有已经 pending 的调仓
@@ -262,28 +287,66 @@ class SignalDetector:
         if monthly_rebalance_dates and date_ts in monthly_rebalance_dates:
             return None
         
-        # 1. 计算当前实际权重 w_cny（使用调仓日汇率）
+        # 1. 计算当前实际权重 w_cny（与原型完全一致：使用当日汇率）
         if state.nav <= 0:
             return None
         
-        # 使用本币持仓 × 调仓日汇率 / 净值 计算权重
-        # 注意：last_rebalance_fx 键是资产名
+        # 辅助函数：获取资产在指定日期的汇率（与原型 get_fx_rate 一致）
+        def _get_asset_fx_today(asset: str) -> float:
+            currency = (
+                (rt.asset_currency if rt and hasattr(rt, 'asset_currency') and rt.asset_currency else {}).get(asset)
+                or config.ASSET_CURRENCY.get(asset)
+                or resolve_asset_currency_for_monitor(asset)
+            )
+            if currency == 'CNH':
+                return 1.0
+            if fx_df is None or fx_df.empty or currency not in fx_df.columns:
+                return 1.0
+            try:
+                idx = pd.to_datetime(fx_df.index, errors='coerce')
+                ser = pd.Series(
+                    pd.to_numeric(fx_df[currency], errors='coerce').to_numpy(),
+                    index=pd.DatetimeIndex(idx),
+                ).dropna().sort_index()
+                if ser.empty:
+                    return 1.0
+                if date_ts in ser.index:
+                    v = float(ser.loc[date_ts].iloc[-1] if hasattr(ser.loc[date_ts], 'iloc') else ser.loc[date_ts])
+                    if not np.isnan(v):
+                        return v
+                past = ser[ser.index <= date_ts]
+                for r in reversed(past.to_numpy()):
+                    if not np.isnan(r):
+                        return float(r)
+            except Exception:
+                return 1.0
+            return 1.0
+        
+        # 与原型 handle_volatility_monitor 完全一致的公式：
+        # pv_cny_linear = positions_cny_base[asset] + apl_local[asset] * fx_rates[asset]
+        # w_monitor = pv_cny_linear / nav
+        has_positions_cny_base = bool(getattr(state, 'positions_cny_base', None))
         w_cny = {}
         for asset in asset_list:
-            pos_local = state.positions_local.get(asset, 0.0)
-            # 获取调仓日汇率（last_rebalance_fx 键是资产名）
-            fx_rate = state.last_rebalance_fx.get(asset, 1.0)
-            w_cny[asset] = pos_local * fx_rate / state.nav
+            if has_positions_cny_base:
+                # 直接使用 positions_cny_base（与原型 BacktestState 完全一致）
+                pv_cny_base = state.positions_cny_base.get(asset, 0.0)
+            else:
+                # 向后兼容：旧 state 无此字段时使用近似
+                pos_local = state.positions_local.get(asset, 0.0)
+                fx_reb = state.last_rebalance_fx.get(asset, 1.0)
+                pv_cny_base = pos_local * fx_reb
+            fx_today = _get_asset_fx_today(asset)
+            apl_cny = state.apl_local.get(asset, 0.0) * fx_today
+            pv_cny_linear = pv_cny_base + apl_cny
+            w_cny[asset] = pv_cny_linear / state.nav
         
         # 2. 使用 prices_df 计算波动率
         if prices_df is None or prices_df.empty:
             return None
         
-        # 找出有持仓的资产
-        assets_with_position = [a for a in asset_list if w_cny.get(a, 0.0) > 1e-8]
-        if not assets_with_position:
-            return None
-        
+        # 与原型一致：使用 asset_list 中所有资产计算波动率（权重为 0 的资产不影响结果）
+        # 找出在 prices_df 中有列的资产
         use_cols = [a for a in asset_list if a in prices_df.columns]
         if not use_cols:
             return None
@@ -303,14 +366,16 @@ class SignalDetector:
         start_i = max(0, idx - need_rows + 1)
         sub_px = prices_df.iloc[start_i : idx + 1][use_cols]
         daily_ret_df = sub_px.pct_change(fill_method=None).fillna(0)
-        ytd_ret = daily_ret_df[assets_with_position]
+        # 与原型一致：使用全部 use_cols 资产（而非仅有持仓的资产）
+        ytd_ret = daily_ret_df[use_cols]
         
         if len(ytd_ret) < config.VOL_WINDOWS[0]:  # 至少需要22天数据
             return None
         
-        # 3. 计算加权组合波动率
+        # 3. 计算加权组合波动率（与原型 calc_realized_vol 完全一致）
         vol_values = []
-        w_series = pd.Series({a: w_cny.get(a, 0.0) for a in assets_with_position})
+        # 包含所有资产（权重为 0 的资产不影响加权收益）
+        w_series = pd.Series({a: w_cny.get(a, 0.0) for a in use_cols})
         windows = config.VOL_WINDOWS  # [22, 65, 130]
         
         for n in windows:
@@ -331,19 +396,16 @@ class SignalDetector:
         if realized_vol <= vol_trigger_threshold:
             return None
         
-        # 6. 计算缩放因子和 VW 权重
+        # 6. 计算缩放因子和 VW 权重（与原型一致：不做截断）
         scale_factor = target_vol / realized_vol
         vw_weights = {asset: w * scale_factor for asset, w in w_cny.items()}
         
-        # 7. 权重截断（小数点后三位，消除计算摩擦）
-        vw_weights = {asset: np.trunc(w * 1000) / 1000 for asset, w in vw_weights.items()}
-        
-        # 8. 计算执行日 T+2
+        # 7. 计算执行日 T+2
         execute_date = self.calc_t_plus_2(date_str, trade_dates)
         if execute_date is None:
             return None
         
-        # 9. 冲突检查：检查 [t, T+1, T+2] 区间（同时检查月度调仓日和波动率重置执行日）
+        # 8. 冲突检查：检查 [t, T+1, T+2] 区间（同时检查月度调仓日和波动率重置执行日）
         if self._has_conflict(date_ts, execute_date, trade_dates, 
                               monthly_rebalance_dates, vol_reset_execute_dates):
             return None
@@ -607,3 +669,116 @@ class SignalDetector:
                 month_ends.append(date.strftime('%Y-%m-%d'))
         
         return month_ends
+
+    # =========================================================================
+    # 事件日志信号提取（从监控服务层下沉的计算段）
+    # =========================================================================
+
+    def extract_last_rebalance_date(self, event_log: List[Dict]) -> Optional[str]:
+        """
+        从事件日志倒序查找最近一次调仓执行日期（包括所有类型的调仓执行）
+        
+        兼容新旧事件格式。
+        """
+        if not event_log:
+            return None
+        for event in reversed(event_log):
+            event_type = event.get('type', '') or event.get('event_type', '')
+            stage = event.get('stage', '')
+            
+            # 判断是否为调仓执行事件（不仅限于月度）
+            is_rebalance_execute = False
+            # 旧格式
+            if event_type in ('monthly_rebalance', 'vol_reset_execute', 'subjective_rebalance'):
+                is_rebalance_execute = True
+            # 新格式
+            elif event_type == 'monthly':
+                is_rebalance_execute = True
+            elif event_type == 'vol_reset' and stage == 'execute':
+                is_rebalance_execute = True
+            elif event_type == 'subjective':
+                is_rebalance_execute = True
+            elif event_type == 'init':
+                is_rebalance_execute = True
+            
+            if is_rebalance_execute:
+                return event.get('date')
+        return None
+
+    def calc_days_until_rebalance(self, current_date, next_rebal,
+                                  trade_dates: List) -> Optional[int]:
+        """
+        计算距下次调仓天数
+        
+        两日期均在交易日历中时按交易日间隔计算，否则回退自然日差。
+        
+        Args:
+            current_date: 当前日期（已规范化 Timestamp）
+            next_rebal: 下次调仓日（字符串或日期，可为 None）
+            trade_dates: 规范化后的交易日列表
+        """
+        if not next_rebal:
+            return None
+        next_rebal_ts = normalize_calendar_timestamp(next_rebal)
+        trade_dates_ts = list(trade_dates)
+        if current_date in trade_dates_ts and next_rebal_ts in trade_dates_ts:
+            current_idx = trade_dates_ts.index(current_date)
+            next_idx = trade_dates_ts.index(next_rebal_ts)
+            return next_idx - current_idx
+        # 使用自然日计算
+        return (next_rebal_ts - current_date).days
+
+    def extract_rebalance_history(self, event_log: List[Dict]) -> List[Dict]:
+        """
+        从事件日志提取调仓执行历史（新旧格式统一），按日期倒序排列。
+        """
+        rebalance_history = []
+        if not event_log:
+            return rebalance_history
+        for event in event_log:
+            event_type = event.get('type', '') or event.get('event_type', '')
+            stage = event.get('stage', '')
+            
+            # 判断是否为调仓执行事件
+            is_rebalance = False
+            unified_type = ''
+            
+            # 旧格式
+            if event_type == 'monthly_rebalance':
+                is_rebalance = True
+                unified_type = 'monthly'
+            elif event_type == 'vol_reset_execute':
+                is_rebalance = True
+                unified_type = 'vol_reset'
+            elif event_type == 'subjective_rebalance':
+                is_rebalance = True
+                unified_type = 'subjective'
+            # 新格式
+            elif event_type == 'monthly':
+                is_rebalance = True
+                unified_type = 'monthly'
+            elif event_type == 'vol_reset' and stage == 'execute':
+                is_rebalance = True
+                unified_type = 'vol_reset'
+            elif event_type == 'subjective':
+                is_rebalance = True
+                unified_type = 'subjective'
+            elif event_type == 'init':
+                is_rebalance = True
+                unified_type = 'init'
+            
+            if is_rebalance:
+                rebalance_history.append({
+                    'date': event.get('date', ''),
+                    'type': unified_type,
+                    'description': event.get('description', ''),
+                    'old_weights': event.get('old_weights', None),
+                    'new_weights': event.get('new_weights', None),
+                    'trading_cost': event.get('trading_cost', 0),
+                    'scale_factor': event.get('scale_factor', None),
+                    'rebalance_observation': event.get('rebalance_observation'),
+                })
+        
+        # 按日期倒序排列（最近的在前）
+        rebalance_history.sort(key=lambda x: x['date'], reverse=True)
+        return rebalance_history

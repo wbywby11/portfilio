@@ -29,124 +29,107 @@
       </el-card>
 
       <!-- 统计信息 -->
-      <el-row :gutter="20" style="margin-top: 20px;">
-        <el-col :span="4">
-          <el-card shadow="hover" class="stat-card">
-            <div class="stat-label">区间收益率</div>
-            <div class="stat-value" :style="{ color: getReturnColor(statistics.periodReturn) }">
-              {{ formatPercent(statistics.periodReturn) }}
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="stat-card">
-            <div class="stat-label">年化收益率</div>
-            <div class="stat-value" :style="{ color: getReturnColor(statistics.annualReturn) }">
-              {{ formatPercent(statistics.annualReturn) }}
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="stat-card">
-            <div class="stat-label">年化波动率</div>
-            <div class="stat-value">{{ formatPercent(statistics.annualVolatility) }}</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="stat-card">
-            <div class="stat-label">最大回撤</div>
-            <div class="stat-value" style="color: #67C23A;">
-              {{ formatPercent(statistics.maxDrawdown) }}
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="stat-card">
-            <div class="stat-label">夏普比率</div>
-            <div class="stat-value">{{ formatNumber(statistics.sharpeRatio, 3) }}</div>
-          </el-card>
-        </el-col>
-        <el-col :span="4">
-          <el-card shadow="hover" class="stat-card">
-            <div class="stat-label">数据天数</div>
-            <div class="stat-value">{{ navHistory.length }}</div>
-          </el-card>
-        </el-col>
-      </el-row>
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">区间收益率</div>
+          <div class="stat-value" :style="{ color: getReturnColor(statistics.periodReturn) }">
+            {{ formatPercent(statistics.periodReturn) }}
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">年化收益率</div>
+          <div class="stat-value" :style="{ color: getReturnColor(statistics.annualReturn) }">
+            {{ formatPercent(statistics.annualReturn) }}
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">年化波动率</div>
+          <div class="stat-value">{{ formatPercent(statistics.annualVolatility) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">最大回撤</div>
+          <div class="stat-value" style="color: #67C23A;">
+            {{ formatPercent(statistics.maxDrawdown) }}
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">夏普比率</div>
+          <div class="stat-value">{{ formatNumber(statistics.sharpeRatio, 3) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">数据天数</div>
+          <div class="stat-value">{{ navHistory.length }}</div>
+        </div>
+      </div>
 
       <!-- 净值曲线图（主图） -->
-      <el-card shadow="never" class="info-card" style="margin-top: 20px;">
+      <el-card shadow="never" class="info-card">
         <div slot="header" class="card-header">
           <span>净值与日收益率走势</span>
         </div>
-        <div ref="mainChart" style="width: 100%; height: 500px;"></div>
+        <div ref="mainChart" style="width: 100%; height: 450px;"></div>
         <el-empty v-if="navHistory.length === 0" description="暂无净值数据"></el-empty>
       </el-card>
 
-      <!-- 当日损益归因图 -->
-      <el-card shadow="never" class="info-card" style="margin-top: 20px;">
-        <div slot="header" class="card-header">
-          <span>当日损益归因</span>
-          <span v-if="latestDate" style="color: #909399; font-size: 13px; font-weight: normal;">
-            {{ latestDate }}
-          </span>
-        </div>
-        <div v-show="attributionData && attributionData.length > 0" ref="attributionChart" style="width: 100%; height: 400px;"></div>
-        <el-empty v-if="!attributionData || attributionData.length === 0" description="暂无损益归因数据"></el-empty>
-        <div v-if="attributionData && attributionData.length > 0" class="attribution-summary">
-          <span>合计损益: <b :style="{ color: getReturnColor(totalPnl) }">{{ formatSignedNumber(totalPnl, 2) }} 元</b></span>
-        </div>
-      </el-card>
+      <!-- 当日损益归因 + 每日收益统计 并排 -->
+      <div class="dual-row">
+        <el-card shadow="never" class="info-card">
+          <div slot="header" class="card-header">
+            <span>当日损益归因</span>
+            <span v-if="latestDate" style="color: #909399; font-size: 13px; font-weight: normal;">
+              {{ latestDate }}
+            </span>
+          </div>
+          <div v-if="attributionData && attributionData.length > 0" ref="attributionChart" style="width: 100%; height: 320px;"></div>
+          <el-empty v-if="!attributionData || attributionData.length === 0" description="暂无损益归因数据"></el-empty>
+          <div v-if="attributionData && attributionData.length > 0" class="attribution-summary">
+            <span>合计损益: <b :style="{ color: getReturnColor(totalPnl) }">{{ formatSignedNumber(totalPnl, 2) }} 元</b></span>
+          </div>
+        </el-card>
 
-      <!-- 每日收益统计表 -->
-      <el-card shadow="never" class="info-card" style="margin-top: 20px;">
-        <div slot="header" class="card-header">
-          <span>每日收益统计</span>
-          <el-select v-model="returnsDisplayDays" size="small" style="width: 100px;" @change="updateReturnsTable">
-            <el-option label="近10日" :value="10"></el-option>
-            <el-option label="近20日" :value="20"></el-option>
-            <el-option label="近30日" :value="30"></el-option>
-            <el-option label="近60日" :value="60"></el-option>
-          </el-select>
-        </div>
-        <el-table
-          v-if="returnsTableData.length > 0"
-          :data="returnsTableData"
-          border
-          stripe
-          style="width: 100%;"
-          size="small"
-        >
-          <el-table-column prop="date" label="日期" width="110" align="center"></el-table-column>
-          <el-table-column prop="nav" label="净值" width="100" align="right">
-            <template slot-scope="scope">
-              {{ formatNumber(scope.row.nav, 4) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="dailyPnL" label="日收益额" width="100" align="right">
-            <template slot-scope="scope">
-              <span :style="{ color: getReturnColor(scope.row.dailyPnL) }">
-                {{ formatSignedNumber(scope.row.dailyPnL, 4) }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="dailyReturnPct" label="日收益率(%)" width="120" align="right">
-            <template slot-scope="scope">
-              <span :style="{ color: getReturnColor(scope.row.dailyReturnPct) }">
-                {{ formatSignedPercent(scope.row.dailyReturnPct) }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="cumulativeReturnPct" label="累计收益率(%)" width="130" align="right">
-            <template slot-scope="scope">
-              <span :style="{ color: getReturnColor(scope.row.cumulativeReturnPct) }">
-                {{ formatSignedPercent(scope.row.cumulativeReturnPct) }}
-              </span>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-empty v-else description="暂无收益数据"></el-empty>
-      </el-card>
+        <el-card shadow="never" class="info-card">
+          <div slot="header" class="card-header">
+            <span>每日收益统计</span>
+            <el-select v-model="returnsDisplayDays" size="small" style="width: 100px;" @change="updateReturnsTable">
+              <el-option label="近10日" :value="10"></el-option>
+              <el-option label="近20日" :value="20"></el-option>
+              <el-option label="近30日" :value="30"></el-option>
+              <el-option label="近60日" :value="60"></el-option>
+            </el-select>
+          </div>
+          <el-table
+            v-if="returnsTableData.length > 0"
+            :data="returnsTableData"
+            border
+            stripe
+            style="width: 100%;"
+            size="small"
+            :max-height="380"
+          >
+            <el-table-column prop="date" label="日期" min-width="90" align="center"></el-table-column>
+            <el-table-column prop="nav" label="净值" min-width="80" align="right">
+              <template slot-scope="scope">
+                {{ formatNumber(scope.row.nav, 4) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="dailyReturnPct" label="日收益率" min-width="90" align="right">
+              <template slot-scope="scope">
+                <span :style="{ color: getReturnColor(scope.row.dailyReturnPct) }">
+                  {{ formatSignedPercent(scope.row.dailyReturnPct) }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="cumulativeReturnPct" label="累计收益" min-width="90" align="right">
+              <template slot-scope="scope">
+                <span :style="{ color: getReturnColor(scope.row.cumulativeReturnPct) }">
+                  {{ formatSignedPercent(scope.row.cumulativeReturnPct) }}
+                </span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-else description="暂无收益数据"></el-empty>
+        </el-card>
+      </div>
 
 
     </div>
@@ -314,7 +297,12 @@ export default {
         this.$nextTick(() => {
           this.initChart();
           this.renderMainChart();
-          this.renderAttributionChart();
+        });
+        // 损益归因图需在 v-if 渲染后再初始化（确保容器有实际尺寸）
+        this.$nextTick(() => {
+          this.$nextTick(() => {
+            this.renderAttributionChart();
+          });
         });
       } catch (error) {
         this.$message.error('加载数据失败：' + ((error.response && error.response.data && error.response.data.message) ? error.response.data.message : error.message));
@@ -492,11 +480,13 @@ export default {
     // 渲染损益归因图
     renderAttributionChart() {
       if (!this.$refs.attributionChart) return;
-      if (!this.attributionChart) {
-        this.attributionChart = echarts.init(this.$refs.attributionChart);
-      }
-      
       if (!this.attributionData || this.attributionData.length === 0) return;
+
+      // 每次重新初始化，确保容器尺寸正确（v-if 确保元素可见后才进入）
+      if (this.attributionChart) {
+        this.attributionChart.dispose();
+      }
+      this.attributionChart = echarts.init(this.$refs.attributionChart);
       
       // 按贡献金额排序（正值在上，负值在下）
       var sorted = this.attributionData.slice().sort(function(a, b) {
@@ -507,12 +497,6 @@ export default {
       var values = sorted.map(function(item) { return item.contribution || 0; });
       
       var option = {
-        title: {
-          text: '当日损益归因',
-          subtext: '各资产对组合损益的贡献（元）',
-          left: 'center',
-          textStyle: { fontSize: 14 }
-        },
         tooltip: {
           trigger: 'axis',
           axisPointer: { type: 'shadow' },
@@ -531,7 +515,7 @@ export default {
         grid: {
           left: '20%',
           right: '10%',
-          top: '15%',
+          top: '5%',
           bottom: '5%'
         },
         xAxis: {
@@ -627,20 +611,11 @@ export default {
 
 <style scoped>
 .page-container {
-  padding: 20px;
+  padding: 0;
 }
 
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 500;
+  display: none;
 }
 
 .page-content {
@@ -648,28 +623,52 @@ export default {
 }
 
 .filter-card {
-  margin-bottom: 0;
+  margin-bottom: 10px;
+}
+
+/* ── 统计卡片行：与 Index.vue 绩效网格一致 ── */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .stat-card {
   text-align: center;
-  padding: 15px 10px;
+  padding: 10px 8px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
 }
 
 .stat-label {
-  font-size: 13px;
+  font-size: 12px;
   color: #909399;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .stat-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   color: #303133;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 当日损益归因 + 每日收益统计 并排布局 */
+.dual-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.dual-row > .info-card {
+  margin-bottom: 0;
 }
 
 .info-card {
-  margin-bottom: 0;
+  margin-bottom: 10px;
 }
 
 .card-header {
@@ -686,5 +685,14 @@ export default {
   border-radius: 4px;
   font-size: 13px;
   color: #606266;
+}
+
+@media (max-width: 1400px) {
+  .stats-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .dual-row {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

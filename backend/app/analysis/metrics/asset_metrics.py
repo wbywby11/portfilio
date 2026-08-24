@@ -49,7 +49,7 @@ def calculate_asset_metrics(
     prices: pd.Series,
     thscode: str,
     risk_free_rate: float = 0.0,
-    freq_factor: int = 252,
+    freq_factor: int = 260,
 ) -> AssetMetrics:
     """计算单资产的完整指标集.
     
@@ -57,7 +57,7 @@ def calculate_asset_metrics(
         prices: 价格序列（index=时间）
         thscode: 资产代码
         risk_free_rate: 无风险利率（年化）
-        freq_factor: 年化因子（默认252个交易日）
+        freq_factor: 年化因子（默认260个交易日）
     
     返回:
         AssetMetrics 对象

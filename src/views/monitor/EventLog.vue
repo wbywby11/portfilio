@@ -317,9 +317,9 @@ export default {
           limit: 100
         });
         this.hasMore = (this.events || []).length >= this.currentPage * this.pageSize;
-        this.dataLoaded = true;  // 标记数据已加载
+        this.dataLoaded = true;
       } catch (error) {
-        this.$message.error('加载事件日志失败：' + error.message);
+        console.warn('EventLog 加载事件日志失败:', error.message);
       } finally {
         this.loading = false;
       }

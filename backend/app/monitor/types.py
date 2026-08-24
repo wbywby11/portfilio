@@ -36,11 +36,13 @@ class PortfolioState:
     last_rebalance_date: str                        # 上次调仓日 (YYYY-MM-DD)
     last_rebalance_fx: Dict[str, float]             # 上次调仓日汇率 {资产名: 汇率}
     pending_rebalance: Optional[Dict] = None        # 待执行调仓信息
+    positions_cny_base: Dict[str, float] = field(default_factory=dict)  # 调仓日基准CNY持仓 = nav × weight（与原型 BacktestState 对齐）
     nav_history: List[Dict] = field(default_factory=list)  # 近期净值历史
     total_trading_cost: float = 0.0                 # 累计交易费用
     total_replication_cost: float = 0.0             # 累计复制费用
     vol_reset_count: int = 0                        # 波动率重置次数
-    day_count: int = 0                              # 净值运行天数（从基日起）
+    day_count: int = 0                              # 净值运行天数（从基日起，包含所有处理日）
+    trade_day_count: int = 0                         # 交易日计数（仅计入 trade_dates 中的日期，与原型 trade_day_idx 对齐）
     event_log: List[Dict] = field(default_factory=list)   # 事件日志
     # ---- 传统持仓模型字段（与回测 engine.py Position 对齐：NAV = cash + Σ(qty × close)）----
     # 仅在 PortfolioTracker.traditional_mode=True 时启用（典型为主观/手动配置策略）
