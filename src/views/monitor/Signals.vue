@@ -83,67 +83,65 @@
       </div>
 
       <!-- ==================== Section 2: 波动率监控区 ==================== -->
-      <div class="section-block">
+      <!-- 仅当策略真实配置了波动率风控时渲染：enabled 由后端 resolve_vol_control
+           单点判定，避免给未配置策略显示一个通用的 6% 阈值和进度条 -->
+      <div v-if="volControlEnabled" class="section-block">
         <div class="section-header">
           <i class="el-icon-odometer"></i>
           <span>波动率监控</span>
           <el-tag :type="volStatusType" size="small" style="margin-left: 10px;">{{ volStatusText }}</el-tag>
         </div>
         
-        <el-row :gutter="20">
-          <!-- 左侧：波动率状态面板 -->
-          <el-col :span="10">
+        <div class="vol-layout">
+          <!-- 左侧：波动率指标卡（MetricCard，4 成宽） -->
+          <div class="vol-layout__left">
             <el-card class="vol-panel" shadow="hover">
-              <!-- 波动率大数字 -->
-              <div class="vol-display">
-                <div class="vol-value" :class="volValueClass">
-                  {{ formatPercent(currentVolatilityPct) }}
+              <MetricCard :metric="riskMetric" variant="plain">
+                <!-- 进度条（量化策略：相对重置阈值） -->
+                <div v-if="!subjectiveVolOnly" class="vol-progress-wrapper">
+                  <el-progress
+                    :percentage="volProgressPercent"
+                    :color="volProgressColors"
+                    :stroke-width="20"
+                    :show-text="false">
+                  </el-progress>
+                  <div class="vol-progress-labels">
+                    <span>0%</span>
+                    <span>阈值: {{ formatPercent(volThresholdPct) }}</span>
+                  </div>
                 </div>
-                <div class="vol-label">当前组合波动率</div>
-              </div>
-              
-              <!-- 进度条（量化策略：相对重置阈值） -->
-              <div v-if="!subjectiveVolOnly" class="vol-progress-wrapper">
-                <el-progress
-                  :percentage="volProgressPercent"
-                  :color="volProgressColors"
-                  :stroke-width="24"
-                  :show-text="false">
-                </el-progress>
-                <div class="vol-progress-labels">
-                  <span>0%</span>
-                  <span>阈值: {{ formatPercent(volThresholdPct) }}</span>
+
+                <!-- 距触发阈值 -->
+                <div v-if="!subjectiveVolOnly && volStatus !== 'danger'" class="vol-distance">
+                  距触发阈值: <strong :style="{ color: distanceColor }">{{ formatPercent(distanceToTrigger) }}</strong>
                 </div>
-              </div>
-              
-              <!-- 距触发阈值 -->
-              <div v-if="!subjectiveVolOnly && volStatus !== 'danger'" class="vol-distance">
-                距触发阈值: <strong :style="{ color: distanceColor }">{{ formatPercent(distanceToTrigger) }}</strong>
-              </div>
-              <div v-else-if="!subjectiveVolOnly && volStatus === 'danger'" class="vol-distance">
-                <el-tag type="danger" size="medium">已超过阈值</el-tag>
-              </div>
-              
-              <!-- 各窗口波动率 -->
-              <div class="vol-windows">
-                <div class="vol-window-item" v-for="(val, key) in volWindows" :key="key">
-                  <span class="window-label">{{ key }}</span>
-                  <span class="window-value">{{ formatPercent(val) }}</span>
+                <div v-else-if="!subjectiveVolOnly && volStatus === 'danger'" class="vol-distance">
+                  <el-tag type="danger" size="medium">已超过阈值</el-tag>
                 </div>
-              </div>
+              </MetricCard>
             </el-card>
-          </el-col>
-          
-          <!-- 右侧：波动率趋势图 -->
-          <el-col :span="14">
+          </div>
+
+          <!-- 右侧：波动率趋势图（6 成宽，阈值线与超限区域参数化） -->
+          <div class="vol-layout__right">
             <el-card shadow="hover" class="chart-card">
               <div slot="header">
                 <span>波动率趋势（近30日）</span>
               </div>
-              <div class="chart-container" ref="volChart" style="height: 320px;"></div>
+              <TimeSeriesChart
+                v-if="volatilitySeriesValues.length"
+                :x-data="volatilitySeriesDates"
+                :series="volatilitySeries"
+                :y-axis="volatilityYAxis"
+                :threshold="volThresholdLine"
+                :threshold-zone="volThresholdZone"
+                :legend="false"
+                :x-axis-rotate="volatilitySeriesDates.length > 18 ? 45 : 0"
+                :height="340" />
+              <el-empty v-else description="暂无可展示的波动率历史" :image-size="60" />
             </el-card>
-          </el-col>
-        </el-row>
+          </div>
+        </div>
       </div>
 
       <!-- ==================== Section 3: 调仓规划区 ==================== -->
@@ -301,6 +299,9 @@
           <el-empty v-if="rebalanceHistory.length === 0" description="暂无调仓历史记录"></el-empty>
         </el-card>
       </div>
+
+      <!-- 策略自定义插槽：风控页专属组件（如 Greeks 风险表），未声明时不渲染 -->
+      <DynamicSlots v-if="riskSlots.length" :slots="riskSlots" />
     </div>
 
     <!-- ==================== 待执行调仓详情弹窗 ==================== -->
@@ -339,22 +340,30 @@
 </template>
 
 <script>
-import * as echarts from 'echarts';
 import { mapState } from 'vuex';
+import MetricCard from '@/components/monitor/MetricCard.vue';
+import TimeSeriesChart from '@/components/monitor/TimeSeriesChart.vue';
+import DynamicSlots from '@/components/monitor/DynamicSlots.vue';
+import { buildMetrics, resolveCustomComponents } from '@/config/monitor';
 
 export default {
   name: 'Signals',
+  components: { MetricCard, TimeSeriesChart, DynamicSlots },
   props: {
-    /** 主观配置策略：只展示实际波动率，不参与波动率重置阈值对比 */
+    /** 只观测模式：仅展示实际波动率，不参与阈值对比（整区显隐由 volControlEnabled 控制） */
     subjectiveVolOnly: {
       type: Boolean,
       default: false
+    },
+    /** 策略上下文：指标集合与自定义插槽按策略声明 */
+    strategyContext: {
+      type: Object,
+      default: null
     }
   },
   data: function() {
     return {
       loading: false,
-      volChart: null,
       expandedRows: [],
       pendingDetailVisible: false,
       volProgressColors: [
@@ -365,11 +374,16 @@ export default {
     };
   },
   computed: {
-    ...mapState('monitor', ['signals', 'events', 'monitorState']),
+    ...mapState('monitor', ['signals', 'events']),
     
     // ===== 波动率相关 =====
     volReset: function() {
       return (this.signals && this.signals.vol_reset) ? this.signals.vol_reset : null;
+    },
+    /** 波动率风控是否启用：后端单点判定（resolve_vol_control），未启用时整区不渲染 */
+    volControlEnabled: function() {
+      if (!this.volReset) return false;
+      return this.volReset.enabled === true;
     },
     /** 与后端 signal 一致：统一为「百分点」数字（如 9.64 表示 9.64%） */
     currentVolatilityPct: function() {
@@ -415,13 +429,6 @@ export default {
       if (status === 'warning') return '预警';
       return '正常';
     },
-    volValueClass: function() {
-      var status = this.volStatus;
-      if (status === 'nodata' || status === 'observe') return 'vol-normal';
-      if (status === 'danger') return 'vol-danger';
-      if (status === 'warning') return 'vol-warning';
-      return 'vol-normal';
-    },
     volProgressPercent: function() {
       if (this.subjectiveVolOnly) return 0;
       if (this.currentVolatilityPct === null || !this.volThresholdPct || this.volThresholdPct <= 0) return 0;
@@ -446,6 +453,118 @@ export default {
     },
     volWindows: function() {
       return (this.volReset && this.volReset.vol_windows) ? this.volReset.vol_windows : {};
+    },
+    /** 风控指标卡上下文：多窗口数据组 + 阈值状态，渲染由 MetricCard 与配置层决定 */
+    riskMetricContext: function() {
+      return {
+        volatility: this.currentVolatilityPct,
+        threshold: this.subjectiveVolOnly ? null : this.volThresholdPct,
+        abnormal: this.volStatus === 'danger',
+        windows: this.volWindowItems.map(function(item) {
+          return {
+            label: item.label,
+            display: item.display,
+            status: item.abnormal ? 'danger' : 'default',
+            tooltip: item.reason
+          };
+        })
+      };
+    },
+    riskMetrics: function() {
+      return buildMetrics('risk', this.riskMetricContext, this.strategyContext);
+    },
+    /** 左侧指标卡：默认取配置首项 */
+    riskMetric: function() {
+      return this.riskMetrics[0] || { label: '当前组合波动率', value: null };
+    },
+    /** 风控页自定义插槽（策略声明 custom_components 后自动挂载） */
+    riskSlots: function() {
+      return resolveCustomComponents('risk', this.strategyContext);
+    },
+    /* ── 趋势图数据：窗口数据参数化，图表只负责渲染 ── */
+    volatilitySeriesDates: function() {
+      return this.volatilityHistory.map(function(v) { return v.date; });
+    },
+    volatilitySeriesValues: function() {
+      return this.volatilityHistory.map(function(v) {
+        var val = v.volatility !== undefined ? v.volatility : v.value;
+        return val > 1 ? val : (val * 100);
+      });
+    },
+    volatilitySeries: function() {
+      return [{
+        name: '组合波动率',
+        type: 'line',
+        data: this.volatilitySeriesValues,
+        color: '#409EFF',
+        lineWidth: 2.5,
+        area: true,
+        areaOpacity: 0.32
+      }];
+    },
+    volatilityYAxis: function() {
+      var threshold = this.volThresholdPct;
+      var hasThreshold = !this.subjectiveVolOnly && threshold !== null && threshold !== undefined;
+      return [{
+        name: '波动率(%)',
+        format: 'percent',
+        precision: 1,
+        scale: true,
+        // 阈值低于数据最小值时自动下探坐标轴，保证红线与超限区域始终可见
+        min: function(value) {
+          var min = value.min;
+          if (hasThreshold) min = Math.min(min, Number(threshold) * 0.85);
+          return Math.floor(min * 10) / 10;
+        },
+        // 阈值高于数据最大值时上探坐标轴，红线与标签不被裁掉
+        max: function(value) {
+          var max = value.max;
+          if (hasThreshold) max = Math.max(max, Number(threshold) * 1.12);
+          return Math.ceil(max * 10) / 10;
+        }
+      }];
+    },
+    /** 阈值线：主观策略不传，组件自动不绘制 */
+    volThresholdLine: function() {
+      if (this.subjectiveVolOnly) return null;
+      if (this.volThresholdPct === null || this.volThresholdPct === undefined) return null;
+      return {
+        value: this.volThresholdPct,
+        label: '阈值 ' + Number(this.volThresholdPct).toFixed(2) + '%',
+        color: '#F56C6C',
+        width: 2.5
+      };
+    },
+    /** 超出阈值的区域自动高亮（仅量化策略） */
+    volThresholdZone: function() {
+      if (!this.volThresholdLine) return null;
+      return { above: this.volThresholdPct, color: 'rgba(245, 108, 108, 0.07)' };
+    },
+    /** 各窗口波动率展示项：与主指标偏离 > 2 倍的窗口标记 abnormal，避免一视同仁 */
+    volWindowItems: function() {
+      var self = this;
+      var entries = Object.keys(this.volWindows || {}).map(function(key) {
+        return { label: key, raw: self.volWindows[key] };
+      });
+      var main = this.currentVolatilityPct;
+      return entries.map(function(e) {
+        var pct = self.normalizeMonitorVolPercent(e.raw);
+        var abnormal = false;
+        var reason = '';
+        if (main !== null && pct !== null && !Number.isNaN(pct) && main > 0) {
+          var ratio = pct / main;
+          if (ratio <= 0.5 || ratio >= 2) {
+            abnormal = true;
+            reason = e.label + '波动率 ' + pct.toFixed(2) + '% 与主指标 ' + main.toFixed(2) + '% 偏离超过 2 倍';
+          }
+        }
+        return {
+          label: e.label,
+          display: self.formatPercent(e.raw),
+          abnormal: abnormal,
+          reason: reason
+        };
+      });
     },
     volatilityHistory: function() {
       return (this.signals && this.signals.volatility_history) || [];
@@ -516,17 +635,6 @@ export default {
   created: function() {
     this.loadData();
   },
-  mounted: function() {
-    var self = this;
-    this.$nextTick(function() {
-      self.initChart();
-    });
-  },
-  beforeDestroy: function() {
-    if (this.volChart) {
-      this.volChart.dispose();
-    }
-  },
   methods: {
     normalizeMonitorVolPercent: function(val) {
       if (val === undefined || val === null) return null;
@@ -539,7 +647,6 @@ export default {
       this.loading = true;
       try {
         await this.$store.dispatch('monitor/fetchSignals');
-        this.updateChart();
       } catch (error) {
         // 404 等错误已由 store 统一处理，不重复弹提示
         console.warn('Signals 加载数据失败:', error.message);
@@ -550,82 +657,6 @@ export default {
     refreshData: async function() {
       await this.loadData();
       this.$message.success('数据已刷新');
-    },
-    initChart: function() {
-      if (!this.$refs.volChart || this.$refs.volChart.clientWidth === 0) return;
-      this.volChart = echarts.init(this.$refs.volChart);
-      this.updateChart();
-      
-      var self = this;
-      window.addEventListener('resize', function() {
-        if (self.volChart) self.volChart.resize();
-      });
-    },
-    updateChart: function() {
-      if (!this.volChart) return;
-      
-      var history = this.volatilityHistory;
-      var dates = history.map(function(v) { return v.date; });
-      var values = history.map(function(v) {
-        var val = v.volatility !== undefined ? v.volatility : v.value;
-        // 转为百分比
-        return val > 1 ? val : (val * 100);
-      });
-      
-      var thresholdPct = null;
-      if (!this.subjectiveVolOnly && this.volThresholdPct != null && !Number.isNaN(this.volThresholdPct)) {
-        thresholdPct = this.volThresholdPct;
-      }
-
-      var option = {
-        tooltip: {
-          trigger: 'axis',
-          formatter: function(params) {
-            var p = params[0];
-            return p.axisValue + '<br/>波动率: ' + Number(p.value).toFixed(2) + '%';
-          }
-        },
-        grid: {
-          left: '10%',
-          right: '5%',
-          bottom: '15%',
-          top: '10%'
-        },
-        xAxis: {
-          type: 'category',
-          data: dates,
-          axisLabel: { rotate: 45, fontSize: 10 }
-        },
-        yAxis: {
-          type: 'value',
-          name: '波动率(%)',
-          axisLabel: { formatter: function(v) { return v.toFixed(1) + '%'; } }
-        },
-        series: [{
-          name: '组合波动率',
-          type: 'line',
-          data: values,
-          smooth: true,
-          lineStyle: { width: 2, color: '#409EFF' },
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: 'rgba(64,158,255,0.3)' },
-              { offset: 1, color: 'rgba(64,158,255,0.05)' }
-            ])
-          },
-          markLine: {
-            silent: true,
-            symbol: 'none',
-            data: thresholdPct != null ? [{
-              yAxis: thresholdPct,
-              lineStyle: { color: '#F56C6C', type: 'dashed', width: 2 },
-              label: { formatter: '阈值 ' + thresholdPct.toFixed(1) + '%', position: 'end' }
-            }] : []
-          }
-        }]
-      };
-      
-      this.volChart.setOption(option);
     },
     formatPercent: function(val, showSign) {
       if (val === null || val === undefined) return '-';
@@ -822,34 +853,36 @@ export default {
 }
 
 /* 波动率面板 */
+/* 波动率面板：左 4 / 右 6，图表获得更大画布 */
+.vol-layout {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+}
+
+.vol-layout__left {
+  flex: 4 1 0;
+  min-width: 0;
+}
+
+.vol-layout__right {
+  flex: 6 1 0;
+  min-width: 0;
+}
+
+@media (max-width: 1200px) {
+  .vol-layout {
+    flex-direction: column;
+  }
+}
+
 .vol-panel {
   height: 100%;
 }
 
-.vol-display {
-  text-align: center;
-  padding: 20px 0;
-}
-
-.vol-value {
-  font-size: 56px;
-  font-weight: 600;
-  line-height: 1;
-}
-
-.vol-label {
-  font-size: 14px;
-  color: #909399;
-  margin-top: 10px;
-}
-
-.vol-normal { color: #67C23A; }
-.vol-warning { color: #E6A23C; }
-.vol-danger { color: #F56C6C; }
-
+/* 指标卡内扩展区：进度条与阈值距离与主体同宽同基线 */
 .vol-progress-wrapper {
-  padding: 0 20px;
-  margin: 20px 0;
+  margin: 16px 0 12px;
 }
 
 .vol-progress-labels {
@@ -861,44 +894,19 @@ export default {
 }
 
 .vol-distance {
-  text-align: center;
-  padding: 15px 0;
-  font-size: 14px;
-  color: #606266;
-  border-top: 1px solid #EBEEF5;
-  border-bottom: 1px solid #EBEEF5;
-}
-
-.vol-windows {
   display: flex;
-  justify-content: space-around;
-  padding: 15px 10px;
-}
-
-.vol-window-item {
-  text-align: center;
-}
-
-.window-label {
-  display: block;
-  font-size: 12px;
-  color: #909399;
-  margin-bottom: 5px;
-}
-
-.window-value {
-  font-size: 16px;
-  font-weight: 500;
-  color: #303133;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: #606266;
+  border-top: 1px solid #f2f4f7;
 }
 
 /* 图表卡片 */
 .chart-card {
   height: 100%;
-}
-
-.chart-container {
-  width: 100%;
 }
 
 /* 调仓概览 */

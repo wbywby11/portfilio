@@ -101,20 +101,59 @@ export function getStrategyModelList(params) {
 }
 
 // 获取单个策略模型
-export function getStrategyModel(modelId) {
+// options 可携带 skipGlobal404Message：调用方已能降级（如监控实例 id 不是策略模型 id）时静默 404
+export function getStrategyModel(modelId, options = {}) {
   return request({
     url: `/api/v1/strategy-models/${modelId}`,
-    method: 'get'
+    method: 'get',
+    ...options
   });
 }
 
-// 运行回测（混合动量等计算量大，超时设为 5 分钟）
-export function runBacktest(modelId, data) {
+// 获取策略原型预设列表（摘要，不含展开明细）
+export function getStrategyPresets(templateCode) {
+  return request({
+    url: '/api/v1/strategy-models/presets',
+    method: 'get',
+    params: templateCode ? { template_code: templateCode } : {}
+  });
+}
+
+// 展开预设：返回资产池 + 参数 + 三级问题清单
+export function resolveStrategyPreset(presetCode) {
+  return request({
+    url: `/api/v1/strategy-models/presets/${presetCode}/resolve`,
+    method: 'post'
+  });
+}
+
+// 校验任意一组配置（未保存也能算），用于详情页/回测页实时门禁
+export function validateStrategyConfig(data) {
+  return request({
+    url: '/api/v1/strategy-models/presets/validate',
+    method: 'post',
+    data
+  });
+}
+
+// 运行回测（长任务，超时放到 30 分钟）
+// progressKey：前端生成的进度任务号，同时作为轮询 GET /monitor/tasks/{task_id} 的 task_id；
+// 为空时后端不建进度文档，行为与不传完全一致
+export function runBacktest(modelId, data, progressKey) {
   return request({
     url: `/api/v1/backtests/run-by-model/${modelId}`,
     method: 'post',
     data,
-    timeout: 300000
+    params: progressKey ? { progress_key: progressKey } : undefined,
+    timeout: 1800000
+  });
+}
+
+// 获取单条回测记录详情（含净值曲线/持仓/权重变化等完整明细）
+export function getBacktestDetail(recordId) {
+  return request({
+    url: `/api/v1/backtests/${recordId}`,
+    method: 'get'
   });
 }
 
@@ -149,6 +188,16 @@ export function publishModel(modelId) {
   return request({
     url: `/api/v1/strategy-models/${modelId}/publish`,
     method: 'post',
+    timeout: 120000
+  });
+}
+
+// 取消发布（回到草稿；已实盘发布的模型会先自动取消实盘，历史记录保留）
+export function unpublishModel(modelId, params = {}) {
+  return request({
+    url: `/api/v1/strategy-models/${modelId}/unpublish`,
+    method: 'post',
+    params,
     timeout: 120000
   });
 }

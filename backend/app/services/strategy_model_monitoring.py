@@ -95,6 +95,9 @@ async def get_model_monitoring_core(
         market_service=market_service,
         config=config,
         lookback_days=500,
+        # 面板按 strategy_type 静态解析；不传则策略声明的 get_extra_panels
+        # 不生效，依赖面板的策略会拿到空截面
+        strategy_type=model.template_code,
     )
     if data_feed.prices.empty:
         raise HTTPException(status_code=400, detail="无法获取历史行情数据，请检查资产代码和日期范围")
@@ -232,6 +235,10 @@ async def get_model_monitoring_core(
         sharpe_ratio=performance.sharpe_ratio,
         max_drawdown=performance.max_drawdown,
         calmar_ratio=performance.calmar_ratio,
+        annual_return_365=performance.annual_return_365,
+        annual_volatility_365=performance.annual_volatility_365,
+        sharpe_ratio_365=performance.sharpe_ratio_365,
+        calmar_ratio_365=performance.calmar_ratio_365,
         equity_curve=equity_curve,
         return_curve=return_curve,
         positions=positions_record,

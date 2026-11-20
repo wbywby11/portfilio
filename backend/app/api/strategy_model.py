@@ -41,6 +41,12 @@ from app.models.strategy_model import (
 )
 from app.services.asset_service import AssetService
 from app.services.market_service import MarketService
+# 预设路由独立注册（app/api/strategy_preset.py）：本 router 有 GET /{model_id}，
+# 预设端点必须挂在与本 router 同前缀、且先于本 router 注册的路由上
+from app.services.strategy_preset_service import (
+    preset_derived_fields,
+    stamp_preset_trace,
+)
 
 
 router = APIRouter()
@@ -126,6 +132,12 @@ async def create_model(
     # 移除基准代码字段（因为它不再存在于模型中）
     model_data = model_in.dict()
     model_data.pop('benchmark_code', None)  # 移除基准代码字段
+    # 预设留痕：preset_version / preset_applied_at / snapshot 一律由服务层
+    # 按当前预设定义重算，不采信前端传值（否则改预设后无法识别旧模型）
+    try:
+        model_data = stamp_preset_trace(model_data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     
     model = StrategyModel(**model_data)
     model_id = await service.create_model(model)
@@ -265,6 +277,7 @@ async def list_models(
             live_effective_assets=le_assets,
             live_effective_asset_labels=le_labels,
             resolved_params=rp,
+            **preset_derived_fields(model),
         )
         data.append(model_out)
     
@@ -344,6 +357,7 @@ async def get_model(
         live_effective_assets=le_assets,
         live_effective_asset_labels=le_labels,
         resolved_params=rp,
+        **preset_derived_fields(model),
     )
     
     return Response.success(data=model_out)
@@ -375,6 +389,20 @@ async def update_model(
     
     # 验证调仓频率格式（如果提供了调仓频率）
     update_data = model_update.dict(exclude_unset=True)
+    if 'preset_code' in update_data:
+        # 同一预设重复保存不刷新应用时间：带上存量值供 service 判断是否变更
+        # （service 只在 preset_code 变化时才刷新 preset_applied_at）
+        if not update_data.get('preset_applied_at'):
+            update_data['preset_applied_at'] = existing_model.preset_applied_at
+        try:
+            update_data = stamp_preset_trace(
+                update_data,
+                previous_preset_code=existing_model.preset_code,
+                fallback_asset_codes=existing_model.asset_codes,
+                fallback_parameters=existing_model.parameters,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
     update_data["_change_source"] = source
     update_data["_change_operator"] = operator
     if 'rebalance_frequency' in update_data:
@@ -384,7 +412,10 @@ async def update_model(
         raise HTTPException(status_code=400, detail="没有提供任何要更新的字段")
     
     # 执行更新
-    success = await service.update_model(model_id, update_data)
+    try:
+        success = await service.update_model(model_id, update_data)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     if not success:
         raise HTTPException(status_code=500, detail="模型更新失败")
     
@@ -429,10 +460,38 @@ async def update_model(
 
 
 @router.post("/{model_id}/publish", response_model=Response[bool], summary="发布模型")
-async def publish_model(model_id: str, live_service: LivePublishService = Depends(get_live_publish_service)):
+async def publish_model(
+    model_id: str,
+    source: str = Query("strategy", description="操作来源"),
+    operator: str | None = Query(None, description="操作人"),
+    live_service: LivePublishService = Depends(get_live_publish_service),
+):
     validate_object_id(model_id)
-    success = await live_service.publish_model(model_id)
+    try:
+        success = await live_service.publish_model(
+            model_id, source=source, operator=operator
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return Response.success(data=success, message="模型发布成功")
+
+
+@router.post("/{model_id}/unpublish", response_model=Response[bool], summary="取消发布（回到草稿）")
+async def unpublish_model(
+    model_id: str,
+    source: str = Query("strategy", description="操作来源"),
+    operator: str | None = Query(None, description="操作人"),
+    live_service: LivePublishService = Depends(get_live_publish_service),
+):
+    """取消发布：已实盘发布的先取消实盘，监控下架，历史记录保留。"""
+    validate_object_id(model_id)
+    try:
+        success = await live_service.unpublish_model(
+            model_id, source=source, operator=operator
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return Response.success(data=success, message="已取消发布，模型回到草稿")
 
 
 @router.post("/{model_id}/live-publish", response_model=Response[bool], summary="实盘发布策略模型（T+1 生效）")
@@ -445,20 +504,23 @@ async def live_publish_model(
     validate_object_id(model_id)
     # 自动检测组合模型，走组合发布逻辑
     model = await service.get_model(model_id)
-    if model and model.is_portfolio:
-        success = await live_service.live_publish_portfolio_model(
+    try:
+        if model and model.is_portfolio:
+            success = await live_service.live_publish_portfolio_model(
+                model_id=model_id,
+                source=body.source,
+                operator=body.operator,
+            )
+            return Response.success(data=success, message="组合模型发布成功")
+        success = await live_service.live_publish_model(
             model_id=model_id,
             source=body.source,
             operator=body.operator,
+            rebalance_mode=body.rebalance_mode,
+            volatility_threshold=body.volatility_threshold,
         )
-        return Response.success(data=success, message="组合模型发布成功")
-    success = await live_service.live_publish_model(
-        model_id=model_id,
-        source=body.source,
-        operator=body.operator,
-        rebalance_mode=body.rebalance_mode,
-        volatility_threshold=body.volatility_threshold,
-    )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return Response.success(data=success, message="实盘发布成功（次交易日生效）")
 
 
@@ -470,7 +532,12 @@ async def live_unpublish_model(
     live_service: LivePublishService = Depends(get_live_publish_service),
 ):
     validate_object_id(model_id)
-    success = await live_service.live_unpublish_model(model_id=model_id, source=source, operator=operator)
+    try:
+        success = await live_service.live_unpublish_model(
+            model_id=model_id, source=source, operator=operator
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return Response.success(data=success, message="已取消实盘发布")
 
 
@@ -501,13 +568,16 @@ async def update_live_config(
     live_service: LivePublishService = Depends(get_live_publish_service),
 ):
     validate_object_id(model_id)
-    success = await live_service.update_live_config(
-        model_id=model_id,
-        source=body.source,
-        operator=body.operator,
-        rebalance_mode=body.rebalance_mode,
-        volatility_threshold=body.volatility_threshold,
-    )
+    try:
+        success = await live_service.update_live_config(
+            model_id=model_id,
+            source=body.source,
+            operator=body.operator,
+            rebalance_mode=body.rebalance_mode,
+            volatility_threshold=body.volatility_threshold,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     return Response.success(data=success, message="实盘配置更新成功")
 
 
@@ -714,7 +784,10 @@ async def delete_model(model_id: str, service: StrategyModelService = Depends(ge
     注意：此操作不可逆，请谨慎使用
     """
     validate_object_id(model_id)
-    success = await service.delete_model(model_id)
+    try:
+        success = await service.delete_model(model_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     if not success:
         raise HTTPException(status_code=404, detail=f"策略模型不存在: {model_id}")
     return Response.success(data=True, message="策略模型删除成功")

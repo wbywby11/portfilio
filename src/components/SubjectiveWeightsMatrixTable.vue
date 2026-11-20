@@ -20,7 +20,9 @@
       <!-- 日期列 -->
       <vxe-column field="date" title="调仓日期" width="150" fixed="left" sortable>
         <template #default="{ row }">
+          <span v-if="readonly" class="matrix-readonly-text">{{ row.date || '—' }}</span>
           <el-date-picker
+            v-else
             v-model="row.date"
             type="date"
             value-format="yyyy-MM-dd"
@@ -47,7 +49,10 @@
           </el-tooltip>
         </template>
         <template #default="{ row }">
-          <div class="matrix-weight-cell" @mousedown.stop @click.stop>
+          <span v-if="readonly" :class="['matrix-readonly-num', weightClass(row['w_' + code])]">
+            {{ formatWeight(row['w_' + code]) }}<span class="matrix-readonly-unit">%</span>
+          </span>
+          <div v-else class="matrix-weight-cell" @mousedown.stop @click.stop>
             <el-input-number
               :value="row['w_' + code] != null ? row['w_' + code] : 0"
               :controls="true"
@@ -77,8 +82,8 @@
         </template>
       </vxe-column>
 
-      <!-- 操作列 -->
-      <vxe-column title="操作" width="120" fixed="right" align="center">
+      <!-- 操作列（只读模式不展示） -->
+      <vxe-column v-if="!readonly" title="操作" width="120" fixed="right" align="center">
         <template #default="{ row, $rowIndex }">
           <el-tooltip content="归一化" placement="top" :open-delay="500">
             <el-button
@@ -117,8 +122,8 @@
       </vxe-column>
     </vxe-table>
 
-    <!-- 底部工具栏 -->
-    <div class="matrix-toolbar">
+    <!-- 底部工具栏（只读模式不展示） -->
+    <div v-if="!readonly" class="matrix-toolbar">
       <el-button size="mini" type="primary" plain icon="el-icon-plus" @click="addDate">
         添加调仓日
       </el-button>
@@ -138,7 +143,9 @@ export default {
     assetCodes: { type: Array, default: () => [] },
     resolveLabel: { type: Function, default: c => c },
     adjustments: { type: Array, default: () => [] },
-    maxLeverage: { type: Number, default: 1 }
+    maxLeverage: { type: Number, default: 1 },
+    /** 只读展示：日期与权重以文本呈现，隐藏操作列与工具栏 */
+    readonly: { type: Boolean, default: false }
   },
   data() {
     return {
@@ -240,6 +247,12 @@ export default {
       this.emitUpdate()
     },
 
+    /** 只读权重文本：两位小数 */
+    formatWeight(val) {
+      const n = parseFloat(val)
+      return Number.isFinite(n) ? n.toFixed(2) : '0.00'
+    },
+
     /** 根据权重值返回视觉 class（0 值浅灰、>50% 加粗） */
     weightClass(val) {
       const v = parseFloat(val) || 0
@@ -295,11 +308,12 @@ export default {
       return s
     },
 
-    /** 合计列颜色 class */
+    /** 合计列颜色 class（以模型杠杆上限为基准） */
     sumClass(row) {
       const s = this.rowSum(row)
-      if (Math.abs(s - 100) < 0.01) return 'sum-ok'
-      if (s < 100) return 'sum-under'
+      const cap = (this.maxLeverage || 1) * 100
+      if (Math.abs(s - cap) < 0.01) return 'sum-ok'
+      if (s < cap) return 'sum-under'
       return 'sum-over'
     },
 
@@ -525,6 +539,32 @@ export default {
 .matrix-weight-input >>> .el-input-number__increase:hover,
 .matrix-weight-input >>> .el-input-number__decrease:hover {
   color: #409eff;
+}
+
+/* 只读文本 */
+.matrix-readonly-text {
+  font-size: 12px;
+  color: #303133;
+  font-variant-numeric: tabular-nums;
+}
+.matrix-readonly-num {
+  display: inline-block;
+  width: 100%;
+  text-align: right;
+  font-size: 12px;
+  color: #303133;
+  font-variant-numeric: tabular-nums;
+}
+.matrix-readonly-num.is-zero {
+  color: #c0c4cc;
+}
+.matrix-readonly-num.is-bold {
+  font-weight: 600;
+}
+.matrix-readonly-unit {
+  margin-left: 1px;
+  font-size: 11px;
+  color: #909399;
 }
 
 /* 0 值浅灰文字 */

@@ -1,23 +1,34 @@
 """回测服务API - 基于新的 BacktestEngine"""
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from datetime import datetime
+import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from bson import ObjectId
 from app.schemas.strategy_model import BacktestRecordOut
 
 from app.schemas.response import Response
 from app.services.market_service import MarketService
 from app.services.asset_service import AssetService
+from app.services.published_snapshot import apply_published_snapshot
 from app.services.strategy_model_service import StrategyModelService
+from app.models.strategy_model import ModelStatus
 from app.services.backtest_service import BacktestService
 from app.backtesting.analytics import compute_paused_metrics
 
 router = APIRouter()
+
+#: 进度任务号：前端生成 uuid 并并行轮询 ``GET /monitor/tasks/{task_id}``；
+#: 为空时不建进度文档，端点行为与接入前完全一致
+_PROGRESS_KEY_QUERY = Query(
+    None,
+    description="进度任务号（前端生成的 uuid，同时作为轮询用的 task_id）；为空时不上报进度",
+    max_length=64,
+)
 
 
 # ==================== 从 backtest_helpers 导入公共辅助函数 ====================
@@ -45,6 +56,12 @@ from app.schemas.backtests import (
 from app.services.backtest_orchestration import (
     _run_backtest_core,  # noqa: F401  (scripts/regen_snowball_record.py)
     run_backtest_by_model_core,
+)
+from app.services.backtest_progress import (
+    KIND_PORTFOLIO,
+    SINK_KEY,
+    close_progress,
+    open_progress,
 )
 from app.services.portfolio_backtest_helpers import (
     _maybe_apply_product_layer,
@@ -185,6 +202,7 @@ async def get_backtest_detail(
 async def run_backtest_by_model(
     model_id: str,
     request: BacktestByModelRequest = Body(...),
+    progress_key: Optional[str] = _PROGRESS_KEY_QUERY,
     market_service: MarketService = Depends(get_market_service),
     asset_service: AssetService = Depends(get_asset_service),
 ):
@@ -219,11 +237,24 @@ async def run_backtest_by_model(
     
     """
     # 编排主体已下沉 app.services.backtest_orchestration（P8 治理），
-    # 组合回测路由（is_portfolio 分支）经 portfolio_runner 注入本文件端点
-    return await run_backtest_by_model_core(
-        model_id, request, market_service, asset_service,
-        portfolio_runner=run_portfolio_backtest_api,
-    )
+    # 组合回测路由（is_portfolio 分支）经 portfolio_runner 注入本文件端点；
+    # progress_key 用闭包透传，组合分支的进度文档由组合端点自己建（kind 不同）
+    async def _portfolio_runner(mid: str, req):
+        return await run_portfolio_backtest_api(mid, req, progress_key=progress_key)
+
+    sink: Dict[str, Any] = {}
+    try:
+        result = await run_backtest_by_model_core(
+            model_id, request, market_service, asset_service,
+            portfolio_runner=_portfolio_runner,
+            progress_key=progress_key,
+            progress_sink=sink,
+        )
+    except BaseException as exc:  # noqa: BLE001 —— 只为把失败写回进度文档，原样抛出
+        await close_progress(sink, exc)
+        raise
+    await close_progress(sink)
+    return result
 
 
 # ==================== 多维分析 API ====================
@@ -420,13 +451,17 @@ async def generate_portfolio_report(
 async def run_portfolio_backtest_api(
     model_id: str,
     request: PortfolioBacktestRequest = Body(...),
+    progress_key: Optional[str] = _PROGRESS_KEY_QUERY,
 ):
     """
     投资组合回测
 
     将多个独立策略按配置权重在 NAV 层复合，形成投资组合。
     每个子策略独立回测，然后按权重加权合成。
+
+    进度阶段：每个子策略一段 + 组合合成一段（仅 ``progress_key`` 非空时上报）。
     """
+    sink: Dict[str, Any] = {}
     try:
         validate_object_id(model_id)
         model_service = get_model_service()
@@ -438,10 +473,18 @@ async def run_portfolio_backtest_api(
         if not portfolio_model.is_portfolio:
             raise HTTPException(status_code=400, detail=f"模型 {model_id} 不是投资组合类型")
 
-        if not portfolio_model.sub_strategies:
+        # 已发布组合：成员/权重/权重模型参数统一读发布冻结快照
+        if portfolio_model.status == ModelStatus.PUBLISHED and portfolio_model.published_snapshot:
+            portfolio_model = apply_published_snapshot(
+                portfolio_model, portfolio_model.published_snapshot
+            )
+        membership = model_service.portfolio_membership(portfolio_model)
+        if not membership:
             raise HTTPException(status_code=400, detail="投资组合未配置子策略")
 
-        sub_pairs = await model_service.resolve_sub_strategies(portfolio_model)
+        sub_pairs = await model_service.resolve_sub_strategies(
+            portfolio_model, sub_strategies=membership
+        )
         if not sub_pairs:
             raise HTTPException(status_code=400, detail="无法解析子策略，请检查配置")
 
@@ -451,7 +494,7 @@ async def run_portfolio_backtest_api(
         sub_entries = []
         for sub_model, weight in sub_pairs:
             sub_info = next(
-                (s for s in portfolio_model.sub_strategies if s.get("model_id") == sub_model.id), {}
+                (s for s in membership if s.get("model_id") == sub_model.id), {}
             )
             sub_entries.append({
                 "model": sub_model,
@@ -462,6 +505,30 @@ async def run_portfolio_backtest_api(
                 "sub_start": sub_info.get("backtest_start"),
             })
 
+        # 旁路进度：子策略逐个回测各算一段，组合合成再算一段
+        _total_steps = len(sub_entries) + 1
+        progress = await open_progress(
+            progress_key,
+            kind=KIND_PORTFOLIO,
+            subject_id=model_id,
+            subject_name=portfolio_model.name,
+            total_steps=_total_steps,
+            params={
+                "start_date": request.start_date,
+                "end_date": request.end_date,
+                "sub_strategies": [e["name"] for e in sub_entries],
+            },
+        )
+        sink[SINK_KEY] = progress
+        await progress.start(
+            f"组合回测启动：{len(sub_entries)} 个子策略待回测"
+            f"（{request.start_date} ~ {request.end_date}）"
+        )
+
+        async def _on_sub_done(done: int, total: int, message: str) -> None:
+            """子策略完成回调：映射为阶段步进（未开进度时内部自动 no-op）."""
+            await progress.step(message, index=done)
+
         (
             sub_nav_series, sub_weights, sub_results_out,
             all_trades, sub_snapshots_by_key,
@@ -469,6 +536,8 @@ async def run_portfolio_backtest_api(
             sub_entries, request.start_date, request.end_date,
             request.initial_nav, model_service,
             cost_overrides=_collect_cost_overrides(request),
+            progress_cb=_on_sub_done,
+            engine_progress=progress.day_bridge,
         )
 
         if not sub_nav_series:
@@ -490,7 +559,8 @@ async def run_portfolio_backtest_api(
                 )
             )
 
-        portfolio_result = composite_run(
+        portfolio_result = await asyncio.to_thread(
+            composite_run,
             sub_nav_series=sub_nav_series,
             sub_weights=sub_weights,
             initial_nav=request.initial_nav,
@@ -502,6 +572,11 @@ async def run_portfolio_backtest_api(
             rebalance_signal=rebalance_signal,
             execution_schedule=composite_exec_schedule,
             weight_drift=composite_weight_drift,
+            # 母层成本与子策略同一组请求参数，否则母基金层成交只计入零成本
+            commission_rate=float(request.commission_rate or 0.0),
+            slippage=float(request.slippage or 0.0),
+            # 合成引擎同样是逐日撮合，接同一套逐日进度（未开进度时为 None）
+            progress_cb=progress.day_bridge(_total_steps, "组合合成"),
         )
 
         # ---- 产品层（可选）：策略组合 + 短债 + 现金的目标波动率配置 ----
@@ -524,14 +599,17 @@ async def run_portfolio_backtest_api(
         # 不应写入 portfolios 集合（之前用 model_id 查询 portfolios 会导致静默失败或错误覆盖）。
         # 回测记录已通过 save_backtest_record 保存。
 
+        await close_progress(sink)
         return Response.success(
             data=result_out,
             message="投资组合回测完成",
         )
 
-    except HTTPException:
+    except HTTPException as he:
+        await close_progress(sink, he)
         raise
     except Exception as e:
+        await close_progress(sink, e)
         logger.error(f"投资组合回测失败: {e}")
         raise HTTPException(status_code=500, detail=f"投资组合回测失败: {str(e)}")
 
@@ -553,12 +631,16 @@ async def run_portfolio_backtest_api(
 async def run_portfolio_backtest_by_id(
     portfolio_id: str,
     request: PortfolioByIdBacktestRequest = Body(...),
+    progress_key: Optional[str] = _PROGRESS_KEY_QUERY,
 ):
     """
     根据组合ID（portfolios集合）执行组合回测。
 
     从portfolios集合中获取组合配置（子策略列表和权重），然后执行组合回测。
+
+    进度阶段：每个子策略一段 + 组合合成一段（仅 ``progress_key`` 非空时上报）。
     """
+    sink: Dict[str, Any] = {}
     try:
         validate_object_id(portfolio_id)
         
@@ -570,28 +652,88 @@ async def run_portfolio_backtest_by_id(
         portfolio = await portfolio_service.get_portfolio(portfolio_id)
         if not portfolio:
             raise HTTPException(status_code=404, detail=f"组合不存在: {portfolio_id}")
-        
-        if not portfolio.sub_strategies:
-            raise HTTPException(status_code=400, detail="组合未配置子策略")
 
         # 获取策略模型服务
         model_service = get_model_service()
-        
+
+        # 已发布组合：成员/权重/权重模型参数读组合模型发布快照
+        from app.models.strategy_model import ModelStatus
+
+        linked_model = None
+        published_config = None
+        if getattr(portfolio, "portfolio_model_id", None):
+            linked_model = await model_service.get_model(str(portfolio.portfolio_model_id))
+        if linked_model and linked_model.status == ModelStatus.PUBLISHED:
+            if not linked_model.published_snapshot:
+                raise HTTPException(status_code=400, detail="组合缺少发布快照，请重新发布后再回测")
+            published_config = apply_published_snapshot(
+                linked_model, linked_model.published_snapshot
+            )
+            membership = model_service.portfolio_membership(published_config)
+            sub_pairs = await model_service.resolve_sub_strategies(
+                published_config, sub_strategies=membership
+            )
+        else:
+            # 草稿组合：成员/权重读组合文档；子策略仍只读各自发布快照
+            membership = [s.dict() for s in portfolio.sub_strategies]
+            sub_pairs = []
+            for sub_alloc in portfolio.sub_strategies:
+                sub_model = await model_service.get_model(sub_alloc.model_id)
+                if not sub_model:
+                    logger.warning(f"子策略模型不存在: {sub_alloc.model_id}")
+                    continue
+                if sub_model.status != ModelStatus.PUBLISHED or not sub_model.published_snapshot:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"子策略「{sub_model.name}」未发布或缺少发布快照，请重新发布后再运行组合",
+                    )
+                sub_pairs.append((
+                    apply_published_snapshot(sub_model, sub_model.published_snapshot),
+                    sub_alloc.weight,
+                ))
+
+        if not sub_pairs:
+            raise HTTPException(status_code=400, detail="组合未配置可用的子策略")
+
         from app.portfolio.composite_runner import run_composite_unified as composite_run
 
         # 标准化子策略清单后走共享回测循环
         sub_entries = []
-        for sub_alloc in portfolio.sub_strategies:
-            sub_model = await model_service.get_model(sub_alloc.model_id)
-            if not sub_model:
-                logger.warning(f"子策略模型不存在: {sub_alloc.model_id}")
-                continue
+        for sub_model, weight in sub_pairs:
+            sub_info = next(
+                (s for s in membership if s.get("model_id") == sub_model.id), {}
+            )
             sub_entries.append({
                 "model": sub_model,
-                "weight": sub_alloc.weight,
-                "name": sub_alloc.name,
-                "fetch_id": sub_alloc.model_id,
+                "weight": weight,
+                "name": sub_info.get("name") or sub_model.name,
+                "fetch_id": sub_model.id or sub_model.name,
+                "sub_start": sub_info.get("backtest_start"),
             })
+
+        # 旁路进度：子策略逐个回测各算一段，组合合成再算一段
+        _total_steps = len(sub_entries) + 1
+        progress = await open_progress(
+            progress_key,
+            kind=KIND_PORTFOLIO,
+            subject_id=portfolio_id,
+            subject_name=getattr(portfolio, "name", "") or "",
+            total_steps=_total_steps,
+            params={
+                "start_date": request.start_date,
+                "end_date": request.end_date,
+                "sub_strategies": [e["name"] for e in sub_entries],
+            },
+        )
+        sink[SINK_KEY] = progress
+        await progress.start(
+            f"组合回测启动：{len(sub_entries)} 个子策略待回测"
+            f"（{request.start_date} ~ {request.end_date}）"
+        )
+
+        async def _on_sub_done(done: int, total: int, message: str) -> None:
+            """子策略完成回调：映射为阶段步进（未开进度时内部自动 no-op）."""
+            await progress.step(message, index=done)
 
         (
             sub_nav_series, sub_weights, sub_results_out,
@@ -600,6 +742,8 @@ async def run_portfolio_backtest_by_id(
             sub_entries, request.start_date, request.end_date,
             request.initial_nav, model_service,
             cost_overrides=_collect_cost_overrides(request),
+            progress_cb=_on_sub_done,
+            engine_progress=progress.day_bridge,
         )
 
         if not sub_nav_series:
@@ -610,8 +754,22 @@ async def run_portfolio_backtest_by_id(
         rebalance_signal = None
         composite_exec_schedule = None
         composite_weight_drift = True
-        wm_params = getattr(portfolio, "weight_model_params", {}) or {}
-        if getattr(portfolio, "weight_method", None) == "quadrant":
+        wm_params = (
+            published_config.weight_model_params
+            if published_config is not None
+            else portfolio.weight_model_params
+        ) or {}
+        wm_type = (
+            published_config.weight_model_type
+            if published_config is not None
+            else portfolio.weight_method
+        )
+        rebalance_freq = (
+            published_config.rebalance_frequency
+            if published_config is not None and published_config.rebalance_frequency
+            else request.rebalance_freq
+        )
+        if wm_type == "quadrant":
             weight_model, rebalance_signal, composite_exec_schedule, composite_weight_drift = (
                 await _build_quadrant_weight_components(
                     wm_params,
@@ -621,11 +779,12 @@ async def run_portfolio_backtest_by_id(
             )
 
         # 执行组合回测：请求未显式指定时回退到组合文档的波动率配置
-        portfolio_result = composite_run(
+        portfolio_result = await asyncio.to_thread(
+            composite_run,
             sub_nav_series=sub_nav_series,
             sub_weights=sub_weights,
             initial_nav=request.initial_nav,
-            rebalance_freq=request.rebalance_freq,
+            rebalance_freq=rebalance_freq,
             mother_vol_target=(
                 request.mother_vol_target
                 if request.mother_vol_target is not None
@@ -649,6 +808,11 @@ async def run_portfolio_backtest_by_id(
             rebalance_signal=rebalance_signal,
             execution_schedule=composite_exec_schedule,
             weight_drift=composite_weight_drift,
+            # 母层成本与子策略同一组请求参数，否则母基金层成交只计入零成本
+            commission_rate=float(request.commission_rate or 0.0),
+            slippage=float(request.slippage or 0.0),
+            # 合成引擎同样是逐日撮合，接同一套逐日进度（未开进度时为 None）
+            progress_cb=progress.day_bridge(_total_steps, "组合合成"),
         )
 
         # ---- 产品层（可选）：策略组合 + 短债 + 现金的目标波动率配置 ----
@@ -679,6 +843,9 @@ async def run_portfolio_backtest_by_id(
                 "annual_vol": float(perf.annual_volatility) if perf.annual_volatility else 0.0,
                 "sharpe": float(perf.sharpe_ratio) if perf.sharpe_ratio else 0.0,
                 "max_drawdown": float(perf.max_drawdown) if perf.max_drawdown else 0.0,
+                "annual_return_365": float(getattr(perf, "annual_return_365", 0.0) or 0.0),
+                "annual_vol_365": float(getattr(perf, "annual_volatility_365", 0.0) or 0.0),
+                "sharpe_365": float(getattr(perf, "sharpe_ratio_365", 0.0) or 0.0),
                 "total_return": float(perf.total_return) if perf.total_return else 0.0,
                 "start_date": request.start_date,
                 "end_date": request.end_date,
@@ -699,6 +866,9 @@ async def run_portfolio_backtest_by_id(
                         "annual_volatility": summary["annual_vol"],
                         "sharpe_ratio": summary["sharpe"],
                         "max_drawdown": summary["max_drawdown"],
+                        "annual_return_365": summary["annual_return_365"],
+                        "annual_volatility_365": summary["annual_vol_365"],
+                        "sharpe_ratio_365": summary["sharpe_365"],
                         "latest_unit_value": round(float(portfolio_result.portfolio_nav.iloc[-1]), 4) if len(portfolio_result.portfolio_nav) > 0 else 1.0,
                     },
                     "updated_at": datetime.now(),
@@ -708,14 +878,17 @@ async def run_portfolio_backtest_by_id(
         except Exception as update_err:
             logger.warning(f"[by-id] 更新组合回测摘要失败（不影响返回）: {update_err}")
 
+        await close_progress(sink)
         return Response.success(
             data=result_out,
             message="组合回测完成",
         )
 
-    except HTTPException:
+    except HTTPException as he:
+        await close_progress(sink, he)
         raise
     except Exception as e:
+        await close_progress(sink, e)
         logger.error(f"组合回测失败: {e}")
         raise HTTPException(status_code=500, detail=f"组合回测失败: {str(e)}")
 

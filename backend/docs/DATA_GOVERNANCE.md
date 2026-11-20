@@ -1,7 +1,8 @@
 # 数据资产管理规范
 
-> **定位**：本文档定义数据从"产生"到"消亡"全生命周期的治理规则。
-> 与 `DATA_ARCHITECTURE.md`（定义"该有什么"）互补，本文档定义"怎么管"。
+> **已归档（2026-10-31）**：本文档已并入 `DATA_SYSTEM.md`，后续数据治理变更只更新该文档。本文保留作历史参考，不再修改。
+>
+> **原定位**：定义数据从"产生"到"消亡"全生命周期的治理规则。
 
 ---
 
@@ -42,7 +43,10 @@
 | `asset_prices` | 日频行情 | active | ~270K | permanent | asset_service |
 | `fx_rates` | 汇率 | active | ~5K | permanent | fx_service |
 | `trade_dates` | 交易日历 | active | ~4K | permanent | trade_calendar_service |
-| `etf_discount_market_data` | ETF折溢价 | active | ~4K | permanent | 脚本导入 |
+| `factor_panel` | 因子截面面板（按 `dataset` 分区，多数据产品共用） | active | ~2K | permanent | factor_panel_service |
+
+> `etf_discount_market_data`（ETF 折溢价）已于 2026-10-27 随 etf_discount 策略弃用下线：
+> 选择器、专用 DataFeed、模型与集合常量均已从代码移除；库内该集合为 0 行，空集合保留不删。
 
 #### 域 2：策略配置（strategy）
 
@@ -146,6 +150,7 @@ Schema 变更流程：
 | `asset_prices` | asset_service (前端/Agent/脚本) | 回测、监控、期权 | asset_service |
 | `fx_rates` | fx_service (前端导入) | 监控 data_provider | fx_service |
 | `trade_dates` | trade_calendar_service | 导入校验、监控、回测 | trade_calendar_service |
+| `factor_panel` | factor_panel_service (前端「因子截面数据」页) | 回测 DataFeed 面板注入、监控面板注入 | factor_panel_service |
 | `strategy_models` | strategy_model_service (前端) | 回测、监控、组合 | strategy_model_service |
 | `model_templates` | template_init_service (系统) | 前端表单、回测 | template_init_service |
 | `backtest_records` | backtest_engine (系统) | 前端展示 | backtest_engine |
@@ -225,7 +230,8 @@ Schema 变更流程：
 | 引用完整性 | asset_code 存在于 assets | 警告（P1）或拒绝（P0） |
 | 日期合法性 | 日期在合理范围内（1990~今天+1） | 拒绝 |
 | **目标库正确** | 连接配置从 settings 读取，禁止硬编码 | 拒绝执行 |
-| **资产代码合法** | 必须匹配 config 中标准映射（见 DATA_IMPORT_SPEC.md §5.2） | 拒绝写入 |
+| **资产代码唯一性** | `assets.code` 为业务主键，自由命名（无白名单校验，见 DATA_IMPORT_SPEC.md §5.2）；`asset_prices` 以 (asset_code, date) 唯一 | 重名资产 upsert 覆盖；同一 code 混存不同日历口径视为脏数据 |
+| **策略数据契约** | 运行前由 `app/backtesting/data_contract.py` 校验（回测构造 / 实盘发布 / 监控启动三处门禁） | 拒绝运行，列出缺口与修复建议 |
 
 ### 5.3 导入后校验标准（Gate 1.5）
 

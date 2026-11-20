@@ -31,7 +31,14 @@ service.interceptors.response.use(
     return res;
   },
   error => {
-    console.error('响应错误:', error);
+    const cfg = error.config || {};
+    // 调用方显式声明可降级的 404（如辅助接口探测）不打印响应错误，避免干扰控制台
+    const silent404 = !!(
+      error.response && error.response.status === 404 && cfg.skipGlobal404Message
+    );
+    if (!silent404) {
+      console.error('响应错误:', error);
+    }
 
     // 处理不同的错误状态码
     if (error.response) {
@@ -56,8 +63,10 @@ service.interceptors.response.use(
         }
         case 404:
           // 日常监控中切换未初始化策略时 404 属于正常预期，store 层已统一 catch 并降级
-          // 不再弹 Message.error，避免干扰用户；若确有需要可改用 console.warn
-          console.warn('[API 404]', error.config?.url, error.message);
+          // 不再弹 Message.error，避免干扰用户；skipGlobal404Message=true 时连 warn 也不打
+          if (!cfg.skipGlobal404Message) {
+            console.warn('[API 404]', cfg.url, error.message);
+          }
           break;
         // 500 和其他业务错误由组件级 catch 处理
       }

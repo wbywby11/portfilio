@@ -92,6 +92,10 @@ class ModelTemplate(BaseModel):
     pdf_filename: Optional[str] = Field(None, description="策略PDF文档文件名（用于前端展示）")
     parameters: List[ModelParameter] = Field(default_factory=list, description="参数定义列表")
     category: Optional[str] = Field("allocation", description="策略分类: allocation/selection/control")
+    strategy_form: str = Field(
+        "composite",
+        description="策略形态: composite=三层组合 / standalone=打包独立（前端据此隐藏三层配置卡片）",
+    )
     composition: Optional[Dict[str, Any]] = Field(None, description="三层组合配置: selector/allocator/controller")
     is_active: bool = Field(True, description="是否启用")
     is_builtin: bool = Field(False, description="是否为内置模板（builtin_templates.py 注册）")

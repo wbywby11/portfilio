@@ -195,6 +195,10 @@ export default {
                 params: (submitControllerCode && submitControllerCode !== 'none') ? { ...cleanedControllerParams } : {},
               },
             },
+            // 原型预设留痕：只传 preset_code 与资产池快照，
+            // preset_version / preset_applied_at 由后端按当前定义重算（不采信前端）
+            preset_code: this.form.preset_code || null,
+            asset_selection_snapshot: this.form.asset_selection_snapshot || null,
           };
           if (this.isEdit) {
             await this.$store.dispatch('strategy/updateStrategyModel', {

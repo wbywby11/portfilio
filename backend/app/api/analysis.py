@@ -1,5 +1,5 @@
 """数据分析服务API - 提供资产指标、相关性、时间序列分析等接口"""
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -33,6 +33,11 @@ class AssetMetricsOut(BaseModel):
     max_drawdown: float = Field(..., description="最大回撤")
     calmar_ratio: float = Field(..., description="卡玛比率")
     total_return: float = Field(..., description="累计收益率")
+    # 365 口径（自然日/年）：与 260 口径并列返回
+    annual_return_365: Optional[float] = Field(None, description="年化收益率（365 自然日口径）")
+    annual_volatility_365: Optional[float] = Field(None, description="年化波动率（365 自然日口径）")
+    sharpe_ratio_365: Optional[float] = Field(None, description="夏普比率（365 自然日口径）")
+    calmar_ratio_365: Optional[float] = Field(None, description="卡玛比率（365 自然日口径）")
 
 
 class CorrelationMatrixOut(BaseModel):
@@ -140,7 +145,11 @@ async def generate_dashboard(
                 sharpe_ratio=metrics.sharpe_ratio,
                 max_drawdown=metrics.max_drawdown,
                 calmar_ratio=metrics.calmar_ratio,
-                total_return=metrics.cumulative_return
+                total_return=metrics.cumulative_return,
+                annual_return_365=metrics.annualized_return_365,
+                annual_volatility_365=metrics.annualized_volatility_365,
+                sharpe_ratio_365=metrics.sharpe_ratio_365,
+                calmar_ratio_365=metrics.calmar_ratio_365,
             )
             for thscode, metrics in dashboard.asset_metrics.items()
         ]
@@ -232,7 +241,11 @@ async def get_asset_metrics(
                 sharpe_ratio=metrics.sharpe_ratio,
                 max_drawdown=metrics.max_drawdown,
                 calmar_ratio=metrics.calmar_ratio,
-                total_return=metrics.cumulative_return
+                total_return=metrics.cumulative_return,
+                annual_return_365=metrics.annualized_return_365,
+                annual_volatility_365=metrics.annualized_volatility_365,
+                sharpe_ratio_365=metrics.sharpe_ratio_365,
+                calmar_ratio_365=metrics.calmar_ratio_365,
             )
             for thscode, metrics in metrics_dict.items()
         ]

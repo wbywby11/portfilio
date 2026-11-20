@@ -44,7 +44,7 @@ class QueryDatasetTool(BaseTool):
         "properties": {
             "dataset": {
                 "type": "string",
-                "description": "数据集（集合）名称，必须来自 query_assets 的资产清单",
+                "description": "数据集（集合）名称；集合名不确定时先用 query_assets 确认",
             },
             "action": {
                 "type": "string",

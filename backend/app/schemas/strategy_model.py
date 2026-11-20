@@ -57,6 +57,7 @@ class EquityPointOut(BaseModel):
     cumulative_return: Optional[float] = Field(None, description="累计收益率")
     portfolio_volatility: Optional[float] = Field(None, description="当日组合波动率（监控指标）")
     drawdown: Optional[float] = Field(None, description="当日回撤（相对历史最高点）")
+    rebalance_type: Optional[str] = Field(None, description="调仓类型：regular/vol_reset")
     
     @field_validator('date', mode='before')
     @classmethod
@@ -123,6 +124,14 @@ class StrategyModelCreate(BaseModel):
     asset_codes: List[str] = Field(..., description="关联的资产代码列表")
     parameters: Dict[str, Any] = Field(default_factory=dict, description="模型参数")
     rebalance_frequency: str = Field(..., description="调仓频率(日/周/月/季/年 或 自定义格式如 '1天', '2周', '3月' 等)")
+    # 原型预设留痕：前端只需传 preset_code，其余三项由服务层写入
+    # （preset_version 按当前预设定义重算，不信前端传的值）
+    preset_code: Optional[str] = Field(None, description="来源预设代码")
+    preset_version: Optional[str] = Field(None, description="预设定义内容 hash（服务层重算覆盖）")
+    preset_applied_at: Optional[datetime] = Field(None, description="预设应用时间（服务层写入）")
+    asset_selection_snapshot: Optional[Dict[str, Any]] = Field(
+        None, description="应用时的资产池规则快照（服务层写入）"
+    )
     created_by: Optional[str] = Field(None, description="创建人")
     inception_date: Optional[datetime] = Field(None, description="策略建仓日（用于策略监控起始日期）")
     
@@ -173,6 +182,13 @@ class StrategyModelUpdate(BaseModel):
     asset_codes: Optional[List[str]] = Field(None, description="关联的资产代码列表")
     parameters: Optional[Dict[str, Any]] = Field(None, description="模型参数")
     rebalance_frequency: Optional[str] = Field(None, description="调仓频率(日/周/月/季/年 或 自定义格式如 '1天', '2周', '3月' 等)")
+    # 原型预设留痕：同 Create，preset_version 与 preset_applied_at 由服务层写入
+    preset_code: Optional[str] = Field(None, description="来源预设代码")
+    preset_version: Optional[str] = Field(None, description="预设定义内容 hash（服务层重算覆盖）")
+    preset_applied_at: Optional[datetime] = Field(None, description="预设应用时间（服务层写入）")
+    asset_selection_snapshot: Optional[Dict[str, Any]] = Field(
+        None, description="应用时的资产池规则快照（服务层写入）"
+    )
     inception_date: Optional[datetime] = Field(None, description="策略建仓日（用于策略监控起始日期）")
     
     # 资产选择相关配置（可选）
@@ -222,6 +238,8 @@ class StrategyModelOut(StrategyModelCreate):
     id: str = Field(..., description="模型ID")
     status: ModelStatus = Field(..., description="模型状态")
     published_at: Optional[datetime] = Field(None, description="发布时间")
+    published_version: int = Field(0, description="发布版本号")
+    config_fingerprint: Optional[str] = Field(None, description="发布快照指纹")
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="更新时间")
     
@@ -239,6 +257,7 @@ class StrategyModelOut(StrategyModelCreate):
     live_rebalance_mode: Optional[LiveRebalanceMode] = Field(None, description="实盘调仓模式")
     live_volatility_threshold: Optional[float] = Field(None, description="实盘波动率阈值")
     live_version: int = Field(0, description="实盘发布版本号")
+    live_published_version: int = Field(0, description="实盘发布时对应的发布版本号")
     live_snapshot_outdated: bool = Field(False, description="实盘快照是否落后于当前策略配置")
     live_effective_summary: Optional[str] = Field(
         None,
@@ -264,6 +283,14 @@ class StrategyModelOut(StrategyModelCreate):
     resolved_params: Optional[Dict[str, Any]] = Field(
         None,
         description="结构化参数快照：{allocator: {}, selector: {enabled, type, params}, controller: {enabled, code, params}}。前端可直接用于渲染参数面板，无需从多个顶层字段拼凑。",
+    )
+
+    # 原型预设派生字段（不落库，接口实时算）：前端据此显示「已调整」「基于旧版预设」
+    preset_modified: bool = Field(
+        False, description="应用预设后参数或资产是否被手动调整（当前指纹 ≠ 应用时指纹）"
+    )
+    preset_outdated: bool = Field(
+        False, description="模型是否基于旧版预设定义（记录的 preset_version ≠ 当前定义 hash）"
     )
 
     @field_serializer('parameters')
@@ -299,6 +326,11 @@ class BacktestResultOut(BaseModel):
     sharpe_ratio: float = Field(..., description="夏普比率")
     max_drawdown: float = Field(..., description="最大回撤")
     calmar_ratio: Optional[float] = Field(None, description="卡玛比率")
+    # 365 口径（自然日/年）：与 260 口径并存；累计收益/最大回撤/胜率不重复返回
+    annual_return_365: Optional[float] = Field(None, description="年化收益率（365 自然日口径）")
+    annual_volatility_365: Optional[float] = Field(None, description="年化波动率（365 自然日口径）")
+    sharpe_ratio_365: Optional[float] = Field(None, description="夏普比率（365 自然日口径）")
+    calmar_ratio_365: Optional[float] = Field(None, description="卡玛比率（365 自然日口径）")
     latest_unit_value: float = Field(..., description="最新单位净值")
     equity_curve: List[EquityPointOut] = Field(default_factory=list, description="净值曲线")
     return_curve: List[ReturnPointOut] = Field(default_factory=list, description="收益率曲线")
@@ -308,6 +340,9 @@ class BacktestResultOut(BaseModel):
         description="权重变化记录列表，每项包含date(日期)和weights(各资产权重字典)字段"
     )
     asset_names: Optional[Dict[str, str]] = Field(None, description="资产名称字典，键为资产代码，值为资产名称")
+    correlation_matrix: Optional[Dict[str, Dict[str, float]]] = Field(
+        None, description="相关性矩阵（组合回测为子策略间相关性），键为名称"
+    )
 
 
 class BacktestRequest(BaseModel):

@@ -171,8 +171,18 @@ export default {
           enable_control: !!model.controller_code && String(model.controller_code).toLowerCase() !== 'none',
           controller_code: (model.controller_code && String(model.controller_code).toLowerCase() !== 'none')
             ? model.controller_code : '',
-          controller_parameters: model.controller_parameters || {}
+          controller_parameters: model.controller_parameters || {},
+          // 原型预设来源（只读展示；preset_version / preset_applied_at 由后端保存时重算）
+          preset_code: model.preset_code || '',
+          preset_version: model.preset_version || '',
+          preset_applied_at: model.preset_applied_at || null,
+          asset_selection_snapshot: model.asset_selection_snapshot || null
         };
+        // 「已调整」「基于旧版预设」由后端实时算（前端算不了指纹 hash），
+        // 应用预设后转由 currentConfigSignature 与 presetBaseline 比对接管
+        this.presetBaseline = '';
+        this.presetModified = !!model.preset_modified;
+        this.presetOutdated = !!model.preset_outdated;
         // 加载选择器动态参数（优先使用后端 resolved_params，回退到旧逻辑）
         if (model.resolved_params && model.resolved_params.selector) {
           const rpSelector = model.resolved_params.selector;

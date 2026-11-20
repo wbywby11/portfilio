@@ -22,6 +22,7 @@ pip install -r requirements.txt
 ## 运行项目
 
 ```bash
+cd portfilio-end
 python main.py
 ```
 

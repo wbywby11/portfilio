@@ -14,24 +14,27 @@
           <el-row :gutter="16" class="metrics-row">
             <el-col :span="4">
               <div class="metric-card">
-                <div class="metric-label">年化收益</div>
+                <div class="metric-label">年化收益（260日）</div>
                 <div class="metric-value" :style="{color: (analysis.annual_return||0) >= 0 ? '#f56c6c' : '#67c23a', fontSize: '16px'}">
                   {{ ((analysis.annual_return||0)*100).toFixed(2) }}%
                 </div>
+                <div class="metric-sub">365日：{{ ((analysis.annual_return_365||0)*100).toFixed(2) }}%</div>
               </div>
             </el-col>
             <el-col :span="4">
               <div class="metric-card">
-                <div class="metric-label">年化波动</div>
+                <div class="metric-label">年化波动（260日）</div>
                 <div class="metric-value" style="fontSize: 16px;">{{ ((analysis.annual_volatility||0)*100).toFixed(2) }}%</div>
+                <div class="metric-sub">365日：{{ ((analysis.annual_volatility_365||0)*100).toFixed(2) }}%</div>
               </div>
             </el-col>
             <el-col :span="4">
               <div class="metric-card">
-                <div class="metric-label">夏普比率</div>
+                <div class="metric-label">夏普比率（260日）</div>
                 <div class="metric-value" :style="{color: (analysis.sharpe_ratio||0) >= 1 ? '#f56c6c' : '#e6a23c', fontSize: '16px', fontWeight: 600}">
                   {{ (analysis.sharpe_ratio||0).toFixed(2) }}
                 </div>
+                <div class="metric-sub">365日：{{ (analysis.sharpe_ratio_365||0).toFixed(2) }}</div>
               </div>
             </el-col>
             <el-col :span="4">
@@ -42,8 +45,9 @@
             </el-col>
             <el-col :span="4">
               <div class="metric-card">
-                <div class="metric-label">卡玛比率</div>
+                <div class="metric-label">卡玛比率（260日）</div>
                 <div class="metric-value" style="fontSize: 16px;">{{ (analysis.calmar_ratio||0).toFixed(2) }}</div>
+                <div class="metric-sub">365日：{{ (analysis.calmar_ratio_365||0).toFixed(2) }}</div>
               </div>
             </el-col>
             <el-col :span="4">
@@ -83,16 +87,25 @@
             <el-table-column prop="weight" label="权重" width="80" align="right">
               <template slot-scope="{ row }">{{ (row.weight * 100).toFixed(0) }}%</template>
             </el-table-column>
-            <el-table-column label="年化收益" width="100" align="right">
+            <el-table-column label="年化收益（260日）" width="130" align="right">
               <template slot-scope="{ row }">
                 <span :style="{color: (row.annual_return||0) >= 0 ? '#f56c6c' : '#67c23a'}">{{ ((row.annual_return||0) * 100).toFixed(2) }}%</span>
               </template>
             </el-table-column>
-            <el-table-column label="波动" width="90" align="right">
+            <el-table-column label="年化收益（365日）" width="130" align="right">
+              <template slot-scope="{ row }">{{ ((row.annual_return_365||0) * 100).toFixed(2) }}%</template>
+            </el-table-column>
+            <el-table-column label="波动（260日）" width="115" align="right">
               <template slot-scope="{ row }">{{ ((row.annual_vol||0) * 100).toFixed(2) }}%</template>
             </el-table-column>
-            <el-table-column label="夏普" width="80" align="right">
+            <el-table-column label="波动（365日）" width="115" align="right">
+              <template slot-scope="{ row }">{{ ((row.annual_vol_365||0) * 100).toFixed(2) }}%</template>
+            </el-table-column>
+            <el-table-column label="夏普（260日）" width="105" align="right">
               <template slot-scope="{ row }">{{ (row.sharpe||0).toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column label="夏普（365日）" width="105" align="right">
+              <template slot-scope="{ row }">{{ (row.sharpe_365||0).toFixed(2) }}</template>
             </el-table-column>
             <el-table-column label="回撤" width="90" align="right">
               <template slot-scope="{ row }"><span style="color:#f56c6c">{{ ((row.max_drawdown||0) * 100).toFixed(2) }}%</span></template>
@@ -126,9 +139,9 @@
 </template>
 
 <script>
-import dayjs from 'dayjs';
 import * as echarts from 'echarts';
 import * as portfolioApi from '@/api/portfolio';
+import { createDateAxisLabelFormatter } from '@/utils/dateAxis';
 
 export default {
   name: 'Performance',
@@ -311,7 +324,10 @@ export default {
           type: 'category',
           data: dates,
           boundaryGap: false,
-          axisLabel: { formatter: function(value) { return dayjs(value).format('MM-DD'); } }
+          axisLabel: {
+            // 跨年显示 YYYY-MM，单年显示 MM-DD，便于定位年份
+            formatter: createDateAxisLabelFormatter(dates)
+          }
         },
         yAxis: {
           type: 'value',
@@ -389,5 +405,10 @@ export default {
   font-size: 24px;
   font-weight: 600;
   color: #303133;
+}
+.metric-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #909399;
 }
 </style>

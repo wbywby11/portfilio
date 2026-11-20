@@ -356,6 +356,10 @@ class ExcelLayoutMixin:
             names = df.iloc[names_row_idx].tolist()
             codes = df.iloc[codes_row_idx].tolist()
             dates = df.iloc[data_start_row:, 0].values
+            # 日期列对所有资产列完全相同，先转一次 ISO 字符串再复用。
+            # 原实现放在 (列 × 行) 双层循环里，每格都做一次 pd.Timestamp+strftime，
+            # 369 列的宽表要跑 35 万次、耗时 4 分钟以上；预转换后只按行数跑一次。
+            date_strs = [self._to_iso_date(d) for d in dates]
             max_col = max(len(names), len(codes))
 
             for col_idx in range(1, max_col):
@@ -379,14 +383,13 @@ class ExcelLayoutMixin:
                 seen_codes.add(code_str)
 
                 prices = []
-                for d, v in zip(dates, values):
+                for date_str, v in zip(date_strs, values):
                     if pd.isna(v) or v == "":
                         continue
                     try:
                         num_val = float(v)
                     except (TypeError, ValueError):
                         continue
-                    date_str = self._to_iso_date(d)
                     rec = {
                         "date": date_str,
                         "open": None,

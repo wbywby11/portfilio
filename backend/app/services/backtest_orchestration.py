@@ -9,6 +9,7 @@ run_unified 调用、响应组装；模型快捷回测的参数组装、选择�
 回调由路由层注入，避免 services → api 反向依赖。
 """
 import traceback
+from typing import Any, Dict, Optional
 
 import pandas as pd
 from fastapi import HTTPException
@@ -22,6 +23,7 @@ from app.schemas.backtests import (
 
 # 回测执行核心（配置构造/DataFeed/run_unified/响应组装）拆分至 backtest_execution
 from app.services.backtest_execution import _run_backtest_core
+from app.services.backtest_progress import KIND_SINGLE, SINK_KEY, open_progress
 from app.services.market_service import MarketService
 from app.services.asset_service import AssetService
 from app.services.strategy_model_service import StrategyModelService, build_backtest_params
@@ -44,6 +46,22 @@ from app.services.backtest_helpers import (
 )
 
 
+def _apply_digest_fields(record: BacktestRecord, sink: Dict[str, Any]) -> BacktestRecord:
+    """把回测执行阶段算出的可复现性摘要挂到记录上（S10）。
+
+    ``_run_backtest_core`` 的返回值是响应体（回归基线），不能加键；摘要改由
+    输出参数 ``digest_sink`` 带出，在这里随记录一起持久化。摘要缺失（执行
+    异常 / 无行情矩阵）时保持字段为 None，由 save_backtest_record 剔除不写。
+    """
+    if not sink:
+        return record
+    for key in ("data_digest_v2", "asset_pool_hash", "contract_hash"):
+        value = sink.get(key)
+        if value:
+            setattr(record, key, value)
+    return record
+
+
 
 
 
@@ -58,6 +76,8 @@ async def run_backtest_by_model_core(
     market_service: MarketService,
     asset_service: AssetService,
     portfolio_runner=None,
+    progress_key: Optional[str] = None,
+    progress_sink: Optional[Dict[str, Any]] = None,
 ):
     """
     根据策略模型快捷回测
@@ -76,6 +96,11 @@ async def run_backtest_by_model_core(
     - 模型开发后快速验证
     - 模型参数调优
     - 不同时间区间比较
+
+    进度上报（旁路，不影响同步返回）：
+    - ``progress_key``：前端生成的任务号，非空时才建进度文档；
+    - ``progress_sink``：输出参数，进度上下文经此带出，由持有 key 的端点收尾
+      （组合分支不写 sink：进度由组合端点自己开，同一 key 只能建一条文档）。
     
     示例：
     ```
@@ -107,6 +132,24 @@ async def run_backtest_by_model_core(
             if portfolio_runner is None:
                 raise HTTPException(status_code=500, detail="组合回测路由未注入（portfolio_runner）")
             return await portfolio_runner(model_id, portfolio_req)
+
+        # 旁路进度：只在真正要跑单策略回测时建任务文档（无 key / 建失败均为 no-op）
+        progress = await open_progress(
+            progress_key,
+            kind=KIND_SINGLE,
+            subject_id=model_id,
+            subject_name=model.name,
+            total_steps=1,
+            params={
+                "start_date": request.start_date,
+                "end_date": request.end_date,
+            },
+        )
+        if progress_sink is not None:
+            progress_sink[SINK_KEY] = progress
+        await progress.start(
+            f"回测启动：{model.name}（{request.start_date} ~ {request.end_date}）"
+        )
 
         # 2. 从模型生成回测请求（支持参数覆盖）
         overrides = {
@@ -300,9 +343,14 @@ async def run_backtest_by_model_core(
         # 4. 构造 BacktestRequest
         backtest_request = BacktestRequest(**request_data)
         
-        # 5. 执行回测
+        # 5. 执行回测（digest_sink 收集可复现性摘要，不回写响应体）
+        _digest_sink: Dict[str, Any] = {}
         try:
-            result = await _run_backtest_core(backtest_request, market_service, asset_service)
+            result = await _run_backtest_core(
+                backtest_request, market_service, asset_service,
+                digest_sink=_digest_sink,
+                progress_cb=progress.day_bridge(1, model.name),
+            )
         except HTTPException as he:
             # 原样重新抛出，保证客户端收到正确的 4xx 状态码（如 400 无法获取行情数据）
             raise he
@@ -396,6 +444,10 @@ async def run_backtest_by_model_core(
                         sharpe_ratio=_get(backtest_data, "sharpe_ratio", 0.0) or 0.0,
                         max_drawdown=_get(backtest_data, "max_drawdown", 0.0) or 0.0,
                         calmar_ratio=_get(backtest_data, "calmar_ratio"),
+                        annual_return_365=_get(backtest_data, "annual_return_365"),
+                        annual_volatility_365=_get(backtest_data, "volatility_365"),
+                        sharpe_ratio_365=_get(backtest_data, "sharpe_ratio_365"),
+                        calmar_ratio_365=_get(backtest_data, "calmar_ratio_365"),
                         win_rate=_get(backtest_data, "win_rate"),
                         equity_curve=equity_curve,
                         return_curve=return_curve,
@@ -409,13 +461,16 @@ async def run_backtest_by_model_core(
                     start_dt = pd.to_datetime(request.start_date)
                     end_dt = pd.to_datetime(request.end_date)
                     
-                    backtest_record = BacktestRecord(
-                        model_id=model_id,
-                        start_date=start_dt,
-                        end_date=end_dt,
-                        initial_capital=request.initial_cash,
-                        result=model_result,
-                        remark=getattr(request, "remark", None) or None
+                    backtest_record = _apply_digest_fields(
+                        BacktestRecord(
+                            model_id=model_id,
+                            start_date=start_dt,
+                            end_date=end_dt,
+                            initial_capital=request.initial_cash,
+                            result=model_result,
+                            remark=getattr(request, "remark", None) or None
+                        ),
+                        _digest_sink,
                     )
                     
                     record_id = await backtest_service.save_backtest_record(
@@ -444,6 +499,10 @@ async def run_backtest_by_model_core(
                         sharpe_ratio=_get(_bd, "sharpe_ratio", 0.0) or 0.0,
                         max_drawdown=_get(_bd, "max_drawdown", 0.0) or 0.0,
                         calmar_ratio=_get(_bd, "calmar_ratio", None),
+                        annual_return_365=_get(_bd, "annual_return_365"),
+                        annual_volatility_365=_get(_bd, "volatility_365"),
+                        sharpe_ratio_365=_get(_bd, "sharpe_ratio_365"),
+                        calmar_ratio_365=_get(_bd, "calmar_ratio_365"),
                         win_rate=_get(_bd, "win_rate"),
                         equity_curve=[],
                         return_curve=[],
@@ -452,13 +511,16 @@ async def run_backtest_by_model_core(
                         asset_names=_get(_bd, "asset_names"),
                         selected_asset_count=_get(_bd, "selected_asset_count"),
                     )
-                    backtest_record = BacktestRecord(
-                        model_id=model_id,
-                        start_date=start_dt,
-                        end_date=end_dt,
-                        initial_capital=request.initial_cash,
-                        result=model_result,
-                        remark=getattr(request, "remark", None) or None,
+                    backtest_record = _apply_digest_fields(
+                        BacktestRecord(
+                            model_id=model_id,
+                            start_date=start_dt,
+                            end_date=end_dt,
+                            initial_capital=request.initial_cash,
+                            result=model_result,
+                            remark=getattr(request, "remark", None) or None,
+                        ),
+                        _digest_sink,
                     )
                     record_id = await backtest_service.save_backtest_record(
                         backtest_record,
@@ -492,6 +554,10 @@ async def run_backtest_by_model_core(
                             sharpe_ratio=_g(_bd, "sharpe_ratio", 0.0) or 0.0,
                             max_drawdown=_g(_bd, "max_drawdown", 0.0) or 0.0,
                             calmar_ratio=_g(_bd, "calmar_ratio", None),
+                            annual_return_365=_g(_bd, "annual_return_365"),
+                            annual_volatility_365=_g(_bd, "volatility_365"),
+                            sharpe_ratio_365=_g(_bd, "sharpe_ratio_365"),
+                            calmar_ratio_365=_g(_bd, "calmar_ratio_365"),
                             win_rate=_g(_bd, "win_rate"),
                             equity_curve=[],
                             return_curve=[],
@@ -500,13 +566,16 @@ async def run_backtest_by_model_core(
                             asset_names=_g(_bd, "asset_names"),
                             selected_asset_count=_g(_bd, "selected_asset_count"),
                         )
-                        minimal_record = BacktestRecord(
-                            model_id=model_id,
-                            start_date=start_dt,
-                            end_date=end_dt,
-                            initial_capital=request.initial_cash,
-                            result=minimal_result,
-                            remark=getattr(request, "remark", None) or None,
+                        minimal_record = _apply_digest_fields(
+                            BacktestRecord(
+                                model_id=model_id,
+                                start_date=start_dt,
+                                end_date=end_dt,
+                                initial_capital=request.initial_cash,
+                                result=minimal_result,
+                                remark=getattr(request, "remark", None) or None,
+                            ),
+                            _digest_sink,
                         )
                         _record_id = await backtest_service.save_backtest_record(
                             minimal_record,

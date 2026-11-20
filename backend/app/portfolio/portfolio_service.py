@@ -18,6 +18,7 @@ import pandas as pd
 from bson import ObjectId
 from loguru import logger
 
+from app.allocation.runtime_params import resolve_weight_caps
 from app.config.database import Database
 from app.portfolio.models import (
     Portfolio,
@@ -29,6 +30,7 @@ from app.portfolio.models import (
     RebalanceAction,
 )
 from app.models.strategy_model import BacktestResult as ModelBacktestResult, StrategyModel, ModelStatus
+from app.services.published_snapshot import apply_published_snapshot
 from app.services.strategy_model_service import StrategyModelService
 from app.services.asset_service import AssetService
 
@@ -38,14 +40,14 @@ def _build_risk_config_from_params(strategy_params: Dict[str, Any] | None):
 
     关键点：策略声明 allow_short=True 时（如趋势-截面复合 GCMI 的多空权重），
     风控层不得将负权重截断为 0，否则空头敞口被抹掉、回测与原型严重偏离。
+    资产权重约束取值口径见
+    :func:`app.allocation.runtime_params.resolve_weight_caps`。
     """
     from app.backtesting.risk import RiskConfig
 
     params = strategy_params or {}
     allow_negative = bool(params.get("allow_short", False))
-    max_weight_dict = params.get("weight_caps", params.get("max_weight_dict"))
-    if not isinstance(max_weight_dict, dict) or not max_weight_dict:
-        max_weight_dict = None
+    max_weight_dict = resolve_weight_caps(params) or None
     max_total_leverage = params.get("max_total_leverage", params.get("max_leverage"))
     try:
         max_total_leverage = float(max_total_leverage) if max_total_leverage is not None else None
@@ -174,7 +176,7 @@ class PortfolioService:
                 rebalance_frequency=portfolio.rebalance_frequency or "monthly",
                 is_portfolio=True,
                 sub_strategies=sub_strategies,
-                status=ModelStatus.PUBLISHED,
+                status=ModelStatus.DRAFT,
                 initial_nav=1000.0,
                 inception_date=portfolio.inception_date,
                 weight_model_type=portfolio.weight_method if portfolio.weight_method == "quadrant" else None,
@@ -300,7 +302,7 @@ class PortfolioService:
     ) -> str:
         """从单策略模型创建模拟组合，追溯生成历史持仓和业绩"""
         from app.backtesting.config import BacktestConfig
-        from app.backtesting.data_feed import DataFeed
+        from app.backtesting.data_feed import DataFeed, resolve_lookback_days
         from app.backtesting.runner import RunSpec, run_unified
         from app.backtesting.analytics import PerformanceAnalyzer
         from app.allocation.services.registry import create_strategy_service_from_database
@@ -327,21 +329,31 @@ class PortfolioService:
             initial_cash=initial_capital,
         )
 
+        from app.allocation.builtin_templates import COMPOSITION_DEFAULTS
+        from app.services.strategy_model_service import build_backtest_params
+        # 参数字典必须先于数据加载构建：预加载天数要按策略声明的
+        # min_history_days（交易日）反推，固定 500 自然日（≈340 交易日）
+        # 会让长窗口策略（如 756 日协方差 + 250 日 AR 链）在建仓首个
+        # 交易日就因历史不足被门禁拒绝。
+        model_data = await self.strategy_model_service.collection.find_one({"_id": ObjectId(model_id)}) if model_id else None
+        strategy_params = build_backtest_params(model, model_data=model_data)
+
         market_service = MarketService()
-        data_feed = await DataFeed.from_market_service(market_service, config, lookback_days=500)
+        data_feed = await DataFeed.from_market_service(
+            market_service, config,
+            lookback_days=resolve_lookback_days(
+                strategy_params, 500, strategy_type=model.template_code
+            ),
+            strategy_type=model.template_code,
+        )
         if data_feed.prices.empty:
             raise ValueError(f"资产在指定期间无行情数据")
 
-        from app.allocation.builtin_templates import COMPOSITION_DEFAULTS
-        from app.services.strategy_model_service import build_backtest_params
         strategy_service = await create_strategy_service_from_database(market_service)
         strategy_cls = strategy_service.get_strategy_class(model.template_code)
         composition = COMPOSITION_DEFAULTS.get(model.template_code, {
             "selector": None, "allocator": model.template_code, "controller": None
         })
-        # 获取原始 MongoDB 文档，确保所有字段都能被 build_backtest_params 正确读取
-        model_data = await self.strategy_model_service.collection.find_one({"_id": ObjectId(model_id)}) if model_id else None
-        strategy_params = build_backtest_params(model, model_data=model_data)
 
         # 经唯一引擎入口运行
         backtest_result = run_unified(RunSpec(
@@ -454,12 +466,14 @@ class PortfolioService:
         if not strategy_ids:
             raise ValueError("请至少选择一个策略")
 
-        # 1. 加载策略模型
+        # 1. 加载策略模型（只能引用已发布策略）
         strategy_models = []
         for sid in strategy_ids:
             model = await self.strategy_model_service.get_model(sid)
             if not model:
                 raise ValueError(f"策略模型不存在: {sid}")
+            if model.status != ModelStatus.PUBLISHED:
+                raise ValueError(f"策略「{model.name}」未发布，不能加入组合")
             strategy_models.append(model)
 
         # 2. 构建权重映射和子策略配置
@@ -501,6 +515,18 @@ class PortfolioService:
             inception_date=datetime.now(),
         )
         portfolio_id = await self.create_portfolio(portfolio)
+
+        # 4. 初始建仓记录：子策略权重分配即组合的首次调仓，
+        # 与「单策略→组合」「组合模型→组合」两条创建路径的记录口径一致，
+        # 保证组合详情页的调仓历史不会因创建方式不同而空白。
+        initial_weights = {alloc.model_id: alloc.weight for alloc in sub_alloc_list}
+        await self.add_rebalance_record(RebalanceRecord(
+            portfolio_id=portfolio_id,
+            rebalance_date=portfolio.inception_date,
+            action=RebalanceAction.BUY,
+            weights_after=initial_weights,
+            reason="组合创建：按子策略权重初始化建仓",
+        ))
 
         logger.info(f"[组合创建] 多策略组合已创建: {name}, 策略数={len(sub_alloc_list)}")
         return portfolio_id
@@ -546,6 +572,13 @@ class PortfolioService:
             raise ValueError(f"组合模型不存在: {portfolio_model_id}")
         if not portfolio_model.is_portfolio:
             raise ValueError(f"模型 {portfolio_model_id} 不是投资组合类型")
+        if portfolio_model.status != ModelStatus.PUBLISHED:
+            raise ValueError("组合模型未发布，不能用于创建投资组合")
+        if not portfolio_model.published_snapshot:
+            raise ValueError("组合模型缺少发布快照，请重新发布后再使用")
+        portfolio_model = apply_published_snapshot(
+            portfolio_model, portfolio_model.published_snapshot
+        )
         if not portfolio_model.sub_strategies:
             raise ValueError("组合模型未配置子策略")
 
@@ -644,6 +677,10 @@ class PortfolioService:
             sharpe_ratio=perf.sharpe_ratio,
             max_drawdown=perf.max_drawdown,
             calmar_ratio=perf.calmar_ratio,
+            annual_return_365=getattr(perf, "annual_return_365", None),
+            annual_volatility_365=getattr(perf, "annual_volatility_365", None),
+            sharpe_ratio_365=getattr(perf, "sharpe_ratio_365", None),
+            calmar_ratio_365=getattr(perf, "calmar_ratio_365", None),
             latest_unit_value=round(latest_nav / portfolio_model.initial_nav, 4),
             sub_strategies=[
                 {
@@ -741,6 +778,15 @@ class PortfolioService:
         if portfolio.source != PortfolioSource.PORTFOLIO_MODEL:
             raise ValueError("仅投资组合模型驱动的组合支持子策略权重调整")
 
+        # 已发布组合冻结成员与权重，不允许调整
+        linked_model = None
+        if portfolio.portfolio_model_id:
+            linked_model = await self.strategy_model_service.get_model(
+                portfolio.portfolio_model_id
+            )
+            if linked_model and linked_model.status == ModelStatus.PUBLISHED:
+                raise ValueError("组合已发布，成员与权重已冻结；请先取消发布后再调整")
+
         # 验证权重总和
         total = sum(w.get("weight", 0) for w in new_weights)
         if abs(total - 1.0) > 0.01:
@@ -772,6 +818,18 @@ class PortfolioService:
 
         # 更新组合文档
         await self.update_portfolio(portfolio_id, {"sub_strategies": updated_subs})
+
+        # 草稿态：同步成员/权重到组合模型，保证后续发布冻结的是最新配置
+        if linked_model:
+            await self.strategy_model_service.collection.update_one(
+                {"_id": ObjectId(portfolio.portfolio_model_id)},
+                {
+                    "$set": {
+                        "sub_strategies": updated_subs,
+                        "updated_at": datetime.now(),
+                    }
+                },
+            )
 
         # 记录配置版本快照（复用策略参数版本系统）
         if portfolio.portfolio_model_id:
@@ -853,6 +911,10 @@ class PortfolioService:
             sharpe_ratio=perf.sharpe_ratio,
             max_drawdown=perf.max_drawdown,
             calmar_ratio=perf.calmar_ratio,
+            annual_return_365=getattr(perf, "annual_return_365", None),
+            annual_volatility_365=getattr(perf, "annual_volatility_365", None),
+            sharpe_ratio_365=getattr(perf, "sharpe_ratio_365", None),
+            calmar_ratio_365=getattr(perf, "calmar_ratio_365", None),
             latest_unit_value=round(latest_nav / portfolio_model.initial_nav, 4),
             equity_curve=equity_curve,
         )
@@ -891,7 +953,9 @@ class PortfolioService:
         )
 
         market_service = MarketService()
-        data_feed = await DataFeed.from_market_service(market_service, config, lookback_days=500)
+        # 信号回放通道无策略码：仅回放已记录的调仓权重，不需要任何策略截面面板，
+        # 因此走显式的纯价格入口（from_market_service 已要求 strategy_type 必填）
+        data_feed = await DataFeed.from_prices_only(market_service, config, lookback_days=500)
         if data_feed.prices.empty:
             return self._empty_result()
 
@@ -951,6 +1015,11 @@ class PortfolioService:
         portfolio_model = await self.strategy_model_service.get_model(portfolio.portfolio_model_id)
         if not portfolio_model:
             return None
+        # 已发布组合：绩效统一读发布冻结快照（初始净值/权重模型参数/成员）
+        if portfolio_model.status == ModelStatus.PUBLISHED and portfolio_model.published_snapshot:
+            portfolio_model = apply_published_snapshot(
+                portfolio_model, portfolio_model.published_snapshot
+            )
 
         sub_pairs = await self.strategy_model_service.resolve_sub_strategies(portfolio_model)
         if not sub_pairs:
@@ -963,13 +1032,6 @@ class PortfolioService:
         sub_weights: Dict[str, float] = {}
 
         for sub_model, weight in sub_pairs:
-            # 使用组合当前配置的权重（可能已被手动修改）
-            actual_weight = weight
-            for alloc in portfolio.sub_strategies:
-                if alloc.model_id == sub_model.id:
-                    actual_weight = alloc.weight
-                    break
-
             try:
                 nav = await self._run_sub_strategy_backtest(
                     sub_model, start_date_str, end_date_str, portfolio_model.initial_nav
@@ -977,7 +1039,7 @@ class PortfolioService:
                 if nav is not None and len(nav) > 1:
                     key = sub_model.id or sub_model.name
                     sub_nav_series[key] = nav
-                    sub_weights[key] = actual_weight
+                    sub_weights[key] = weight
             except Exception as e:
                 logger.warning(f"[子策略执行] {sub_model.name} 回测失败: {e}")
 
@@ -1058,76 +1120,30 @@ class PortfolioService:
 
         费率口径：子策略 NAV 用于母组合 NAV 层复合，默认零成本（指数口径，
         与 GMSI 2.0 原型一致）；显式传入 commission_rate/slippage 时按传入值扣费。
+
+        契约：参数组装、composition、DataFeed（含面板）、引擎执行全部由
+        ``single_strategy_executor.execute_model_isolated`` 承担，本方法只把
+        模型翻译成一次独立回测并取出净值序列——组合层不感知子策略的执行细节。
         """
-        from app.backtesting.config import BacktestConfig
-        from app.backtesting.data_feed import DataFeed
-        from app.backtesting.runner import RunSpec, run_unified
-        from app.allocation.services.registry import create_strategy_service_from_database
-        from app.services.market_service import MarketService
-        from app.backtesting.composition_builder import build_strategy_composition
-        from app.services.strategy_model_service import build_backtest_params
-        from bson import ObjectId as _ObjId
+        from app.services.single_strategy_executor import execute_model_isolated
 
-        # 获取原始 MongoDB 文档，确保选择器等字段都能被正确读取
-        sub_model_data = await self.strategy_model_service.collection.find_one({"_id": _ObjId(sub_model.id)}) if sub_model.id else None
-        strategy_params = build_backtest_params(sub_model, model_data=sub_model_data)
+        cost_overrides: Dict[str, float] = {}
+        if commission_rate is not None:
+            cost_overrides["commission_rate"] = float(commission_rate)
+        if slippage is not None:
+            cost_overrides["slippage"] = float(slippage)
 
-        # 统一 composition 推导（含模型级 controller_code 覆盖与选择器接入）
-        spec = build_strategy_composition(
-            sub_model.template_code, sub_model.asset_codes, strategy_params,
-        )
-
-        rebalance_freq = sub_model.rebalance_frequency or "monthly"
-        if spec.force_month_end:
-            rebalance_freq = "month_end"
-
-        config = BacktestConfig(
-            name=f"sub_{sub_model.name}",
-            thscodes=sub_model.asset_codes,
+        result = await execute_model_isolated(
+            sub_model,
             start_date=start_date,
             end_date=end_date,
-            rebalance_freq=rebalance_freq,
-            initial_cash=10_000_000,
-            commission_rate=0.0 if commission_rate is None else float(commission_rate),
-            slippage=0.0 if slippage is None else float(slippage),
+            initial_nav=initial_nav,
+            model_service=self.strategy_model_service,
+            cost_overrides=cost_overrides or None,
+            # 组合管理通道：应用模型参数里的期初建仓权重（指数类策略从基日满仓运行）
+            apply_inception_weights=True,
         )
-
-        # 模型级期初建仓声明：指数类策略从基日起满仓运行（如原型首次执行前
-        # 权重 = fillna(1/n) 等权），用模型参数 inception_weights 声明而非留空仓
-        init_w = strategy_params.get("inception_weights")
-        if isinstance(init_w, dict) and init_w:
-            config.initial_weights = {str(k): float(v) for k, v in init_w.items()}
-            config.initial_weights_auto_normalize = bool(
-                strategy_params.get("inception_weights_auto_normalize", False)
-            )
-
-        market_service = MarketService()
-        data_feed = await DataFeed.from_market_service(market_service, config, lookback_days=500)
-        if data_feed.prices.empty:
-            return None
-
-        strategy_service = await create_strategy_service_from_database(market_service)
-        strategy_cls = strategy_service.get_strategy_class(sub_model.template_code)
-
-        # 经唯一引擎入口运行
-        result = run_unified(RunSpec(
-            config=config,
-            data_feed=data_feed,
-            allocator=strategy_cls(),
-            thscodes=sub_model.asset_codes,
-            composition=spec.composition,
-            strategy_params=strategy_params,
-            risk_config=_build_risk_config_from_params(strategy_params),
-        ))
-        if not result.snapshots:
-            return None
-
-        # 构造 NAV 序列，归一化到 initial_nav
-        nav_data = {s.time: s.total_value for s in result.snapshots}
-        series = pd.Series(nav_data).sort_index()
-        if len(series) > 0 and series.iloc[0] != 0:
-            series = series / series.iloc[0] * initial_nav
-        return series
+        return result.nav_series if result.has_nav else None
 
     @staticmethod
     def _empty_result() -> ModelBacktestResult:

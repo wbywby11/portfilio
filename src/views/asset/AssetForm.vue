@@ -72,6 +72,28 @@
           <el-input v-model="form.exchange" placeholder="请输入交易所名称（可选）"></el-input>
         </el-form-item>
 
+        <el-form-item label="标签" prop="tags">
+          <el-select
+            v-model="form.tags"
+            placeholder="可选，输入后回车可新建"
+            multiple
+            filterable
+            allow-create
+            default-first-option
+            style="width: 100%"
+          >
+            <el-option
+              v-for="item in tagOptions"
+              :key="item.tag"
+              :label="`${item.tag} (${item.count})`"
+              :value="item.tag"
+            ></el-option>
+          </el-select>
+          <div style="color: #909399; font-size: 12px; line-height: 1.4; margin-top: 4px;">
+            按前缀约定：pool:&lt;池名&gt; 资产池成员、class:&lt;大类&gt; 分组用大类、market:&lt;市场&gt; 市场归属
+          </div>
+        </el-form-item>
+
         <el-form-item label="描述" prop="description">
           <el-input
             v-model="form.description"
@@ -178,6 +200,7 @@
 
 <script>
 import { mapState } from 'vuex';
+import { getAssetTags } from '@/api/asset';
 
 // 旧 → 新 兼容映射（迁移完成后删除）
 function _legacyToInstrument(old) {
@@ -229,6 +252,7 @@ export default {
         asset_class: '',
         security_type: '',
         exchange: '',
+        tags: [],
         description: '',
         rollover_days: null,
         rollover_threshold: null,
@@ -237,6 +261,8 @@ export default {
         substitute_code: '',
         switch_date: ''
       },
+      // 全部已用标签（供多选下拉，仍可手动新建）
+      tagOptions: [],
       currentAssetId: null,  // 保存当前编辑的资产 ID
       rules: {
         code: [{ required: true, message: '请输入资产代码', trigger: 'blur' }],
@@ -252,6 +278,7 @@ export default {
     ...mapState('asset', ['instrumentTypes', 'assetClasses', 'securityTypes'])
   },
   created() {
+    this.fetchTagOptions();
     if (this.isDialog) {
       if (this.assetCode) {
         this.isEdit = true;
@@ -293,6 +320,16 @@ export default {
     }
   },
   methods: {
+    async fetchTagOptions() {
+      try {
+        const response = await getAssetTags();
+        this.tagOptions = (response && response.data) || [];
+      } catch (error) {
+        // 标签选项仅用于引导输入，取不到不阻断表单填写
+        console.error('加载资产标签失败:', error);
+        this.tagOptions = [];
+      }
+    },
     resetForm() {
       this.isEdit = false;
       this.currentAssetId = null;
@@ -303,6 +340,7 @@ export default {
         asset_class: '',
         security_type: '',
         exchange: '',
+        tags: [],
         description: '',
         rollover_days: null,
         rollover_threshold: null,
@@ -343,6 +381,7 @@ export default {
           asset_class: asset.asset_class || _legacyToClass(asset.asset_type, asset.name),
           security_type: asset.security_type || '',
           exchange: asset.exchange || '',
+          tags: asset.tags || [],
           description: asset.description || '',
           rollover_days: asset.rollover_days,
           rollover_threshold: asset.rollover_threshold,

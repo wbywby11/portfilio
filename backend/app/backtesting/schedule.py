@@ -16,11 +16,69 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+
+# 日度波动率重置的裁决规则。两套默认值对应两个存量口径：
+# - PROTOTYPE：月度调仓优先、不记信号日当天的日度信号、区间内有常规调仓则跳过
+#   （监控侧现行行为，也是原型规则；声明该规则的策略用它）
+# - LEGACY_ENGINE：每日检查、同日 vol_reset 抢先、不排除信号日
+#   （回测引擎历史行为；未声明规则的存量策略保持原净值不变）
+VOL_RESET_POLICY_PROTOTYPE: Dict[str, bool] = {
+    "monthly_priority": True,
+    "skip_on_rebalance_day": True,
+    "skip_interval_conflict": True,
+}
+
+VOL_RESET_POLICY_LEGACY_ENGINE: Dict[str, bool] = {
+    "monthly_priority": False,
+    "skip_on_rebalance_day": False,
+    "skip_interval_conflict": False,
+}
+
+
+def resolve_vol_reset_policy(
+    raw: Optional[Dict[str, Any]],
+    defaults: Optional[Dict[str, bool]] = None,
+) -> Dict[str, bool]:
+    """把调度声明中的 vol_reset_policy 规范化为三个布尔开关.
+
+    未声明的键取 ``defaults``（缺省=原型规则）；已声明的键按真值转换。
+    非法类型不抛错也不猜测——调用方拿到的是完整三键字典，分支只读键，不读原值。
+    """
+    base = VOL_RESET_POLICY_PROTOTYPE if defaults is None else defaults
+    policy = dict(base)
+    if isinstance(raw, dict):
+        for key in policy:
+            if key in raw:
+                policy[key] = bool(raw[key])
+    return policy
+
+
+def parse_declared_vol_reset_policy(raw: Any) -> Dict[str, bool]:
+    """解析策略声明的 vol_reset_policy，只保留已知三键（不补默认值）.
+
+    返回空字典表示「策略未声明」：默认值由消费方决定（引擎用 LEGACY、监控用
+    PROTOTYPE），解析层不替任何一方选口径。未知键记 warning 而不静默丢弃——
+    那意味着策略声明了本端不认识的口径，静默忽略会变成「看起来生效了其实没有」。
+    """
+    if not isinstance(raw, dict):
+        return {}
+    policy = {k: bool(v) for k, v in raw.items() if k in VOL_RESET_POLICY_PROTOTYPE}
+    unknown = sorted(set(raw) - set(VOL_RESET_POLICY_PROTOTYPE))
+    if unknown:
+        logger.warning(
+            "vol_reset_policy 含未知键 %s，已忽略（已知键: %s）",
+            unknown, sorted(VOL_RESET_POLICY_PROTOTYPE),
+        )
+    return policy
 
 
 @dataclass
@@ -48,6 +106,11 @@ class ExecutionSchedule:
     # 信号值变化日）。声明后 rebalance_freq 的周期识别失效，信号日 =
     # event_dates ∩ [start, end]；执行日仍按 execution_delay 推算。
     event_dates: Optional[List[pd.Timestamp]] = None
+
+    # 日度波动率重置的裁决规则，取值见 VOL_RESET_POLICY_PROTOTYPE。
+    # 空字典 = 策略未声明，引擎回退 LEGACY_ENGINE（历史行为）；
+    # 非空 = 已按原型规则补全三键，引擎直接按开关裁决。
+    vol_reset_policy: Dict[str, bool] = field(default_factory=dict)
 
 
 class ScheduleResolver:
@@ -309,6 +372,11 @@ def resolve_execution_schedule(strategy, config) -> ExecutionSchedule:
             selection_start_date=sched_dict.get("selection_start_date"),
             signal_calendar=_coerce_calendar_dates(sched_dict.get("signal_calendar")),
             event_dates=_coerce_calendar_dates(sched_dict.get("event_dates")),
+            vol_reset_policy=(
+                resolve_vol_reset_policy(sched_dict.get("vol_reset_policy"))
+                if sched_dict.get("vol_reset_policy") is not None
+                else {}
+            ),
         )
     # 策略未声明调度时，仍可使用用户配置的 execution_delay
     return ExecutionSchedule(

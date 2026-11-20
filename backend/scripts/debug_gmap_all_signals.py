@@ -66,7 +66,9 @@ async def main() -> None:
         initial_weights={c: 1.0 / len(model.asset_codes) for c in model.asset_codes},
     )
     ms = MarketService()
-    data_feed = await DataFeed.from_market_service(ms, config, lookback_days=500)
+    data_feed = await DataFeed.from_market_service(
+        ms, config, lookback_days=500, strategy_type=model.template_code,
+    )
     strategy_service = await create_strategy_service_from_database(ms)
     strategy_cls = strategy_service.get_strategy_class(model.template_code)
     strategy = CompositionPipeline(

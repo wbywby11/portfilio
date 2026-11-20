@@ -53,6 +53,8 @@
             <el-menu-item index="FxImport">汇率与日历管理</el-menu-item>
             <el-menu-item index="DataHubCenter">数据接入中心</el-menu-item>
             <el-menu-item index="DataAssets">数据资产管理</el-menu-item>
+            <el-menu-item index="FactorPanelImport">因子截面数据</el-menu-item>
+            <el-menu-item index="MacroSeriesImport">宏观与估值序列</el-menu-item>
             
           </el-submenu>
 

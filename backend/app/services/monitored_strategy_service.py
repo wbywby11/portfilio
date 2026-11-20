@@ -52,12 +52,15 @@ class MonitoredStrategyService:
     async def sync_live_published(self) -> None:
         """将已实盘发布的策略/组合同步到 monitored_strategies（幂等）。
 
-        遍历 strategy_models 中 live_publish_enabled=True 的文档，
-        若 monitored_strategies 中尚无对应条目则自动创建。
+        遍历 strategy_models 中 live_publish_enabled=True 的文档：
+        - 尚无对应条目 → 自动创建；
+        - 已实盘发布但条目被归档（如取消实盘后又重新实盘发布）→ 重新激活；
+        - 已不再实盘发布 → 条目归档下架（monitor_states 与历史记录保留）。
         """
         from app.services.strategy_model_service import StrategyModelService
 
         svc = StrategyModelService()
+        live_refs: List[str] = []
         # 查询所有已实盘发布的模型
         cursor = svc.collection.find(
             {"live_publish_enabled": True},
@@ -65,6 +68,7 @@ class MonitoredStrategyService:
         )
         async for doc in cursor:
             model_id = str(doc["_id"])
+            live_refs.append(model_id)
             is_portfolio = doc.get("is_portfolio", False)
             source_type = "portfolio" if is_portfolio else "system_strategy"
 
@@ -95,6 +99,33 @@ class MonitoredStrategyService:
                 logger.info(f"同步实盘发布到监控: {name} ({source_type}/{model_id})")
             except DuplicateKeyError:
                 logger.debug(f"实盘策略已存在(并发同步): {model_id}")
+
+        # 已取消实盘发布 → 条目归档下架（不删除 monitor_states / 变更日志）
+        if live_refs:
+            archive_filter = {
+                "source_type": {"$in": ["system_strategy", "portfolio"]},
+                "status": {"$ne": "archived"},
+                "source_ref": {"$nin": live_refs},
+            }
+        else:
+            archive_filter = {
+                "source_type": {"$in": ["system_strategy", "portfolio"]},
+                "status": {"$ne": "archived"},
+            }
+        now = datetime.now()
+        result = await self.collection.update_many(
+            archive_filter,
+            {
+                "$set": {
+                    "status": "archived",
+                    "archive_reason": "not_live_published",
+                    "archived_at": now,
+                    "updated_at": now,
+                }
+            },
+        )
+        if result.modified_count:
+            logger.info(f"归档已取消实盘发布的监控条目: {result.modified_count} 条")
 
     async def list(
         self,

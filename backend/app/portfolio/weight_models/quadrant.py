@@ -14,9 +14,10 @@
 - 波动信号：HV20 在过去 252 日的百分位，> 70% → high_vol，< 30% → low_vol，否则保持上期
 - 象限：方向与波动均非盲区时确定，否则保持上期
 
-权重机制（与原型 quadrant_allocator.py 一致）：
+权重机制（基于原型 quadrant_allocator.py，并修复其 boost 坍塌缺陷）：
 - 基础权重：各子策略近一年（252日）波动率倒数，无效策略权重为 0（无最低权重兜底）
-- 象限调权：当前象限侧重策略权重 × boost（默认 1.5），其余等比缩减，合计归一化
+- 象限调权：侧重策略权重 × boost（默认 1.5）后整体归一化，其余策略等比压缩但不清零；
+  原型「增量扣减」实现在侧重策略基础权重 > 1/boost 时会把其余策略清零，已修正
 
 本模型只负责「给定日期 → 输出权重」与「输出象限序列」，
 不决定何时调仓（由回测引擎消费象限序列做事件驱动再平衡）。
@@ -333,24 +334,20 @@ class QuadrantWeightModel(PortfolioWeightModel):
         base_weights: Dict[str, float],
         favored: str,
     ) -> Dict[str, float]:
-        """象限调权：侧重策略权重 × boost，其余等比缩减，合计仍为 100%。"""
+        """象限调权：侧重策略权重 × boost 后整体归一化，合计仍为 100%。
+
+        其余策略被等比压缩（相互间比例不变）但永不清零。
+        旧实现用「增量从其余策略扣减」，当侧重策略基础权重 > 1/boost 时
+        增量超出其余策略总权重，会把其余策略全部清零（boost 坍塌），
+        例如逆波动率下低波策略基础权重 ~0.78 > 1/1.5 ≈ 0.667 时必然坍塌。
+        """
         boost = self._boost_factor
         if favored not in base_weights:
             return dict(base_weights)
 
-        favored_w = base_weights[favored] * boost
-        excess = favored_w - base_weights[favored]
-        other_total = sum(w for k, w in base_weights.items() if k != favored)
-
-        if other_total == 0:
-            return {k: (boost if k == favored else 0.0) for k in base_weights}
-
-        shrink_factor = (other_total - excess) / other_total if other_total > excess else 0.0
-
-        boosted: Dict[str, float] = {}
-        for k, w in base_weights.items():
-            boosted[k] = favored_w if k == favored else w * shrink_factor
-
+        boosted: Dict[str, float] = {
+            k: (w * boost if k == favored else w) for k, w in base_weights.items()
+        }
         total = sum(boosted.values())
         if total > 0:
             boosted = {k: v / total for k, v in boosted.items()}

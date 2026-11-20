@@ -75,6 +75,10 @@ def build_strategy_composition(
         CompositionSpec，其中 ``composition`` 可直接传给 CompositionPipeline。
     """
     strategy_params = strategy_params or {}
+    # 月末调仓由分配模型自身的编制规则决定，与是否启用选择器无关：
+    # 任一分支都必须把这个标记带回给调用方，否则不启用选择器的模型
+    # （如纯 tag_based 预算）会退回普通 monthly，调仓日与编制口径错位。
+    force_month_end = strategy_type in _MONTH_END_ALLOCATORS
     base_composition = COMPOSITION_DEFAULTS.get(strategy_type, {
         "selector": None, "allocator": strategy_type, "controller": None,
     })
@@ -95,7 +99,10 @@ def build_strategy_composition(
         or (raw_selector and strategy_params.get("asset_selection_count") is not None)
     )
     if not enable_selection:
-        return CompositionSpec(composition=dict(base_composition))
+        return CompositionSpec(
+            composition=dict(base_composition),
+            force_month_end=force_month_end,
+        )
 
     selector_type, n_assets, selected_count, selection_params = _resolve_selector(
         strategy_type, thscodes, strategy_params, raw_selector,
@@ -118,7 +125,7 @@ def build_strategy_composition(
         composition=composition,
         enable_selection=True,
         selected_asset_count=selected_count,
-        force_month_end=strategy_type in _MONTH_END_ALLOCATORS,
+        force_month_end=force_month_end,
     )
 
 
@@ -195,11 +202,5 @@ def _resolve_selector(
     elif raw_selector == "trend_following":
         selection_params["tf_lookback"] = int(params.get("tf_lookback", 25))
         selection_params["tf_threshold"] = float(params.get("tf_threshold", 0.0))
-    elif raw_selector == "etf_discount":
-        for k in ("window", "signal_type", "close_signal_type", "enable_tech_filter",
-                  "std_filter_mode", "tech_min_pass", "enable_rolling_params",
-                  "lookback_months"):
-            if k in params:
-                selection_params[k] = params[k]
 
     return raw_selector, n_assets, selected_count, selection_params

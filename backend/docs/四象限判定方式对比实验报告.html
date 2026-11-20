@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>四象限判定方式对比实验报告——宏观 HMM 判定 vs 原规则</title>
+<style>
+:root { --ink:#24292f; --blue:#1a3c5e; --slate:#455A64; --line:#e0e6ea; }
+* { box-sizing: border-box; }
+body { font-family:"Microsoft YaHei","Segoe UI",system-ui,sans-serif; max-width:1060px;
+  margin:0 auto; padding:48px 28px 80px; color:var(--ink); background:#fff;
+  line-height:1.8; font-size:15.5px; }
+h1 { font-size:29px; line-height:1.4; color:var(--blue);
+  border-bottom:3px solid var(--slate); padding-bottom:14px; margin:0 0 8px; }
+h2 { font-size:22px; color:var(--blue); margin:48px 0 16px; padding-left:12px;
+  border-left:6px solid var(--slate); }
+h3 { font-size:17.5px; color:#37474F; margin:30px 0 12px; }
+p { margin:12px 0; }
+strong { color:var(--blue); }
+table { border-collapse:collapse; width:100%; margin:18px 0; font-size:14px; }
+th { background:#eceff1; color:#263238; font-weight:600; text-align:left; }
+th,td { border:1px solid #dbe2e8; padding:8px 11px; }
+tr:nth-child(even) { background:#f8fafb; }
+figure { margin:26px 0; text-align:center; }
+figure img { max-width:100%; height:auto; border:1px solid #e6ebef; border-radius:8px;
+  box-shadow:0 2px 10px rgba(38,50,56,.08); }
+figcaption { color:#78909c; font-size:13px; margin-top:8px; }
+blockquote { margin:18px 0; background:#f2f7fb; border-left:5px solid #90a4ae;
+  padding:14px 20px; border-radius:0 8px 8px 0; color:#37474f; font-size:14.5px; }
+code { background:#f2f4f6; padding:1.5px 6px; border-radius:4px; font-size:13px;
+  font-family:Consolas,"Courier New",monospace; color:#455a64; }
+ul,ol { padding-left:26px; margin:12px 0; }
+li { margin:6px 0; }
+hr { border:none; border-top:1px solid var(--line); margin:40px 0; }
+.toc { background:#f7fafc; border:1px solid #e3ecf2; border-radius:10px;
+  padding:16px 26px; margin:22px 0 6px; font-size:14.5px; }
+.toc b { color:var(--blue); font-size:15px; }
+.toc ol { margin:8px 0 0; padding-left:22px; }
+.toc a { color:#1a3c5e; text-decoration:none; }
+.toc a:hover { text-decoration:underline; }
+@media print { body { max-width:100%; padding:0; font-size:12.5px; }
+  figure img { box-shadow:none; } h2 { page-break-after:avoid; }
+  table { page-break-inside:avoid; } }
+</style>
+</head>
+<body>
+<h1 id="sec0">四象限判定方式对比实验报告——宏观 HMM 判定 vs 原规则</h1>
+<nav class="toc"><b>目录</b><ol><li style="margin-left:0px"><a href="#sec0">一、一页速览</a></li><li style="margin-left:0px"><a href="#sec1">二、背景知识（读这份报告需要的 3 件事）</a></li><li style="margin-left:0px"><a href="#sec2">三、实验设计（怎么保证结论可信）</a></li><li style="margin-left:0px"><a href="#sec3">四、实验结果</a></li><li style="margin-left:0px"><a href="#sec4">五、原理解析："三个为什么"</a></li><li style="margin-left:0px"><a href="#sec5">六、稳定性检验（14 个子区间）</a></li><li style="margin-left:0px"><a href="#sec6">七、结论与落地建议</a></li><li style="margin-left:0px"><a href="#sec7">八、后续待补充工作</a></li><li style="margin-left:0px"><a href="#sec8">附录 A：技术口径与诊断</a></li><li style="margin-left:0px"><a href="#sec9">附录 B：术语表</a></li><li style="margin-left:0px"><a href="#sec10">附录 C：交付物清单</a></li></ol></nav>
+<blockquote><strong>评价期</strong>：2019-12-31 ~ 2026-07-31（约 6.3 年交易口径 / 6.6 年自然口径）｜ <strong>版本</strong>：v3.1 ｜ <strong>日期</strong>：2026-10-08<br><strong>上游实验</strong>：任务 A（四象限×HMM 增益）、任务 B（HMM 宏观机制体系）｜ <strong>配图</strong>：<code>images/</code> 下 6 张（本文内嵌）</blockquote>
+<hr>
+<h2 id="sec0">一、一页速览</h2>
+<p><strong>一句话结论</strong>：四象限策略的"方向判定"改用 HMM 机制识别后，产品层夏普从 <strong>1.181 → 1.289</strong>（+0.108），同时波动、回撤、Calmar 全面改善；"波动判定"换 HMM 没有效果（-0.019）；两个一起换反而变差（-0.061）。</p>
+<p><strong>核心结果</strong>（产品层，评价期 2019-12-31 ~ 2026-07-31）：</p>
+<table><tr><th>判定臂</th><th>年化</th><th>波动</th><th>夏普</th><th>最大回撤</th><th>Calmar</th><th>vs BASE</th></tr><tr><td>BASE 原规则</td><td>4.37%</td><td>2.01%</td><td>1.181</td><td>-2.65%</td><td>1.650</td><td>—</td></tr><tr><td><strong>PX-DIR 换方向</strong></td><td>4.45%</td><td>1.90%</td><td><strong>1.288</strong></td><td>-2.66%</td><td>1.673</td><td><strong>+0.107</strong></td></tr><tr><td>PX-VOL 换波动</td><td>4.13%</td><td>2.02%</td><td>1.059</td><td>-2.65%</td><td>1.560</td><td>-0.122</td></tr><tr><td>PX-BOTH 定象限</td><td>4.40%</td><td>2.05%</td><td>1.169</td><td>-2.66%</td><td>1.653</td><td>-0.012</td></tr><tr><td><strong>MACRO-DIR 换方向</strong></td><td>4.40%</td><td><strong>1.86%</strong></td><td><strong>1.289</strong></td><td><strong>-2.58%</strong></td><td><strong>1.703</strong></td><td><strong>+0.108</strong></td></tr><tr><td>MACRO-VOL 换波动</td><td>4.37%</td><td>2.04%</td><td>1.162</td><td>-2.75%</td><td>1.586</td><td>-0.019</td></tr><tr><td>MACRO-BOTH 定象限</td><td>4.31%</td><td>2.06%</td><td>1.120</td><td>-2.67%</td><td>1.614</td><td>-0.061</td></tr></table>
+<p><strong>三条要点</strong>：</p>
+<ol><li><strong>有效的是"换方向"</strong>：两种来源（价格/宏观）都能把夏普从 1.18 提升到 1.29 附近，且提升主要来自"波动变小、回撤变浅"，而不是"收益变高"（年化仅 +0.03~0.08pp）</li><li><strong>无效的是"换波动"</strong>：HMM 的波动标签与原规则在测同一件事，没有新信息</li><li><strong>有害的是"定象限"</strong>：3 个隐状态装不下 2×2 四种象限组合，且 HMM 的"方向标签"内含错误假设（高波不等于下跌）</li></ol>
+<hr>
+<h2 id="sec1">二、背景知识（读这份报告需要的 3 件事）</h2>
+<h3 id="sec2">2.1 四象限策略怎么工作</h3>
+<p>策略每天要回答两个问题：<strong>方向</strong>（上行还是下行？）× <strong>波动</strong>（高波还是低波？）。两个答案组合成四个象限，每个象限让某一个子策略"更出力"（权重乘以 1.5）：</p>
+<table><tr><th></th><th>低波（low_vol）</th><th>高波（high_vol）</th></tr><tr><td><strong>上行（up）</strong></td><td>可转债 convertible</td><td>多资产 multi_asset</td></tr><tr><td><strong>下行（down）</strong></td><td>红利 dividend</td><td>雪球 snowball</td></tr></table>
+<p>四个子策略（多资产、雪球、可转债、红利）的本体完全不动，实验只改"根据什么来判断当前处于哪个象限"。</p>
+<h3 id="sec2">2.2 什么是 HMM（一句话版）</h3>
+<p><strong>HMM = 隐马尔可夫模型</strong>，一种无监督学习方法。它假设市场背后有一条看不见的"机制链"，每个机制会按自己的统计规律生成我们能观察到的数据。给它数据（价格或宏观指标），它会自动"训练"出几个机制状态——我们使用 3 个状态，并按波动大小固定其含义：</p>
+<table><tr><th>状态</th><th>含义</th><th>直白理解</th></tr><tr><td>0</td><td>低波扩张</td><td>平静的顺风期</td></tr><tr><td>1</td><td>过渡</td><td>说不清的模糊期</td></tr><tr><td>2</td><td>高波危机</td><td>剧烈动荡期</td></tr></table>
+<p>它与"阈值规则"的最大区别：状态有<strong>记忆</strong>（约 98% 概率延续到第二天）——判断一旦做出，不会因为价格抖一下而立刻改口。</p>
+<h3 id="sec2">2.3 "判定方式"的替换矩阵</h3>
+<p>实验把两个判定维度分别交给 HMM，形成 3 种换法 × 2 种信息来源：</p>
+<table><tr><th></th><th>换方向（DIR）</th><th>换波动（VOL）</th><th>定象限（BOTH）</th></tr><tr><td><strong>价格 HMM（PX-）</strong></td><td>PX-DIR</td><td>PX-VOL</td><td>PX-BOTH</td></tr><tr><td><strong>宏观 HMM（MACRO-）</strong></td><td>MACRO-DIR</td><td>MACRO-VOL</td><td>MACRO-BOTH</td></tr><tr><td>原规则（什么都不换）</td><td>—</td><td><strong>BASE（基准）</strong></td><td>—</td></tr></table>
+<ul><li><strong>换方向</strong>：方向信号 = HMM 状态（0→上行、2→下行、过渡态 1→维持上一判断）；波动信号保持原规则（HV20 百分位）</li><li><strong>换波动</strong>：波动信号 = HMM 状态（0→低波、2→高波）；方向保持原规则（SMA60 偏离 ±5%）</li><li><strong>定象限</strong>：方向+波动都用 HMM 状态，直接映射象限（0→上行低波、2→下行高波）</li></ul>
+<p>两种来源的区别：<strong>价格 HMM</strong> 只看沪深300 的收益与波动；<strong>宏观 HMM</strong> 看 4 个宏观特征（增长、通胀、流动性、波动）。两边具体“吃”哪些指标、怎么加工，2.4 节给出完整清单。</p>
+<h3 id="sec2">2.4 两种来源具体吃什么数据：因子 / 指标清单</h3>
+<p><strong>来源一：价格 HMM（PX- 系列）——只吃沪深300 自身行情（2 个输入维度）</strong></p>
+<table><tr><th>输入维度</th><th>计算定义</th><th>扮演角色</th></tr><tr><td>日收益 ret</td><td>沪深300 收盘价的日简单收益率</td><td>机制收益特征</td></tr><tr><td>对数波动 logRV20</td><td>ln（20 日滚动收益标准差 × √252）</td><td>机制波动特征 ＋ <strong>状态排序依据</strong></td></tr></table>
+<ul><li>输入只有“沪深300 的价格与波动”两类信息，全部日频更新，不引入任何外部数据</li><li>状态语义按 logRV20 的均值排序：0 = 低波扩张、2 = 高波危机（1 为过渡）</li><li>它与原规则的 HV20 百分位同源（都由价格算出）——这正是第 5.2 节“换波动没有新信息”的根源</li></ul>
+<p><strong>来源二：宏观 HMM（MACRO- 系列）——吃 4 维宏观特征（来自任务 B 因子库，PIT 对齐）</strong></p>
+<table><tr><th>输入维度</th><th>原始指标</th><th>平稳化变换</th><th>经济含义</th></tr><tr><td>growth 增长</td><td>制造业 PMI（月度，50 为荣枯线）</td><td>63 日差分（≈3 个月景气动量）</td><td>经济扩张 / 收缩动能</td></tr><tr><td>inflation 通胀</td><td>PPI 同比 − CPI 同比（剪刀差）</td><td>21 日差分（≈1 个月变化）</td><td>工业品相对消费品价格压力的变化</td></tr><tr><td>liquidity 流动性</td><td>国债 10Y − 2Y 期限利差</td><td>不变换（利差本身平稳）</td><td>资金面松紧与利率曲线形态</td></tr><tr><td>vol 波动</td><td>沪深300 logRV20（与价格侧同口径）</td><td>不变换（对数已平稳）</td><td>市场动荡程度 ＋ <strong>状态排序依据</strong></td></tr></table>
+<p>统一预处理：4 维全部做 <strong>252 日滚动 Z-Score 标准化</strong>（仅用当日及以前数据）并截断 ±4——HMM 实际“看到”的是每个因子相对自身近一年常态的偏离度（单位：σ），而不是绝对水平。</p>
+<ul><li>数据来源：宏观指标取自任务 B 因子库缓存（<code>scripts/ml_bl_research/cache/dataset.pkl</code>，指标按发布日 PIT 生效）；价格与波动取自沪深300 日线</li><li>两个 HMM 的状态排序都用“波动维度”（价格侧 logRV20、宏观侧 vol 维），保证 0 / 1 / 2 状态在两边的含义一致</li></ul>
+<p><strong>一句话对照</strong>：价格 HMM 看“市场自己在怎么走”（收益、波动）；宏观 HMM 看“宏观环境在怎么变”（增长、通胀、流动性）再叠加市场波动。</p>
+<hr>
+<h2 id="sec2">三、实验设计（怎么保证结论可信）</h2>
+<h3 id="sec3">3.1 公平性：只换一个零件</h3>
+<table><tr><th>保证项</th><th>具体做法</th></tr><tr><td>子策略不动</td><td>直接使用四象限原型的子策略缓存净值，不重训、不改参数</td></tr><tr><td>分配器不动</td><td>QuadrantAllocator（月度调仓 + 侧重系数 ×1.5）原样保留</td></tr><tr><td>产品层不动</td><td>VolTargetController（2% 波动目标 + 短债 + 现金 15%）原样保留</td></tr><tr><td>评价期不动</td><td>2019-12-31 起（与原型设定一致）</td></tr><tr><td>对齐校验</td><td>BASE 基准夏普 1.181 与上游实验 100% 复现</td></tr></table>
+<h3 id="sec3">3.2 无未来函数（因果口径）</h3>
+<p>HMM 每天的判断只使用<strong>当天及以前</strong>的数据（前向滤波）。这一点不是形式主义——旧版实验（任务 A）的 HMM 判断隐含了最长约 21 天的"未来信息"，使表观增益虚增到 +0.204；改为严格因果后，增益收敛为 <strong>+0.107</strong>。<strong>约一半的"提升"实为作弊</strong>。本报告所有数字均为无作弊口径。</p>
+<h3 id="sec3">3.3 HMM 的工程参数（简述）</h3>
+<p>训练窗口 500 日、每 63 个交易日重训一次、8 个随机种子重启取优、持续性过滤（persist≥0.55）。拟合质量：价格 HMM 29/29 段全部达标、宏观 HMM 64/64 段全部达标。</p>
+<hr>
+<h2 id="sec3">四、实验结果</h2>
+<h3 id="sec4">4.1 夏普对比（最直观的一张图）</h3>
+<figure><img src="images/fig1_sharpe.png" alt="产品层夏普对比"><figcaption>产品层夏普对比</figcaption></figure>
+<p>两根绿色柱子（两种"换方向"）显著高出 BASE 基准线约 0.11；橙色柱子（换波动）全场最低；灰色柱子（定象限）无功无过。</p>
+<h3 id="sec4">4.2 累计走势（评价期起点 = 1.0）</h3>
+<figure><img src="images/fig4_nav.png" alt="产品层累计走势"><figcaption>产品层累计走势</figcaption></figure>
+<p>两条绿色曲线（PX-DIR、MACRO-DIR）在大部分时间位于蓝线（BASE）之上，终值 1.317 / 1.313 vs 1.311。差异不大但方向一致——这就是"小幅但系统性的改善"的长相。</p>
+<h3 id="sec4">4.3 完整绩效表</h3>
+<p><strong>产品层</strong>（主表，含日胜率）：</p>
+<table><tr><th>判定臂</th><th>年化</th><th>波动</th><th>夏普</th><th>最大回撤</th><th>Calmar</th><th>日胜率</th></tr><tr><td>BASE</td><td>4.37%</td><td>2.01%</td><td>1.181</td><td>-2.65%</td><td>1.650</td><td>59.7%</td></tr><tr><td>PX-DIR</td><td>4.45%</td><td>1.90%</td><td>1.288</td><td>-2.66%</td><td>1.673</td><td>60.0%</td></tr><tr><td>PX-VOL</td><td>4.13%</td><td>2.02%</td><td>1.059</td><td>-2.65%</td><td>1.560</td><td>58.1%</td></tr><tr><td>PX-BOTH</td><td>4.40%</td><td>2.05%</td><td>1.169</td><td>-2.66%</td><td>1.653</td><td>58.0%</td></tr><tr><td>MACRO-DIR</td><td>4.40%</td><td>1.86%</td><td>1.289</td><td>-2.58%</td><td>1.703</td><td>60.5%</td></tr><tr><td>MACRO-VOL</td><td>4.37%</td><td>2.04%</td><td>1.162</td><td>-2.75%</td><td>1.586</td><td>58.6%</td></tr><tr><td>MACRO-BOTH</td><td>4.31%</td><td>2.06%</td><td>1.120</td><td>-2.67%</td><td>1.614</td><td>58.2%</td></tr></table>
+<p><strong>组合层</strong>（子策略配置层，对分配器输出的直接检验）：</p>
+<table><tr><th>判定臂</th><th>年化</th><th>波动</th><th>夏普</th><th>最大回撤</th><th>Calmar</th></tr><tr><td>BASE</td><td>5.20%</td><td>2.78%</td><td>1.149</td><td>-3.96%</td><td>1.314</td></tr><tr><td>PX-DIR</td><td>5.15%</td><td>2.72%</td><td>1.159</td><td>-4.09%</td><td>1.258</td></tr><tr><td>PX-VOL</td><td>4.71%</td><td>2.85%</td><td>0.949</td><td>-3.96%</td><td>1.190</td></tr><tr><td>PX-BOTH</td><td>5.17%</td><td>3.02%</td><td>1.051</td><td>-4.09%</td><td>1.264</td></tr><tr><td>MACRO-DIR</td><td>5.06%</td><td>2.54%</td><td><strong>1.207</strong></td><td>-3.70%</td><td><strong>1.370</strong></td></tr><tr><td>MACRO-VOL</td><td>5.04%</td><td>2.73%</td><td>1.111</td><td>-3.77%</td><td>1.336</td></tr><tr><td>MACRO-BOTH</td><td>5.06%</td><td>2.97%</td><td>1.029</td><td>-3.70%</td><td>1.368</td></tr></table>
+<p>组合层的结论与产品层一致：MACRO-DIR 夏普与 Calmar 均为全场最高。</p>
+<h3 id="sec4">4.4 分年度收益</h3>
+<figure><img src="images/fig5_yearly.png" alt="分年度收益对比"><figcaption>分年度收益对比</figcaption></figure>
+<table><tr><th>年份</th><th>BASE</th><th>PX-DIR</th><th>MACRO-DIR</th><th>亮点</th></tr><tr><td>2020</td><td>5.4%</td><td>5.5%</td><td>5.5%</td><td>三臂接近</td></tr><tr><td>2021</td><td>6.2%</td><td>6.3%</td><td>5.5%</td><td>结构市，DIR 无优势</td></tr><tr><td>2022</td><td>-0.05%</td><td>-0.17%</td><td><strong>+0.18%</strong></td><td><strong>熊市：只有宏观 DIR 转正</strong></td></tr><tr><td>2023</td><td>3.7%</td><td><strong>4.3%</strong></td><td>3.8%</td><td>PX-DIR 领先</td></tr><tr><td>2024</td><td>6.0%</td><td>6.5%</td><td><strong>6.9%</strong></td><td>MACRO-DIR 全场最佳</td></tr><tr><td>2025</td><td><strong>4.5%</strong></td><td>3.9%</td><td>3.9%</td><td><strong>DIR 类共同跑输</strong></td></tr><tr><td>2026（至 7 月）</td><td>2.0%</td><td>2.0%</td><td><strong>2.2%</strong></td><td>MACRO-DIR 领先</td></tr></table>
+<p>三个观察：①熊市（2022）是宏观 DIR 的主场；②2025 年是共同的例外（后文风险提示）；③没有一年出现大比分落后。</p>
+<h3 id="sec4">4.5 回撤结构</h3>
+<figure><img src="images/fig6_drawdown.png" alt="回撤曲线对比"><figcaption>回撤曲线对比</figcaption></figure>
+<p>三条回撤曲线高度接近（最深都在 -2.6% 附近），MACRO-DIR 的最深回撤 -2.58% 为全场最浅。差异体现在细枝末节——这正是"小幅系统性改善"的证据形态。</p>
+<h3 id="sec4">4.6 信号结构（机理证据）</h3>
+<p>各判定臂把时间花在哪个象限（时长占比）：</p>
+<table><tr><th>臂</th><th>上行低波</th><th>上行高波</th><th>下行低波</th><th>下行高波</th><th>切换次数</th><th>平均停留</th></tr><tr><td>BASE</td><td>19.1%</td><td>26.7%</td><td>26.4%</td><td>27.8%</td><td>40</td><td>38.9 日</td></tr><tr><td>PX-DIR</td><td>44.6%</td><td>25.0%</td><td>0.8%</td><td>29.5%</td><td>43</td><td>36.2 日</td></tr><tr><td>MACRO-DIR</td><td>28.7%</td><td>29.6%</td><td>16.8%</td><td>25.0%</td><td>54</td><td>29.0 日</td></tr><tr><td>MACRO-VOL</td><td>26.3%</td><td>19.4%</td><td>31.9%</td><td>22.3%</td><td>44</td><td>35.4 日</td></tr><tr><td>MACRO-BOTH</td><td>58.2%</td><td>—</td><td>—</td><td>41.8%</td><td>29</td><td>53.2 日</td></tr></table>
+<p>关键对比：从 BASE 到 MACRO-DIR，"下行低波"象限（最易误判、收益贫瘠）从 26.4% 压缩到 16.8%，"上行低波"（可转债出力时段）从 19.1% 提升到 28.7%。MACRO-BOTH 则退化成只有两个象限。</p>
+<hr>
+<h2 id="sec4">五、原理解析："三个为什么"</h2>
+<h3 id="sec5">5.1 为什么"换方向"有效（+0.108）</h3>
+<figure><img src="images/fig2_quadrant_share.png" alt="象限停留结构"><figcaption>象限停留结构</figcaption></figure>
+<p><strong>机理</strong>（三层）：</p>
+<ol><li><strong>原规则的方向判定先天会抖</strong>：SMA60 均线本身滞后约 1 个半月，价格贴着 ±5% 阈值反复穿越时判定会来回改口</li><li><strong>HMM 状态自带"不退就不改向"的惰性</strong>：自转移概率约 0.98，一旦判定进入某机制，平均停留 29 日；配合"过渡态维持上一判断"的设计，方向从"每天考试"变成"机制不退就不改卷"</li><li><strong>影响的是时间分配</strong>：该进攻的时间变多（上行低波 19%→29%）、最尴尬的格局变少（下行低波 26%→17%）——<strong>不是猜对更多涨跌，而是减少无效防守</strong></li></ol>
+<p><strong>注意收益构成</strong>：夏普的提升几乎全部来自波动下降（2.01%→1.86%），年化只多了 0.03pp。<strong>这是一个"更稳"的改造，不是"更能赚"的改造</strong>。</p>
+<p><strong>熊市验证</strong>：2022 年产品层 MACRO-DIR +0.18%（BASE -0.05%），为全场少数正收益臂——宏观状态对收缩期的识别提供了实际防守价值。</p>
+<h3 id="sec5">5.2 为什么"换波动"没用（-0.019）</h3>
+<p>一句话：<strong>没有新信息</strong>。</p>
+<p>原规则的波动判定（HV20 百分位）与 HMM 的波动标签，都在测量"市场波动的高低"——HMM 的波动维度本身就是从价格算出来的（logRV20），与 HV20 高度同源。换波动就像<strong>把温度计从摄氏度改成华氏度</strong>：读数形式变了，测量对象没变。</p>
+<p>且波动判定一旦判错，会通过"×1.5 侧重"机制放大错误。实测两版换波动（1.06 / 1.16）都低于 BASE——结论：<strong>这个位置保持原规则就好</strong>。</p>
+<h3 id="sec5">5.3 为什么"定象限"反而变差（-0.061）</h3>
+<p>两个原因：</p>
+<ol><li><strong>容量不够</strong>：3 个隐状态最多表达 2 个象限 + 1 个过渡，2×2 四种组合必然缺位。实测 MACRO-BOTH 退化成"下行高波 42% + 上行低波 58%"的二象限摆动系统</li><li><strong>方向标签不可信</strong>：HMM 的状态语义是按波动大小排序定义的，"低波≈上行、高波≈下行"只是我们贴上的假设。跨实验诊断推翻了它：A 股历史上，宏观 HMM 的"高波危机"状态里条件年化收益为 <strong>+22%</strong>——高波动并不等于下跌（暴涨同样伴随高波动）</li></ol>
+<p><strong>同一 HMM 的三种用法对照</strong>：</p>
+<table><tr><th>用法</th><th>效果（vs BASE）</th></tr><tr><td>只用它换方向</td><td><strong>+0.108</strong>（有效）</td></tr><tr><td>只用它换波动</td><td>-0.019（无效）</td></tr><tr><td>两维都用（定象限）</td><td>-0.061（被方向标签的噪声拖累）</td></tr></table>
+<h3 id="sec5">5.4 逐臂小结</h3>
+<table><tr><th>臂</th><th>做了什么</th><th>结果</th><th>一句话点评</th></tr><tr><td>BASE</td><td>不换（基准）</td><td>1.181</td><td>简单但有效的起点</td></tr><tr><td>PX-DIR</td><td>价格状态换方向</td><td>+0.107</td><td>推荐候选：一致性最好（85.7% 区间跑赢）</td></tr><tr><td>PX-VOL</td><td>价格状态换波动</td><td>-0.122</td><td>信息冗余，明确不推荐</td></tr><tr><td>PX-BOTH</td><td>价格状态定象限</td><td>-0.012</td><td>容量不足，无功无过</td></tr><tr><td>MACRO-DIR</td><td>宏观状态换方向</td><td>+0.108</td><td>推荐候选：风险指标全场最优</td></tr><tr><td>MACRO-VOL</td><td>宏观状态换波动</td><td>-0.019</td><td>同 PX-VOL，不推荐</td></tr><tr><td>MACRO-BOTH</td><td>宏观状态定象限</td><td>-0.061</td><td>方向标签噪声拖累</td></tr></table>
+<h3 id="sec5">5.5 价格与宏观怎么选</h3>
+<table><tr><th>比较项</th><th>PX-DIR</th><th>MACRO-DIR</th></tr><tr><td>产品层夏普 / 增益</td><td>1.288 / +0.107</td><td>1.289 / +0.108</td></tr><tr><td>波动 / 最大回撤 / Calmar</td><td>1.90% / -2.66% / 1.673</td><td><strong>1.86% / -2.58% / 1.703</strong></td></tr><tr><td>多区间正差占比</td><td><strong>85.7%</strong>（12/14）</td><td>64.3%（9/14）</td></tr><tr><td>多区间平均优势</td><td>+0.184</td><td><strong>+0.247</strong></td></tr><tr><td>性格</td><td>稳（几乎每段都赢一点）</td><td>弹性大（平均赢更多，但个别段输）</td></tr></table>
+<p><strong>仲裁</strong>：增益几乎等价，差异在性格。看重"逐段时间都稳"→ PX-DIR；看重"风险指标最优"→ MACRO-DIR。</p>
+<hr>
+<h2 id="sec5">六、稳定性检验（14 个子区间）</h2>
+<p>把 6.6 年切成 14 个子区间（7 个年度 + 5 个两年滚动窗 + 前后半段），每段都算"该臂夏普 − BASE 夏普"：</p>
+<figure><img src="images/fig3_robustness_heat.png" alt="多区间夏普差热图"><figcaption>多区间夏普差热图</figcaption></figure>
+<table><tr><th>臂</th><th>跑赢区间数</th><th>比例</th><th>平均优势</th><th>最差区间</th></tr><tr><td><strong>PX-DIR</strong></td><td><strong>12/14</strong></td><td><strong>85.7%</strong></td><td>+0.184</td><td>-0.306（2025）</td></tr><tr><td>MACRO-DIR</td><td>9/14</td><td>64.3%</td><td><strong>+0.247</strong></td><td>-0.208（2025）</td></tr><tr><td>PX-VOL</td><td>4/14</td><td>28.6%</td><td>-0.114</td><td>—</td></tr><tr><td>PX-BOTH</td><td>5/14</td><td>35.7%</td><td>+0.010</td><td>—</td></tr><tr><td>MACRO-VOL</td><td>7/14</td><td>50.0%</td><td>-0.040</td><td>—</td></tr><tr><td>MACRO-BOTH</td><td>4/14</td><td>28.6%</td><td>-0.050</td><td>—</td></tr></table>
+<p>读图：<strong>前两列（DIR 类）绿色连片，2025 年两列同时转红</strong>——这是全实验最大的警示点。</p>
+<p><strong>跨框架互证</strong>：在另一条更长的实验线上（2014-2026，12.6 年、31 个子区间、不同的资产框架），方向条件修正（HMM-A2）同样表现为"小幅正期望"（61.3% 区间正差、平均 +0.029）——<strong>"方向有效、波动无效"的规律在更长样本上成立</strong>。</p>
+<hr>
+<h2 id="sec6">七、结论与落地建议</h2>
+<ol><li><strong>采纳形态</strong>：保留原规则波动判定（HV20 百分位），把方向判定替换为 HMM 状态映射（0→上行、2→下行、过渡态维持）。实现成本低：分配器、产品层、调仓流程零改动</li><li><strong>版本选择</strong>：一致性优先选 PX-DIR（85.7% 区间跑赢）；风险指标与平均优势优先选 MACRO-DIR</li><li><strong>风险提示（诚实清单）</strong>：</li></ol>
+<ul><li>2025 年 DIR 类落后 BASE（3.87%/3.89% vs 4.45%）——机制信号对快速风格切换存在滞后</li><li>样本仅 6.3 年交易口径，不宜过度外推</li><li>替换后换手上升（组合层 1.00x vs 0.46x），成本敏感场景需复核</li></ul>
+<ol><li><strong>纪律要求</strong>：任何上线评估必须使用因果口径（本报告口径），禁止使用"段内平滑"类含未来信息的版本（会虚增近一倍增益）</li></ol>
+<hr>
+<h2 id="sec7">八、后续待补充工作</h2>
+<table><tr><th>#</th><th>工作</th><th>为什么重要</th></tr><tr><td>1</td><td>HMM 重训频率敏感性（63 天→21 天）</td><td>状态平均停留 29 天 + 只在月初调仓，可能存在反应延迟</td></tr><tr><td>2</td><td>2025 年 DIR 拖累归因</td><td>判断是"信号慢半拍"还是"映射失灵"，决定要不要"机制+趋势"双确认</td></tr><tr><td>3</td><td>调仓联动测试</td><td>状态月中变化要等下月初（最长 20 天时滞），试"状态切换即触发"</td></tr><tr><td>4</td><td>过渡态软处理</td><td>过渡态占 45% 时间且一律"维持"，可改为按概率软过渡</td></tr><tr><td>5</td><td>显式方向建模</td><td>给 HMM 加趋势特征或扩到 4 状态，从根上解决"方向标签不可信"</td></tr><tr><td>6</td><td>成本压力测试</td><td>换手上升后的滑点敏感性验证</td></tr><tr><td>7</td><td>BL 同风险对照</td><td>BL 系列与机制臂风险预算不同（5% vs 1.9%），需同风险下重比（承接前序）</td></tr><tr><td>8</td><td>实时推演验证</td><td>以最新数据按月滚动模拟，检验可部署性</td></tr></table>
+<hr>
+<h2 id="sec8">附录 A：技术口径与诊断</h2>
+<p><strong>HMM 参数</strong>：3 状态；训练窗口 500 日；每 63 交易日重训；8 随机种子重启；持续性过滤 persist≥0.55；状态语义按波动维度均值排序固定；推理用对数域前向滤波（严格因果）。</p>
+<p><strong>观测设计</strong>：价格 HMM = 沪深300 [日收益, logRV20]（2 维）；宏观 HMM = [增长 ΔPMI(63), 通胀 ΔPPI-CPI(21), 流动性 10Y-2Y 期限利差, 波动 logRV20]，滚动 Z-Score(252) 截断 ±4（4 维）；各指标的原始定义与数据来源见 2.4 节。</p>
+<p><strong>映射规则</strong>：状态 0 → up/low_vol；状态 2 → down/high_vol；状态 1 → 维持上一状态。象限 → 子策略：up_low_vol→可转债、up_high_vol→多资产、down_low_vol→红利、down_high_vol→雪球。</p>
+<p><strong>拟合质量</strong>：价格 HMM 29/29 段达标（最新段 2026-06-04 起，persist 0.960；自转移 0.970/0.980/0.960）；宏观 HMM 64/64 段达标（最新段 2026-06-02 起，persist 0.981；自转移 0.983/0.982/0.981）。</p>
+<p><strong>前瞻偏差对照</strong>：任务 A 平滑口径增益 +0.204 → 本实验因果口径 +0.107（虚增约一半）。</p>
+<h2 id="sec9">附录 B：术语表</h2>
+<table><tr><th>术语</th><th>含义</th></tr><tr><td>夏普比率</td><td>（年化收益 − 无风险利率）÷ 年化波动率。每承担一单位"日常起伏"风险的超额收益。rf=2%</td></tr><tr><td>Calmar（卡玛）比率</td><td>年化收益 ÷ 最大回撤绝对值。每承担一单位"最坏亏损"的收益</td></tr><tr><td>最大回撤（MDD）</td><td>净值从最高点到后续最低点的最大跌幅</td></tr><tr><td>SMA60</td><td>60 日简单移动平均线（约 3 个月的价格中枢）</td></tr><tr><td>HV20</td><td>20 日历史波动率；原规则用其在过去 252 日的百分位（30/70 分界）判断高/低波</td></tr><tr><td>HMM</td><td>隐马尔可夫模型；从数据中无监督学习"隐藏的状态链"的统计模型</td></tr><tr><td>前向滤波</td><td>只用当前及历史数据推断当前状态的方法（无未来函数）</td></tr><tr><td>过渡态</td><td>HMM 的中间状态（状态 1）；本实验定义为"维持上一判断"</td></tr></table>
+<h2 id="sec10">附录 C：交付物清单</h2>
+<table><tr><th>类型</th><th>路径</th></tr><tr><td>实验脚本</td><td><code>scripts/quadrant_signal_compare_experiment.py</code></td></tr><tr><td>多区间检验脚本</td><td><code>scripts/multi_period_robustness.py</code></td></tr><tr><td>配图生成脚本</td><td><code>scripts/quadrant_report_charts.py</code></td></tr><tr><td>结果导出</td><td><code>exports/_quadrant_signal_compare_20260930_151259.json / .xlsx / .png</code></td></tr><tr><td>多区间导出</td><td><code>exports/multi_period_robustness_20260930_160751.xlsx</code></td></tr><tr><td>日志</td><td><code>logs/_quadrant_signal_compare_experiment.txt</code>、<code>logs/_multi_period_robustness.txt</code></td></tr><tr><td>配图</td><td><code>docs/images/fig1_sharpe.png</code> ~ <code>fig6_drawdown.png</code></td></tr></table>
+</body>
+</html>

@@ -114,65 +114,28 @@ class PriceImporterMixin:
     依赖宿主（AssetService）：price_collection / db 属性。
     """
 
-    async def load_trade_calendar_date_set(self) -> Optional[Set[str]]:
+    async def load_asset_calendar_date_set(self) -> Optional[Set[str]]:
         """
-        加载交易日集合（YYYY-MM-DD），用于导入时跳过非交易日。
+        加载资产行情日历集合（YYYY-MM-DD），来源为 Mongo ``asset_prices`` 全资产
+        日期并集。无行情数据时返回 None。
 
-        同时读取 Mongo ``trade_dates`` 集合与 ``data/trade_dates.xlsx`` 并取并集，
-        任一来源认为是交易日即视为交易日，避免增量只同步了某一边（如只更新了 xlsx 
-        但未同步到 Mongo）时部分交易日被误判为非交易日。两者皆无有效数据时返回 None，
-        导入不做日历过滤。
+        用途：K线显示按交易日过滤（get_asset_kline，all_calendar_days=False 时）、
+        价格覆盖缺口检测的参考日历（get_price_coverage_gaps）。系统已不以 Mongo
+        ``trade_dates`` 集合作为系统级日历参考——该集合仅研究员策略 sharpe_18/
+        hybrid_12 使用。
         """
         out: Set[str] = set()
-
-        # 来源 1：Mongo trade_dates 集合
-        mongo_count = 0
-        try:
-            from app.config.collections import COL_TRADE_DATES
-            col = self.db[COL_TRADE_DATES]
-            cursor = col.find({}).sort("date", 1)
-            records = await cursor.to_list(length=None)
-            for r in records or []:
-                dt = r.get("date")
-                if dt is None:
-                    continue
-                if hasattr(dt, "strftime"):
-                    out.add(dt.strftime("%Y-%m-%d")[:10])
-                    mongo_count += 1
-                elif isinstance(dt, str):
-                    s = dt.strip()
-                    if len(s) >= 10:
-                        out.add(s[:10])
-                        mongo_count += 1
-        except Exception:
-            pass
-
-        # 来源 2：data/trade_dates.xlsx，无论 Mongo 是否有值都合并
-        xlsx_count = 0
-        try:
-            from app.data.trade_dates import load_trade_dates
-
-            loaded = load_trade_dates()
-            if loaded:
-                _, td_set = loaded
-                for d in td_set:
-                    out.add(pd.Timestamp(d).strftime("%Y-%m-%d"))
-                    xlsx_count += 1
-        except Exception:
-            pass
-
-        if not out:
-            return None
-        # 调试日志：便于后续排查两侧是否同步
-        try:
-            max_date = max(out)
-            print(
-                f"[trade_calendar] mongo={mongo_count} xlsx={xlsx_count} "
-                f"union={len(out)} max_date={max_date}"
-            )
-        except Exception:
-            pass
-        return out
+        raw = await self.price_collection.distinct("date")
+        for dt in raw or []:
+            if dt is None:
+                continue
+            if hasattr(dt, "strftime"):
+                out.add(dt.strftime("%Y-%m-%d")[:10])
+            elif isinstance(dt, str):
+                s = dt.strip()
+                if len(s) >= 10:
+                    out.add(s[:10])
+        return out or None
 
     async def get_price_coverage_gaps(
         self,
@@ -181,23 +144,18 @@ class PriceImporterMixin:
         end_date: datetime,
     ) -> Dict[str, Any]:
         """
-        对比「区间内应有交易日」与 Mongo 中已有行情日期，返回缺失日列表。
-        优先使用 data/trade_dates.xlsx；若无文件则用工作日（周一至周五）近似。
+        对比「区间内应有交易日」与 Mongo 中该资产已有行情日期，返回缺失日列表。
+        参考日历为资产行情日期并集（全资产，load_asset_calendar_date_set）；
+        无资产日历时用工作日（周一至周五）近似。缺日含义为「其他资产有行情、
+        该资产没有」的日期。
         """
-        from app.data.trade_dates import load_trade_dates
-
         s_str = start_date.strftime("%Y-%m-%d")
         e_str = end_date.strftime("%Y-%m-%d")
 
-        loaded = load_trade_dates()
-        if loaded:
-            td_list, _ = loaded
-            expected: List[str] = []
-            for d in td_list:
-                ds = pd.Timestamp(d).strftime("%Y-%m-%d")
-                if s_str <= ds <= e_str:
-                    expected.append(ds)
-            mode = "trade_calendar"
+        td_set = await self.load_asset_calendar_date_set()
+        if td_set:
+            expected: List[str] = sorted(ds for ds in td_set if s_str <= ds <= e_str)
+            mode = "asset_calendar"
         else:
             bdays = pd.bdate_range(start=s_str, end=e_str)
             expected = [x.strftime("%Y-%m-%d") for x in bdays]
@@ -259,7 +217,8 @@ class PriceImporterMixin:
         新交易日：须在行内提供大于 0 的收盘价（不接受仅用开/高/低推断），以便先建收盘价再补其他字段。
         已存在交易日：若本行未带有效收盘价，则库中该日须已有大于 0 的收盘价，否则拒绝（规模/成交额/OHLC 等须在收盘价之后导入）。
         replace_existing=True 时全量替换：每行均须提供大于 0 的收盘价（此时忽略 only_missing_dates）。
-        若系统存在交易日历（Mongo ``trade_dates`` 或 ``data/trade_dates.xlsx``），则文件中**非交易日**的行一律跳过（不计错），避免收盘价含假期时把 OHLC/规模/成交额等写入非交易日。
+        所有自然日价格均按原样落库，不再按交易日历过滤（多市场资产的非 A股交易日价格须完整保留；
+        交易日历仅在计算侧门控调仓/T+2 等操作）。响应字段 skipped_non_trade_days 保留以兼容旧调用方，恒为 0。
         progress_*：可选，供前端轮询展示导入进度。
         """
         if replace_existing:
@@ -294,20 +253,12 @@ class PriceImporterMixin:
                 message=message,
             )
 
-        # 须在 load_trade_calendar_date_set 等耗时步骤之前写入进度，否则前端轮询长时间 data=null
+        # 先写入进度，避免前端轮询长时间 data=null
         if progress_id and total_count:
-            await _prog("prepare", prepare_done=0, message="开始处理（加载交易日历…）")
+            await _prog("prepare", prepare_done=0, message="开始处理…")
 
-        trade_calendar: Optional[Set[str]] = await self.load_trade_calendar_date_set()
-        if trade_calendar:
-            print(
-                f"[行情导入-service] 已加载交易日历 {len(trade_calendar)} 天，将跳过不在历内的日期"
-            )
-        else:
-            print(
-                "[行情导入-service] 未加载到交易日历（Mongo trade_dates 与 data/trade_dates.xlsx 均为空），"
-                "不按日历过滤日期"
-            )
+        # 不再按交易日历过滤：所有自然日价格均落库（多市场资产的非 A股交易日价格须完整保留）。
+        # 交易日历仅在计算侧（监控/回测引擎的调仓、T+2 门控）与 K线显示侧使用。
 
         print(
             f"[行情导入-service] asset_code={asset_code} 待导入 {total_count} 条 "
@@ -342,9 +293,6 @@ class PriceImporterMixin:
                 if not prep:
                     continue
                 date_formatted, sparse = prep
-                if trade_calendar is not None and date_formatted not in trade_calendar:
-                    skipped_non_trade_days += 1
-                    continue
                 if not _explicit_close_positive(sparse):
                     error_count += 1
                     err_msg = (
@@ -375,8 +323,7 @@ class PriceImporterMixin:
                     )
                 else:
                     # n_doc=0 说明没有可写入的数据，告知前端跳过原因
-                    reason = f"无待写入数据（已跳过 {skipped_non_trade_days} 条非交易日，"
-                    reason += f"{error_count} 条无效数据）"
+                    reason = f"无待写入数据（{error_count} 条无效数据）"
                     await _prog(
                         "done",
                         prepare_done=total_count,
@@ -414,9 +361,6 @@ class PriceImporterMixin:
                 prep = _prepare_row(idx, pd_item, errors)
                 if prep:
                     date_formatted, sparse = prep
-                    if trade_calendar is not None and date_formatted not in trade_calendar:
-                        skipped_non_trade_days += 1
-                        continue
                     prepared.append((idx, date_formatted, sparse))
                 if progress_id and total_count and ((idx + 1) % 200 == 0 or (idx + 1) == total_count):
                     await _prog(
@@ -499,8 +443,7 @@ class PriceImporterMixin:
                     )
                 else:
                     # n_op=0 说明没有可写入的数据，告知前端跳过原因
-                    reason = f"无待写入操作（已跳过 {skipped_existing_rows} 条已有日期，"
-                    reason += f"{skipped_non_trade_days} 条非交易日）"
+                    reason = f"无待写入操作（已跳过 {skipped_existing_rows} 条已有日期）"
                     await _prog(
                         "done",
                         prepare_done=len(prepared),
@@ -665,7 +608,7 @@ class PriceImporterMixin:
         预览导入影响：库内已有区间 + 按日合并 vs 全量覆盖 两种模式下的条数/日期区间。
         replace_existing=false：同日 upsert，重叠日为更新、新日为插入。
         replace_existing=true：删除该资产全部行情后插入文件中的行。
-        与 import_price_data 一致：若已加载交易日历，文件中不在历内的日期不计入预览（避免「显示将新增」实际写入被跳过）。
+        与 import_price_data 一致：所有自然日价格均计入预览（不再按交易日历过滤，避免预览与实际写入不一致）。
         """
         empty = {
             "target_code": target_code or "",
@@ -693,7 +636,8 @@ class PriceImporterMixin:
         if not target_code or not prices:
             return empty
 
-        trade_calendar: Optional[Set[str]] = await self.load_trade_calendar_date_set()
+        # 不再按交易日历过滤：所有自然日价格均计入预览（与 import_price_data 实际写入一致）。
+        # skipped_non_trade_rows 保留字段以兼容旧调用方，恒为 0。
         skipped_non_trade_rows = 0
         norm_file_dates: List[str] = []
         for p in prices:
@@ -703,9 +647,6 @@ class PriceImporterMixin:
             try:
                 ds = _normalize_import_date(pd.get("date"))
             except Exception:
-                continue
-            if trade_calendar is not None and ds not in trade_calendar:
-                skipped_non_trade_rows += 1
                 continue
             norm_file_dates.append(ds)
         empty["skipped_non_trade_rows"] = skipped_non_trade_rows
@@ -734,8 +675,6 @@ class PriceImporterMixin:
             try:
                 ds = _normalize_import_date(pd.get("date"))
             except Exception:
-                continue
-            if trade_calendar is not None and ds not in trade_calendar:
                 continue
             date_to_sparses[ds].append(_sparse_price_fields(pd))
 
@@ -773,8 +712,6 @@ class PriceImporterMixin:
             try:
                 ds = _normalize_import_date(pd.get("date"))
             except Exception:
-                continue
-            if trade_calendar is not None and ds not in trade_calendar:
                 continue
             if _explicit_close_positive(_sparse_price_fields(pd)):
                 ins_full += 1

@@ -4,7 +4,7 @@
 import asyncio
 import re
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import Iterable, List, Optional, Dict, Any, Set
 from bson import ObjectId
 from loguru import logger
 from app.config.database import Database
@@ -48,7 +48,9 @@ class AssetService(ExcelLayoutMixin, PriceImporterMixin):
     Excel 宽表布局推断/解析见 ExcelLayoutMixin（excel_layout.py）；
     行情导入引擎（写入/预览/缺口）见 PriceImporterMixin（price_importer.py）。
     """
-    
+
+    _indexes_ready: bool = False
+
     def __init__(self):
         self._db = None
         self._collection = None
@@ -104,6 +106,24 @@ class AssetService(ExcelLayoutMixin, PriceImporterMixin):
             data['_id'] = str(data['_id'])
             return Asset(**data)
         return None
+
+    async def filter_existing_codes(self, codes: Iterable[str]) -> Set[str]:
+        """筛出已存在于资产主数据的代码集合（只投影 code，不构建 Asset 对象）。
+
+        供其他服务批量校验代码引用完整性。精确匹配，不做任何容错降级；
+        需要容错匹配时逐个走 find_asset_by_code_tolerant。
+
+        Args:
+            codes: 待校验的证券代码可迭代对象
+
+        Returns:
+            库内确实存在的代码集合
+        """
+        unique = sorted({str(c).strip() for c in codes if c and str(c).strip()})
+        if not unique:
+            return set()
+        found = await self.collection.distinct("code", {"code": {"$in": unique}})
+        return set(found)
 
     @staticmethod
     def _normalize_code_str(s: str) -> str:
@@ -252,6 +272,43 @@ class AssetService(ExcelLayoutMixin, PriceImporterMixin):
                     out[v] = name
         return out
     
+    async def ensure_indexes(self) -> None:
+        """创建资产表的查询索引（幂等，进程内仅首次执行）。
+
+        ``tags`` 是多值字段，需要多键索引才能让「按标签筛资产」走索引；
+        策略预设按 ``pool:`` / ``class:`` / ``market:`` 前缀展开资产池，
+        该查询在生产环境会反复执行。
+        """
+        if AssetService._indexes_ready:
+            return
+        await self.collection.create_index(
+            [("code", 1)], name="idx_asset_code"
+        )
+        await self.collection.create_index(
+            [("tags", 1)], name="idx_asset_tags"
+        )
+        AssetService._indexes_ready = True
+
+    async def list_asset_tags(self) -> List[Dict[str, Any]]:
+        """返回全部已用标签及使用次数（供前端筛选与预设编辑）. 
+
+        ``unwind`` 展开 tags 数组后按标签分组计数，按使用次数降序；
+        无标签资产不参与统计。
+        """
+        pipeline = [
+            {"$match": {"tags": {"$exists": True, "$ne": []}}},
+            {"$unwind": "$tags"},
+            {"$group": {"_id": "$tags", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1, "_id": 1}},
+        ]
+        cursor = self.collection.aggregate(pipeline)
+        out: List[Dict[str, Any]] = []
+        async for doc in cursor:
+            tag = str(doc.get("_id") or "").strip()
+            if tag:
+                out.append({"tag": tag, "count": int(doc.get("count") or 0)})
+        return out
+
     def _build_asset_query(
         self,
         asset_type: Optional["AssetType"] = None,
@@ -259,11 +316,16 @@ class AssetService(ExcelLayoutMixin, PriceImporterMixin):
         keyword: Optional[str] = None,
         code: Optional[str] = None,
         name: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """构建资产查询条件（供 list_assets / count_assets 复用）。"""
         query: Dict[str, Any] = {"is_active": is_active} if is_active else {}
         if asset_type:
             query["asset_type"] = asset_type
+        tag_list = [t.strip() for t in (tags or []) if t and t.strip()]
+        if tag_list:
+            # 多标签取交集（$all）；单标签走等值，命中多键索引更直接
+            query["tags"] = {"$all": tag_list} if len(tag_list) > 1 else tag_list[0]
 
         if keyword is not None and (kw := keyword.strip()):
             pattern = re.escape(kw)
@@ -296,6 +358,7 @@ class AssetService(ExcelLayoutMixin, PriceImporterMixin):
         keyword: Optional[str] = None,
         code: Optional[str] = None,
         name: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> List[Asset]:
         """
         查询资产列表
@@ -308,10 +371,11 @@ class AssetService(ExcelLayoutMixin, PriceImporterMixin):
             keyword: 按名称/代码关键字模糊匹配（Mongo 正则，不区分大小写）
             code: 资产代码模糊过滤（与 name 做 AND，keyword 存在时忽略）
             name: 资产名称模糊过滤（与 code 做 AND，keyword 存在时忽略）
+            tags: 业务标签过滤，多个标签取交集
         """
         query = self._build_asset_query(
             asset_type=asset_type, is_active=is_active,
-            keyword=keyword, code=code, name=name,
+            keyword=keyword, code=code, name=name, tags=tags,
         )
         cursor = self.collection.find(query).skip(skip).limit(limit)
         assets = []
@@ -328,11 +392,12 @@ class AssetService(ExcelLayoutMixin, PriceImporterMixin):
         keyword: Optional[str] = None,
         code: Optional[str] = None,
         name: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> int:
         """返回满足条件的资产总数，与 list_assets 使用相同查询条件。"""
         query = self._build_asset_query(
             asset_type=asset_type, is_active=is_active,
-            keyword=keyword, code=code, name=name,
+            keyword=keyword, code=code, name=name, tags=tags,
         )
         return await self.collection.count_documents(query)
 
@@ -340,7 +405,7 @@ class AssetService(ExcelLayoutMixin, PriceImporterMixin):
         self,
         base_filter: Dict[str, Any],
         skip: int = 0,
-        limit: int = 500,
+        limit: int = 5000,
         code: Optional[str] = None,
         name: Optional[str] = None,
     ) -> List[Asset]:
@@ -385,6 +450,11 @@ class AssetService(ExcelLayoutMixin, PriceImporterMixin):
     
     async def update_asset(self, asset_id: str, update_data: Dict[str, Any]) -> bool:
         """更新资产"""
+        update_data = dict(update_data)
+        if "tags" in update_data:
+            # 前端多选传数组、Excel 可能传字符串，入库前统一去空去重
+            from app.models.asset import normalize_tags
+            update_data["tags"] = normalize_tags(update_data["tags"])
         update_data['updated_at'] = datetime.now()
         result = await self.collection.update_one(
             {"_id": ObjectId(asset_id)},
@@ -722,6 +792,18 @@ class AssetService(ExcelLayoutMixin, PriceImporterMixin):
 
     @staticmethod
     def _infer_asset_type(name: str, code: str) -> AssetType:
+        """按中文名关键词与代码片段猜测旧版 asset_type（兜底建议，可能出错）.
+
+        仅用于宽表导入自动建资产时补全维度（Asset 的
+        ``backfill_legacy_dimensions`` 再由旧 asset_type 回填
+        instrument_type / asset_class / security_type）。资产 code 与名称
+        自由命名时，关键词猜测很容易误判（如名称含“债”但实为债券 ETF、
+        含“黄金”但实为股票型金企）。
+
+        不在导入侧修正：策略侧由 ``DataContract.expected_asset_class`` 在运行前
+        门禁拦住猜错结果（见 ``app/backtesting/data_contract.py`` 与
+        ``services/strategy_data_contract_service.py``），修正入口为资产管理页编辑。
+        """
         n, c = str(name), str(code).upper()
         if "债" in n or ".CS" in c:
             return AssetType.BOND

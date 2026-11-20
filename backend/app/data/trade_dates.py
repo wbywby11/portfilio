@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""交易日历：从项目根目录 ``data/trade_dates.xlsx`` 加载，供策略发布、回测等复用。"""
+"""交易日历离线加载工具：从 ``data/trade_dates.xlsx`` 读取。
+
+仅供一次性导入脚本使用（将研究员日历 xlsx 播种入 Mongo trade_dates 集合）；
+系统运行时（监控/回测/实盘发布/K线过滤）一律以 Mongo trade_dates 集合为唯一来源，
+不再调用本模块。
+"""
 from __future__ import annotations
 
 from pathlib import Path

@@ -1081,12 +1081,31 @@ export default {
       };
       this.manualSubmitting = true;
       try {
-        await importPricesJson({
+        const res = await importPricesJson({
           asset_code: this.selectedAsset,
           replace_existing: false,
           prices: [row]
         });
-        this.$message.success('已保存该日行情');
+        const data = res && res.data !== undefined ? res.data : res;
+        const inserted = data && data.inserted_count != null ? data.inserted_count : 0;
+        const updated = data && data.updated_count != null ? data.updated_count : 0;
+        const errCount = data && data.error_count != null ? data.error_count : 0;
+        const errMsgs = (data && data.errors) || [];
+
+        // 价格导入不再按交易日历过滤：非交易日行情同样会落库。
+        // 仅在确实未写入任何数据时如实反馈，避免「未写入却提示已保存」的假成功。
+        if (inserted + updated === 0) {
+          if (errCount > 0) {
+            this.$message.error(String(errMsgs[0] || '保存失败：数据校验未通过'));
+          } else {
+            this.$message.warning('未录入任何数据：该日行情可能已存在或本次无有效变更');
+          }
+          return;
+        }
+
+        this.$message.success(
+          inserted > 0 ? `已保存 ${row.date} 的行情` : `已更新 ${row.date} 的行情`
+        );
         this.resetManualOhlcEdited();
         this.manualForm.date = '';
         await this.fetchData();
@@ -1430,11 +1449,6 @@ export default {
     formatMultiImportEffect(row) {
       const p = row.import_preview;
       if (!p) return '—';
-      const skippedCalRows = p.skipped_non_trade_rows != null ? p.skipped_non_trade_rows : 0;
-      const calHint =
-        skippedCalRows > 0
-          ? `（已按系统交易日历排除 ${skippedCalRows} 行非交易日，与真实导入一致）`
-          : '';
       if (this.multiImportMode === 'replace') {
         const fr = p.full_replace || {};
         const delc = fr.will_delete_count != null ? fr.will_delete_count : 0;
@@ -1443,7 +1457,7 @@ export default {
         if (fr.result_date_min && fr.result_date_max) {
           tail = `写入后日期约 ${fr.result_date_min}～${fr.result_date_max}（以文件为准）。`;
         }
-        return `将删除库内全部 ${delc} 条，再写入文件 ${ins} 行。${tail}${calHint}`;
+        return `将删除库内全部 ${delc} 条，再写入文件 ${ins} 行。${tail}`;
       }
       const m = p.merge_import || {};
       if (this.multiImportMode === 'only_new') {
@@ -1454,11 +1468,9 @@ export default {
             ? ` 新增区间约 ${m.new_dates_min}～${m.new_dates_max}。`
             : '';
         if (!ins && !skip) {
-          return (
-            (p.file_unique_date_count ? '按合并估算无可插入新日（或文件无有效新日）' : '无') + calHint
-          );
+          return p.file_unique_date_count ? '按合并估算无可插入新日（或文件无有效新日）' : '无';
         }
-        return (`仅新增：预计插入 ${ins} 个交易日；${skip} 个与库重叠的交易日将跳过不更新。${rg}`.trim() + calHint);
+        return `仅新增：预计插入 ${ins} 个交易日；${skip} 个与库重叠的交易日将跳过不更新。${rg}`.trim();
       }
       const parts = [];
       if (m.will_insert_count) {
@@ -1476,9 +1488,9 @@ export default {
         parts.push(`更新 ${m.will_update_count} 个交易日${rg}`);
       }
       if (!parts.length) {
-        return (p.file_unique_date_count ? '无有效可导入日期' : '无') + calHint;
+        return p.file_unique_date_count ? '无有效可导入日期' : '无';
       }
-      return parts.join('；') + '。' + calHint;
+      return parts.join('；') + '。';
     },
     async onMultiImportTargetChange(row) {
       if (row) {
@@ -1897,7 +1909,6 @@ export default {
       this.multiImportProgressLine = '';
       let ok = 0;
       let fail = 0;
-      let totalSkippedNonTrade = 0;
       const errs = [];
       try {
         for (let i = 0; i < rows.length; i++) {
@@ -1922,12 +1933,7 @@ export default {
           };
           this.startMultiImportProgressPoll(progressId);
           try {
-            const importRes = await importSingleAssetFromMulti(payload);
-            const inner = importRes && importRes.data !== undefined ? importRes.data : importRes;
-            const nt = inner && inner.skipped_non_trade_days != null ? inner.skipped_non_trade_days : 0;
-            if (nt > 0) {
-              totalSkippedNonTrade += nt;
-            }
+            await importSingleAssetFromMulti(payload);
             ok += 1;
           } catch (err) {
             fail += 1;
@@ -1937,11 +1943,7 @@ export default {
             this.stopMultiImportProgressPoll();
           }
         }
-        const ntTip =
-          totalSkippedNonTrade > 0
-            ? `；有 ${totalSkippedNonTrade} 条因不在系统交易日历内已跳过（请更新 trade_dates / trade_dates.xlsx）`
-            : '';
-        this.$message.success(`导入结束：成功 ${ok} 个，失败 ${fail} 个${ntTip}`);
+        this.$message.success(`导入结束：成功 ${ok} 个，失败 ${fail} 个`);
         if (errs.length) {
           this.$alert(errs.slice(0, 8).join('\n') + (errs.length > 8 ? '\n…' : ''), '失败明细', { type: 'error' });
         }
@@ -1972,10 +1974,8 @@ export default {
         );
         const data = result.data || result;
         const sk = data.skipped_count != null ? data.skipped_count : 0;
-        const nt = data.skipped_non_trade_days != null ? data.skipped_non_trade_days : 0;
-        const ntTip = nt > 0 ? `（非交易日历内 ${nt} 条已跳过）` : '';
         this.$message.success(
-          `导入完成！新增 ${data.inserted_count != null ? data.inserted_count : 0} 条，更新 ${data.updated_count != null ? data.updated_count : 0} 条，跳过 ${sk} 条，失败 ${data.error_count != null ? data.error_count : 0} 条${ntTip}`
+          `导入完成！新增 ${data.inserted_count != null ? data.inserted_count : 0} 条，更新 ${data.updated_count != null ? data.updated_count : 0} 条，跳过 ${sk} 条，失败 ${data.error_count != null ? data.error_count : 0} 条`
         );
         
         if (data.errors && data.errors.length > 0) {

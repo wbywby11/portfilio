@@ -4,6 +4,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, UploadFile, File
 from fastapi.responses import StreamingResponse
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 import os
 from pathlib import Path
 from typing import Optional
@@ -198,7 +199,14 @@ async def create_template(
             )
     
     template = ModelTemplate(**template_in.dict())
-    template_id = await service.create_template(template)
+    try:
+        template_id = await service.create_template(template)
+    except DuplicateKeyError:
+        # 部分唯一索引（code_unique_active）拦截：同 code 活跃模板已存在
+        raise HTTPException(
+            status_code=400,
+            detail=f"模板代码已存在: {template_in.code}，请使用其他代码",
+        )
     return Response.success(data=template_id, message="模板创建成功")
 
 

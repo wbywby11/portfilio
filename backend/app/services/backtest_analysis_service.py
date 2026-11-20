@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import math
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -25,6 +26,17 @@ from app.config.database import Database
 from app.services.strategy_model_service import StrategyModelService
 
 logger = logging.getLogger(__name__)
+
+# 分析口径的基准交易成本：与既有敏感性/情景对比口径一致（手续费 0.1%）。
+# 情景/敏感性结果必须包含成本，否则两组指标都不含成本，对比失去意义。
+_ANALYSIS_COMMISSION_RATE = 0.001
+
+# 单参数扫描取值上限：超过则等间距抽样（保端点），防止 step 过小导致笛卡尔积爆炸
+_MAX_GRID_VALUES = 10
+
+# get_param_grid 的进程内缓存：{canonical_code: {参数名: [取值...]}}
+# schema 是策略类的静态声明，运行期不会变化，缓存不设 TTL。
+_PARAM_GRID_CACHE: Dict[str, Dict[str, list]] = {}
 
 
 def _safe_float(v, default=0.0) -> float:
@@ -43,140 +55,234 @@ def _safe_float(v, default=0.0) -> float:
 # ======================================================================
 
 def get_param_grid(template_code: str) -> Dict[str, list]:
-    """获取策略模板的默认参数扫描网格。"""
-    if template_code == "etf_discount":
-        # ETF贴水率策略专用扫描网格
-        return {
-            "window": [20, 30, 60, 120],
-            "signal_type": ["open_long_p5", "open_long_p10", "open_long_p15", "open_long_p25"],
-            "max_leverage": [1.5, 2.0],
-            "position_limit": [0.10, 0.15, 0.20],
-        }
-    else:
-        # 通用策略的默认网格（常见参数）
-        return {
-            "target_vol": [0.03, 0.05, 0.07, 0.10],
-            "max_leverage": [1.0, 2.0, 3.0, 4.0],
-            "lookback_days": [60, 120, 260],
-        }
+    """获取策略模板真的参数扫描网格（按 get_param_schema 的声明推导）。
+
+    口径（S17）：
+        - 只抽「已声明搜索范围」的参数：数值/滑块类看 min_value+max_value
+          （step 缺省时按 4 等分），选择类看 options；其余类型（text /
+          checkbox / dict / boolean）不参与扫描；hidden 参数是固定值，不扫描；
+        - 无任何声明 → 返回空 dict（不伪造通用 3 键网格）；
+        - 单参数取值上限 10 个，超出时按等间距抽样并保端点，避免网格爆炸。
+
+    结果按典型化后的 code 做进程内缓存（schema 是静态类属性，不会运行中变化）。
+    """
+    from app.allocation.strategy_manifest import canonical_code, resolve_class_safe
+
+    code = canonical_code(str(template_code or "").strip())
+    if not code:
+        return {}
+    cached = _PARAM_GRID_CACHE.get(code)
+    if cached is not None:
+        return {name: list(values) for name, values in cached.items()}
+
+    grid: Dict[str, list] = {}
+    strategy_cls = resolve_class_safe(code)
+    if strategy_cls is not None:
+        try:
+            schema = strategy_cls.get_param_schema()
+        except Exception as exc:  # noqa: BLE001 —— 单个策略 schema 异常不得拖垮网格接口
+            logger.warning("[param_grid] %s get_param_schema 失败: %s", code, exc)
+            schema = None
+        for param in getattr(schema, "params", None) or []:
+            if getattr(param, "hidden", False):
+                continue
+            values = _grid_values_for_param(param)
+            if values:
+                grid[param.name] = values
+
+    _PARAM_GRID_CACHE[code] = {name: list(values) for name, values in grid.items()}
+    return grid
+
+
+def _grid_values_for_param(param: Any) -> list:
+    """单个参数 → 扫描取值；未声明范围返回空列表。"""
+    ptype = getattr(param, "type", None)
+    if ptype == "select":
+        return [opt[0] for opt in (getattr(param, "options", None) or []) if opt]
+    if ptype not in ("number", "slider"):
+        return []
+    lo = getattr(param, "min_value", None)
+    hi = getattr(param, "max_value", None)
+    if lo is None or hi is None:
+        return []
+    lo, hi = float(lo), float(hi)
+    if hi <= lo:
+        return []
+    step = getattr(param, "step", None)
+    step = float(step) if step else (hi - lo) / 4.0
+    if step <= 0:
+        return []
+    # 取值个数超过上限时按步长整数倍放大（保持落在声明步长网格上），
+    # 而不是按区间等分——后者会产生 128.8888… 这类无意义的搜索取值。
+    count = int((hi - lo) / step) + 1
+    if count > _MAX_GRID_VALUES:
+        factor = math.ceil((count - 1) / (_MAX_GRID_VALUES - 1))
+        step = step * factor
+    values: List[float] = []
+    value = lo
+    while value <= hi + step * 1e-9:
+        values.append(round(value, 10))
+        value += step
+    # 上界可能落在最后一个步长之外，作为端点补上（不超过上限个数）
+    if values and values[-1] < hi and len(values) < _MAX_GRID_VALUES:
+        values.append(round(hi, 10))
+    values = values[:_MAX_GRID_VALUES]
+    # 数值型参数保留整数形态，避免 60 变 60.0
+    if all(float(v).is_integer() for v in values):
+        return [int(v) for v in values]
+    return values
 
 
 # ======================================================================
 #  轻量级回测执行器（复用 BacktestEngine，不经过 HTTP 层）
 # ======================================================================
 
-async def _run_single_backtest(
-    model: Any,
-    param_overrides: Dict[str, Any],
-    start_date: str,
-    end_date: str,
-    initial_cash: float = 1_000_000,
-) -> Optional[Dict[str, Any]]:
-    """对指定策略模型执行一次回测，返回绩效指标摘要。
+@dataclass
+class _AnalysisRunSpec:
+    """一次分析回测的输入参数（集中封装，避免调用点参数散落）。"""
+
+    model: Any
+    start_date: str
+    end_date: str
+    initial_cash: float = 1_000_000
+    param_overrides: Dict[str, Any] = field(default_factory=dict)
+    scenario_shocks: Optional[Dict[str, float]] = None
+
+
+@dataclass
+class _SingleRunResult:
+    """单次分析回测结果：成功带 metrics，失败带 error（不静默吞成 None）。"""
+
+    metrics: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+def compute_metrics_from_result(result: Any) -> Dict[str, Any]:
+    """引擎结果 → 分析指标摘要（指标与交易成本同源于统一绩效内核）。
+
+    单独抽出为纯函数，便于用固定快照/成交构造的单元测试直接验证口径。
+
+    Args:
+        result: 引擎 BacktestResult，需含 snapshots 与 trades
+
+    Returns:
+        指标字典：年化收益/波动、夏普、回撤、Calmar、总收益，
+        以及成交笔数/累计手续费/累计滑点/累计换手率
+
+    Raises:
+        ValueError: 快照为空，无法产出净值序列
+    """
+    from app.backtesting.analytics import PerformanceAnalyzer
+
+    if not getattr(result, "snapshots", None):
+        raise ValueError("回测结果快照为空，无法计算绩效指标")
+    summary = PerformanceAnalyzer(risk_free_rate=0.02).from_results(
+        result.snapshots, result.trades
+    )
+    return {
+        "annual_return": _safe_float(summary.annual_return),
+        "annual_vol": _safe_float(summary.annual_volatility),
+        "sharpe": _safe_float(summary.sharpe_ratio),
+        "max_drawdown": _safe_float(summary.max_drawdown),
+        "calmar": _safe_float(summary.calmar_ratio),
+        "total_return": _safe_float(summary.total_return),
+        "annual_return_365": _safe_float(summary.annual_return_365),
+        "annual_vol_365": _safe_float(summary.annual_volatility_365),
+        "sharpe_365": _safe_float(summary.sharpe_ratio_365),
+        "calmar_365": _safe_float(summary.calmar_ratio_365),
+        "n_trades": int(summary.n_trades),
+        "total_commission": _safe_float(summary.total_commission),
+        "total_slippage": _safe_float(summary.total_slippage),
+        "turnover": _safe_float(summary.turnover),
+    }
+
+
+async def _run_single_backtest(spec: _AnalysisRunSpec) -> _SingleRunResult:
+    """对指定策略模型执行一次回测，返回指标摘要或失败原因。
+
+    与单策略回测同源：strategy_params 由 build_backtest_params 组装，
+    composition 由 build_strategy_composition 推导，调仓频率按
+    force_month_end 校正，风控参数经 _build_risk_config 透传。
+    scenario_shocks 非空时在 DataFeed 价格矩阵副本上施加冲击后再运行。
 
     Parameters
     ----------
-    model : StrategyModel
-        策略模型实例
-    param_overrides : dict
-        要覆盖的策略参数
-    start_date, end_date : str (YYYYMMDD)
-    initial_cash : float
+    spec : _AnalysisRunSpec
+        model / 日期区间 / 初始资金 / 参数覆盖 / 情景冲击
 
     Returns
     -------
-    dict or None:
-        {annual_return, annual_vol, sharpe, max_drawdown, calmar, total_return}
+    _SingleRunResult：metrics 与 error 二选一
     """
+    from app.services.backtest_service import BacktestService
+    from app.services.backtest_execution import _build_risk_config
     from app.services.market_service import MarketService
-    from app.services.asset_service import AssetService
+    from app.backtesting.composition_builder import build_strategy_composition
     from app.backtesting.config import BacktestConfig
-    from app.backtesting.data_feed import DataFeed, build_specialized_data_feed, sanitize_prices
+    from app.backtesting.data_feed import DataFeed, resolve_lookback_days
     from app.backtesting.runner import RunSpec, run_unified
-    from app.backtesting.analytics import PerformanceAnalyzer
     from app.allocation.services.registry import create_strategy_service_from_database
-    from app.models.asset import AssetType
-
-    strategy_type = model.template_code
-    asset_service = AssetService()
-    market_service = MarketService()
 
     try:
-        # 合并参数
-        params = {**(model.parameters or {}), **param_overrides}
-
-        # 构建 BacktestConfig
-        config = BacktestConfig(
-            name=f"sensitivity_{strategy_type}",
-            thscodes=model.asset_codes or [],
-            start_date=start_date,
-            end_date=end_date,
-            rebalance_freq="monthly",
-            initial_cash=initial_cash,
+        request_data = BacktestService(StrategyModelService()).to_backtest_request(
+            model=spec.model,
+            start_date=spec.start_date,
+            end_date=spec.end_date,
+            initial_cash=spec.initial_cash,
         )
-        config.use_index_nav = strategy_type not in ("manual_allocation", "manual_allocation_strategy")
+        strategy_type = request_data["strategy_type"]
+        thscodes = list(request_data["thscodes"] or [])
+        params = {**request_data["strategy_params"], **spec.param_overrides}
 
-        # 数据加载
-        _SPECIALIZED = {"etf_discount"}
-        if strategy_type in _SPECIALIZED:
-            data_feed = await build_specialized_data_feed(
-                strategy_type=strategy_type,
-                config=config,
-                lookback_days=500,
-            )
-            if strategy_type == "etf_discount":
-                config.thscodes = [
-                    str(c) for c in data_feed.prices.columns
-                    if not str(c).endswith("_discount") and not str(c).endswith("_dr")
-                ]
-                if not params.get("etf_codes"):
-                    import json
-                    params["etf_codes"] = json.dumps(config.thscodes)
-        else:
-            data_feed = await DataFeed.from_market_service(
-                market_service=market_service,
-                config=config,
-                lookback_days=500,
-            )
+        composition_spec = build_strategy_composition(strategy_type, thscodes, params)
+        config = BacktestConfig(
+            name=f"analysis_{strategy_type}",
+            thscodes=thscodes,
+            start_date=spec.start_date,
+            end_date=spec.end_date,
+            rebalance_freq=(
+                "month_end" if composition_spec.force_month_end
+                else request_data["rebalance_freq"]
+            ),
+            initial_cash=float(request_data["initial_cash"]),
+            commission_rate=_ANALYSIS_COMMISSION_RATE,
+        )
 
+        market_service = MarketService()
+        lookback_days = resolve_lookback_days(
+            params, request_data.get("lookback_days", 500), strategy_type=strategy_type
+        )
+        data_feed = await DataFeed.from_market_service(
+            market_service=market_service,
+            config=config,
+            lookback_days=lookback_days,
+            strategy_type=strategy_type,
+        )
         if data_feed.prices.empty:
-            return None
+            return _SingleRunResult(error="行情数据为空，无法执行回测")
+        if spec.scenario_shocks:
+            data_feed = data_feed.with_scenario_shocks(spec.scenario_shocks)
 
-        # 创建策略实例
-        strategy_service = await create_strategy_service_from_database(market_service=market_service)
-        strategy_cls = strategy_service.get_strategy_class(strategy_type)
-        strategy_impl = strategy_cls()
-        from app.allocation.builtin_templates import COMPOSITION_DEFAULTS
-        composition = COMPOSITION_DEFAULTS.get(strategy_type, {
-            "selector": None, "allocator": strategy_type, "controller": None
-        })
-
-        # 经唯一引擎入口运行回测（敏感性分析口径：手续费 0.1%，默认风控）
-        config.commission_rate = 0.001
+        strategy_service = await create_strategy_service_from_database(
+            market_service=market_service
+        )
+        strategy_impl = strategy_service.get_strategy_class(strategy_type)()
         result = run_unified(RunSpec(
             config=config,
             data_feed=data_feed,
             allocator=strategy_impl,
-            thscodes=config.thscodes,
-            composition=composition,
+            thscodes=thscodes,
+            composition=composition_spec.composition,
             strategy_params=params,
+            risk_config=_build_risk_config(params),
         ))
-
-        # 绩效分析
-        analyzer = PerformanceAnalyzer()
-        summary = analyzer.analyze(result.snapshots, result.trades)
-
-        return {
-            "annual_return": _safe_float(summary.annual_return),
-            "annual_vol": _safe_float(summary.annual_volatility),
-            "sharpe": _safe_float(summary.sharpe_ratio),
-            "max_drawdown": _safe_float(summary.max_drawdown),
-            "calmar": _safe_float(summary.calmar_ratio),
-            "total_return": _safe_float(summary.total_return),
-        }
-    except Exception as e:
-        logger.warning("[sensitivity] 单次回测失败 params=%s: %s", param_overrides, e)
-        return None
+        return _SingleRunResult(metrics=compute_metrics_from_result(result))
+    except Exception as exc:
+        logger.exception(
+            "[analysis] 单次回测失败 model=%s params=%s",
+            getattr(spec.model, "id", None), spec.param_overrides,
+        )
+        return _SingleRunResult(error=f"{type(exc).__name__}: {exc}")
 
 
 # ======================================================================
@@ -221,22 +327,23 @@ class BacktestAnalysisService:
 
         results = []
         for value in param_values:
-            override = {param_name: value}
-            metrics = await _run_single_backtest(
+            run = await _run_single_backtest(_AnalysisRunSpec(
                 model=model,
-                param_overrides=override,
                 start_date=start_date,
                 end_date=end_date,
                 initial_cash=initial_cash,
-            )
+                param_overrides={param_name: value},
+            ))
+            metrics = run.metrics
             results.append({
                 "param_value": value,
                 "metrics": metrics,
+                "error": run.error,
             })
             logger.info(
                 "[sensitivity] %s=%s → sharpe=%s annual_return=%s",
                 param_name, value,
-                metrics.get("sharpe") if metrics else "FAIL",
+                metrics.get("sharpe") if metrics else f"FAIL({run.error})",
                 metrics.get("annual_return") if metrics else "FAIL",
             )
 
@@ -258,7 +365,7 @@ class BacktestAnalysisService:
         end_date: str,
         initial_cash: float = 1_000_000,
     ) -> Dict[str, Any]:
-        """情景推演 — 修改价格矩阵后跑回测。
+        """情景推演 — 在价格矩阵副本上施加冲击后重跑回测。
 
         Parameters
         ----------
@@ -275,34 +382,35 @@ class BacktestAnalysisService:
         model = await self._model_service.get_model(model_id)
         if not model:
             raise ValueError(f"策略模型不存在: {model_id}")
+        if not scenario:
+            raise ValueError("情景冲击为空：至少指定一个资产的冲击幅度")
 
         # 基线回测（无冲击）
-        baseline = await _run_single_backtest(
+        baseline = await _run_single_backtest(_AnalysisRunSpec(
             model=model,
-            param_overrides={},
             start_date=start_date,
             end_date=end_date,
             initial_cash=initial_cash,
-        )
+        ))
 
-        # 情景回测：通过注入 _scenario_shocks 参数让策略感知冲击
-        # 简化实现：在策略参数中传入情景信息，由支持情景的策略处理
-        scenario_params = {"_scenario_shocks": scenario}
-        scenario_metrics = await _run_single_backtest(
+        # 情景回测：DataFeed 在回测前修改价格矩阵副本，策略真实承受冲击
+        scenario_run = await _run_single_backtest(_AnalysisRunSpec(
             model=model,
-            param_overrides=scenario_params,
             start_date=start_date,
             end_date=end_date,
             initial_cash=initial_cash,
-        )
+            scenario_shocks=scenario,
+        ))
 
         return {
             "model_id": model_id,
             "model_name": model.name,
             "scenario": scenario,
             "scenario_desc": "、".join(f"{k} 变动{v*100:+.1f}%" for k, v in scenario.items()),
-            "baseline_metrics": baseline,
-            "scenario_metrics": scenario_metrics,
+            "baseline_metrics": baseline.metrics,
+            "baseline_error": baseline.error,
+            "scenario_metrics": scenario_run.metrics,
+            "scenario_error": scenario_run.error,
         }
 
     async def robustness_check(
@@ -364,19 +472,20 @@ class BacktestAnalysisService:
             w_start_str = w_start.strftime("%Y%m%d")
             w_end_str = w_end.strftime("%Y%m%d")
 
-            metrics = await _run_single_backtest(
+            run = await _run_single_backtest(_AnalysisRunSpec(
                 model=model,
-                param_overrides={},
                 start_date=w_start_str,
                 end_date=w_end_str,
                 initial_cash=initial_cash,
-            )
+            ))
+            metrics = run.metrics
 
             window_info = {
                 "window_index": i + 1,
                 "start_date": w_start_str,
                 "end_date": w_end_str,
                 "metrics": metrics,
+                "error": run.error,
             }
             windows.append(window_info)
             if metrics:

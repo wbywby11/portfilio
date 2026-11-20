@@ -1,698 +1,261 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
-      <h2 class="page-title">净值走势</h2>
-      <div>
-        <el-button @click="$router.back()">返回</el-button>
-        <el-button type="primary" icon="el-icon-refresh" @click="loadData" :loading="loading">刷新</el-button>
-        <el-button type="success" icon="el-icon-download" @click="handleExport">导出数据</el-button>
-      </div>
+  <div class="nav-history" v-loading="loading">
+    <div class="nav-toolbar">
+      <span class="range-hint">{{ rangeText }}</span>
+      <el-button
+        type="text"
+        size="small"
+        icon="el-icon-download"
+        :disabled="navRows.length === 0"
+        @click="handleExport">导出净值数据</el-button>
     </div>
 
-    <div class="page-content" v-loading="loading">
-      <!-- 时间范围选择器 -->
-      <el-card shadow="never" class="filter-card">
-        <el-form :inline="true" size="small">
-          <el-form-item label="选择周期">
-            <el-date-picker
-              v-model="dateRange"
-              type="daterange"
-              range-separator="至"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              format="yyyy-MM-dd"
-              value-format="yyyy-MM-dd"
-              @change="handleDateChange"
-            ></el-date-picker>
-          </el-form-item>
-        </el-form>
-      </el-card>
-
-      <!-- 统计信息 -->
-      <div class="stats-row">
-        <div class="stat-card">
-          <div class="stat-label">区间收益率</div>
-          <div class="stat-value" :style="{ color: getReturnColor(statistics.periodReturn) }">
-            {{ formatPercent(statistics.periodReturn) }}
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">年化收益率</div>
-          <div class="stat-value" :style="{ color: getReturnColor(statistics.annualReturn) }">
-            {{ formatPercent(statistics.annualReturn) }}
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">年化波动率</div>
-          <div class="stat-value">{{ formatPercent(statistics.annualVolatility) }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">最大回撤</div>
-          <div class="stat-value" style="color: #67C23A;">
-            {{ formatPercent(statistics.maxDrawdown) }}
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">夏普比率</div>
-          <div class="stat-value">{{ formatNumber(statistics.sharpeRatio, 3) }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">数据天数</div>
-          <div class="stat-value">{{ navHistory.length }}</div>
-        </div>
-      </div>
-
-      <!-- 净值曲线图（主图） -->
-      <el-card shadow="never" class="info-card">
-        <div slot="header" class="card-header">
-          <span>净值与日收益率走势</span>
-        </div>
-        <div ref="mainChart" style="width: 100%; height: 450px;"></div>
-        <el-empty v-if="navHistory.length === 0" description="暂无净值数据"></el-empty>
-      </el-card>
-
-      <!-- 当日损益归因 + 每日收益统计 并排 -->
-      <div class="dual-row">
-        <el-card shadow="never" class="info-card">
-          <div slot="header" class="card-header">
-            <span>当日损益归因</span>
-            <span v-if="latestDate" style="color: #909399; font-size: 13px; font-weight: normal;">
-              {{ latestDate }}
-            </span>
-          </div>
-          <div v-if="attributionData && attributionData.length > 0" ref="attributionChart" style="width: 100%; height: 320px;"></div>
-          <el-empty v-if="!attributionData || attributionData.length === 0" description="暂无损益归因数据"></el-empty>
-          <div v-if="attributionData && attributionData.length > 0" class="attribution-summary">
-            <span>合计损益: <b :style="{ color: getReturnColor(totalPnl) }">{{ formatSignedNumber(totalPnl, 2) }} 元</b></span>
-          </div>
-        </el-card>
-
-        <el-card shadow="never" class="info-card">
-          <div slot="header" class="card-header">
-            <span>每日收益统计</span>
-            <el-select v-model="returnsDisplayDays" size="small" style="width: 100px;" @change="updateReturnsTable">
-              <el-option label="近10日" :value="10"></el-option>
-              <el-option label="近20日" :value="20"></el-option>
-              <el-option label="近30日" :value="30"></el-option>
-              <el-option label="近60日" :value="60"></el-option>
-            </el-select>
-          </div>
-          <el-table
-            v-if="returnsTableData.length > 0"
-            :data="returnsTableData"
-            border
-            stripe
-            style="width: 100%;"
-            size="small"
-            :max-height="380"
-          >
-            <el-table-column prop="date" label="日期" min-width="90" align="center"></el-table-column>
-            <el-table-column prop="nav" label="净值" min-width="80" align="right">
-              <template slot-scope="scope">
-                {{ formatNumber(scope.row.nav, 4) }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="dailyReturnPct" label="日收益率" min-width="90" align="right">
-              <template slot-scope="scope">
-                <span :style="{ color: getReturnColor(scope.row.dailyReturnPct) }">
-                  {{ formatSignedPercent(scope.row.dailyReturnPct) }}
-                </span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="cumulativeReturnPct" label="累计收益" min-width="90" align="right">
-              <template slot-scope="scope">
-                <span :style="{ color: getReturnColor(scope.row.cumulativeReturnPct) }">
-                  {{ formatSignedPercent(scope.row.cumulativeReturnPct) }}
-                </span>
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-empty v-else description="暂无收益数据"></el-empty>
-        </el-card>
-      </div>
-
-
+    <!-- 区间绩效指标：配置驱动，与总览页共用 MetricCard -->
+    <div class="stats-row" :style="statsGridStyle">
+      <MetricCard
+        v-for="metric in performanceMetrics"
+        :key="metric.key"
+        :metric="metric" />
     </div>
+
+    <!-- 主图：净值曲线（渐变面积）；副图：日收益率独立迷你子图 -->
+    <TimeSeriesChart
+      v-if="navRows.length > 0"
+      :x-data="dates"
+      :series="chartSeries"
+      :y-axis="chartYAxes"
+      :grids="chartGrids"
+      :height="chartHeight"
+      :x-axis-label-formatter="axisLabelFormatter" />
+    <el-empty
+      v-else
+      description="暂无净值数据，请先运行监控初始化或日常运行"
+      :image-size="80" />
   </div>
 </template>
 
 <script>
 import dayjs from 'dayjs';
-import * as echarts from 'echarts';
-import { mapState, mapActions } from 'vuex';
-import * as monitorApi from '@/api/monitor';
+import { mapGetters, mapState } from 'vuex';
+import { createDateAxisLabelFormatter } from '@/utils/dateAxis';
+import MetricCard from '@/components/monitor/MetricCard.vue';
+import TimeSeriesChart from '@/components/monitor/TimeSeriesChart.vue';
+import { buildMetrics, resolveGridColumns } from '@/config/monitor';
 
 export default {
   name: 'MonitorNavHistory',
+  components: { MetricCard, TimeSeriesChart },
+  props: {
+    /** 策略上下文：指标集合与栅格列数可按策略覆盖 */
+    strategyContext: { type: Object, default: null }
+  },
   data() {
-    return {
-      loading: false,
-      dateRange: [],
-      mainChart: null,
-      attributionChart: null,
-      returnsDisplayDays: 20,
-      // 损益归因数据
-      attributionData: [],
-      totalPnl: 0
-    };
+    return {};
   },
   computed: {
-    ...mapState('monitor', ['navHistory', 'monitorState', 'activeMonitorId']),
-    // 最新日期
-    latestDate() {
-      if (this.navHistory && this.navHistory.length > 0) {
-        return this.navHistory[this.navHistory.length - 1].date;
-      }
-      return null;
+    ...mapState('monitor', ['performancePanel']),
+    ...mapGetters('monitor', ['isLoading']),
+    loading() {
+      return this.isLoading && !this.performancePanel;
     },
-    // 每日收益表格数据
-    returnsTableData() {
-      if (!this.navHistory || this.navHistory.length < 2) return [];
-      const n = Math.min(this.returnsDisplayDays + 1, this.navHistory.length);
-      const recentData = this.navHistory.slice(-n);
-      const baseNav = recentData[0].nav;
-      const result = [];
-      for (let i = 1; i < recentData.length; i++) {
-        const prev = recentData[i - 1];
-        const curr = recentData[i];
-        const dailyPnL = curr.nav - prev.nav;
-        const dailyReturnPct = (curr.nav / prev.nav - 1) * 100;
-        const cumulativeReturnPct = (curr.nav / baseNav - 1) * 100;
-        result.push({
-          date: curr.date,
-          nav: curr.nav,
-          dailyPnL: dailyPnL,
-          dailyReturnPct: dailyReturnPct,
-          cumulativeReturnPct: cumulativeReturnPct
-        });
-      }
-      // 最新在前
-      return result.reverse();
+    panel() {
+      return this.performancePanel || null;
     },
-    statistics() {
-      if (this.navHistory.length < 2) {
-        return {
-          periodReturn: null,
-          annualReturn: null,
-          annualVolatility: null,
-          maxDrawdown: null,
-          sharpeRatio: null
-        };
-      }
-
-      const data = this.navHistory;
-      const firstNav = (data[0] && data[0].nav) ? data[0].nav : 1;
-      const lastNav = (data[data.length - 1] && data[data.length - 1].nav) ? data[data.length - 1].nav : 1;
-      
-      // 区间收益率
-      const periodReturn = (lastNav / firstNav) - 1;
-      
-      // 计算日收益率
-      const dailyReturns = data
-        .filter(d => d.daily_return !== null && d.daily_return !== undefined)
-        .map(d => d.daily_return);
-      
-      // 空数组防护
-      if (dailyReturns.length === 0) {
-        return {
-          periodReturn,
-          annualReturn: null,
-          annualVolatility: null,
-          maxDrawdown: null,
-          sharpeRatio: null
-        };
-      }
-      
-      // 年化收益率（简单计算）
-      const days = data.length;
-      const annualReturn = Math.pow(lastNav / firstNav, 252 / days) - 1;
-      
-      // 年化波动率
-      const mean = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
-      const variance = dailyReturns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0) / dailyReturns.length;
-      const annualVolatility = Math.sqrt(variance * 252);
-      
-      // 最大回撤
-      let maxDrawdown = 0;
-      let peak = firstNav;
-      for (const item of data) {
-        if (item.nav > peak) peak = item.nav;
-        const drawdown = (item.nav - peak) / peak;
-        if (drawdown < maxDrawdown) maxDrawdown = drawdown;
-      }
-      
-      // 夏普比率
-      const sharpeRatio = annualVolatility > 0 ? annualReturn / annualVolatility : 0;
-
+    navRows() {
+      return (this.panel && this.panel.nav_history) || [];
+    },
+    modelRows() {
+      return (this.panel && this.panel.nav_history_model) || [];
+    },
+    hasModelTrack() {
+      return !!(this.panel && this.panel.has_model_track && this.modelRows.length);
+    },
+    metrics() {
+      return (this.panel && this.panel.metrics) || {};
+    },
+    rangeText() {
+      const range = (this.panel && this.panel.range) || {};
+      if (!range.start || !range.end) return '暂无数据区间';
+      const suffix = range.clamped ? '（已裁剪至数据范围）' : '';
+      return `数据区间：${range.start} 至 ${range.end}，共 ${this.navRows.length} 个交易日${suffix}`;
+    },
+    /** 指标卡上下文：只取数，展示规则在 @/config/monitor/metrics */
+    performanceMetricContext() {
+      const m = this.metrics;
       return {
-        periodReturn,
-        annualReturn,
-        annualVolatility,
-        maxDrawdown,
-        sharpeRatio
+        periodReturn: m.period_return,
+        annualReturn: m.annual_return,
+        annualReturn365: m.annual_return_365,
+        annualVol: m.annual_volatility,
+        annualVol365: m.annual_volatility_365,
+        maxDrawdown: m.max_drawdown,
+        sharpe: m.sharpe_ratio,
+        sharpe365: m.sharpe_ratio_365,
+        tradingDays: m.trading_days
       };
+    },
+    performanceMetrics() {
+      return buildMetrics('performance', this.performanceMetricContext, this.strategyContext);
+    },
+    statsGridStyle() {
+      return { '--monitor-grid-cols': resolveGridColumns('performance', this.strategyContext) };
+    },
+
+    /* ── 图表数据：全部由后端序列派生，图表组件只负责渲染 ── */
+    dates() {
+      return this.navRows.map(item => item.date);
+    },
+    navValues() {
+      return this.navRows.map(item => item.nav);
+    },
+    dailyReturns() {
+      return this.navRows.map(item => (
+        item.daily_return === null || item.daily_return === undefined
+          ? 0
+          : Number((item.daily_return * 100).toFixed(4))
+      ));
+    },
+    /** 模型口径序列对齐实际净值日期轴 */
+    modelValues() {
+      if (!this.hasModelTrack) return [];
+      const modelMap = {};
+      this.modelRows.forEach(item => { modelMap[item.date] = item.nav; });
+      return this.dates.map(d => (modelMap[d] != null ? modelMap[d] : null));
+    },
+    /** 「实际 − 模型」差值：同日对齐，任一侧缺值则为空 */
+    gapValues() {
+      if (!this.hasModelTrack) return [];
+      const modelMap = {};
+      this.modelRows.forEach(item => { modelMap[item.date] = item.nav; });
+      const navMap = {};
+      this.dates.forEach((d, i) => { navMap[d] = this.navValues[i]; });
+      return this.dates.map(d => (
+        modelMap[d] != null && navMap[d] != null
+          ? Number((navMap[d] - modelMap[d]).toFixed(4))
+          : null
+      ));
+    },
+    chartGrids() {
+      if (this.hasModelTrack) {
+        return [
+          { left: '3%', right: '4%', top: 44, height: '42%', containLabel: true },
+          { left: '3%', right: '4%', top: '54%', height: '14%', containLabel: true },
+          { left: '3%', right: '4%', top: '72%', height: '20%', containLabel: true }
+        ];
+      }
+      return [
+        { left: '3%', right: '4%', top: 44, height: '50%', containLabel: true },
+        { left: '3%', right: '4%', top: '60%', height: '22%', containLabel: true }
+      ];
+    },
+    chartYAxes() {
+      const navAxis = { name: '净值', format: 'number', precision: 4, position: 'left', grid: 0 };
+      // scale:false 保证 0 轴始终在副图内，正负柱有共同基准；splitNumber 收敛到 3 档避免右缘密集
+      const dailyAxis = {
+        name: '日收益',
+        format: 'percent',
+        precision: 1,
+        position: 'right',
+        splitLine: false,
+        scale: false,
+        fontSize: 11,
+        splitNumber: 3,
+        axisLine: true,
+        labelMargin: 10
+      };
+      if (this.hasModelTrack) {
+        return [
+          navAxis,
+          { name: '实际−模型', format: 'number', precision: 2, position: 'right', grid: 1, splitLine: false },
+          Object.assign({}, dailyAxis, { grid: 2 })
+        ];
+      }
+      return [navAxis, Object.assign({}, dailyAxis, { grid: 1 })];
+    },
+    chartSeries() {
+      const series = [
+        { name: '净值', type: 'line', data: this.navValues, yAxis: 0, area: true, lineWidth: 2.5, color: '#409EFF' }
+      ];
+      if (this.hasModelTrack) {
+        series.push(
+          { name: '模型口径净值', type: 'line', data: this.modelValues, yAxis: 0, dashed: true, lineWidth: 2, color: '#909399', connectNulls: false },
+          { name: '实际−模型', type: 'line', data: this.gapValues, yAxis: 1, lineWidth: 1.6, color: '#722ED1', area: true, areaOpacity: 0.26, connectNulls: false }
+        );
+      }
+      series.push({
+        name: '日收益率',
+        type: 'bar',
+        data: this.dailyReturns,
+        yAxis: this.hasModelTrack ? 2 : 1,
+        color: params => (params.data >= 0 ? '#F56C6C' : '#67C23A'),
+        opacity: 0.8
+      });
+      return series;
+    },
+    chartHeight() {
+      return this.hasModelTrack ? 640 : 560;
+    },
+    axisLabelFormatter() {
+      return createDateAxisLabelFormatter(this.dates);
     }
-  },
-  mounted() {
-    this.loadData();
-    window.addEventListener('resize', this.handleResize);
-  },
-  beforeDestroy() {
-    if (this.mainChart) {
-      this.mainChart.dispose();
-    }
-    if (this.attributionChart) {
-      this.attributionChart.dispose();
-    }
-    window.removeEventListener('resize', this.handleResize);
   },
   methods: {
-    ...mapActions('monitor', ['fetchNavHistory']),
-    async loadData() {
-      this.loading = true;
-      try {
-        const params = { ...this.getDateRangeParams(), monitor_id: this.activeMonitorId };
-        await this.fetchNavHistory(params);
-        
-        // 获取最新日期的损益归因
-        const latestDate = this.navHistory && this.navHistory.length > 0 
-          ? this.navHistory[this.navHistory.length - 1].date 
-          : null;
-        if (latestDate) {
-          try {
-            const attrRes = await monitorApi.getDailyAttribution({
-              monitor_id: this.activeMonitorId,
-              date: latestDate
-            });
-            const attrData = (attrRes && attrRes.data) ? attrRes.data : attrRes;
-            this.attributionData = (attrData && attrData.attributions) ? attrData.attributions : [];
-            this.totalPnl = (attrData && attrData.total_pnl) ? attrData.total_pnl : 0;
-          } catch (err) {
-            console.warn('获取损益归因失败:', err);
-            this.attributionData = [];
-            this.totalPnl = 0;
-          }
-        }
-        
-        this.$nextTick(() => {
-          this.initChart();
-          this.renderMainChart();
-        });
-        // 损益归因图需在 v-if 渲染后再初始化（确保容器有实际尺寸）
-        this.$nextTick(() => {
-          this.$nextTick(() => {
-            this.renderAttributionChart();
-          });
-        });
-      } catch (error) {
-        this.$message.error('加载数据失败：' + ((error.response && error.response.data && error.response.data.message) ? error.response.data.message : error.message));
-      } finally {
-        this.loading = false;
-      }
-    },
-    getDateRangeParams() {
-      // 如果用户选择了日期范围，使用用户选择的范围
-      if (this.dateRange && this.dateRange.length === 2) {
-        return { start: this.dateRange[0], end: this.dateRange[1] };
-      }
-      // 默认返回全部数据（不限制时间范围）
-      return { start: '', end: '' };
-    },
-    handleDateChange() {
-      if (this.dateRange && this.dateRange.length === 2) {
-        this.loadData();
-      }
-    },
-    initChart() {
-      if (!this.mainChart && this.$refs.mainChart) {
-        this.mainChart = echarts.init(this.$refs.mainChart);
-      }
-    },
-    renderMainChart() {
-      if (!this.mainChart || this.navHistory.length === 0) {
-        return;
-      }
-
-      const dates = this.navHistory.map(item => item.date);
-      const navValues = this.navHistory.map(item => item.nav);
-      const dailyReturns = this.navHistory.map(item => 
-        item.daily_return !== null && item.daily_return !== undefined 
-          ? (item.daily_return * 100) 
-          : 0
-      );
-      
-      // 找出调仓日标记点
-      const markPoints = this.navHistory
-        .filter(item => item.is_rebalance)
-        .map(item => ({
-          coord: [item.date, item.nav],
-          name: '调仓',
-          value: '调仓日'
-        }));
-
-      const option = {
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: {
-            type: 'cross'
-          },
-          formatter: (params) => {
-            let result = `${params[0].axisValue}<br/>`;
-            params.forEach(param => {
-              if (param.seriesName === '净值') {
-                result += `${param.marker}净值: ${param.data.toFixed(4)}<br/>`;
-              } else if (param.seriesName === '日收益率') {
-                const color = param.data >= 0 ? '#F56C6C' : '#67C23A';
-                result += `${param.marker}日收益率: <span style="color:${color}">${param.data.toFixed(4)}%</span><br/>`;
-              }
-            });
-            return result;
-          }
-        },
-        legend: {
-          data: ['净值', '日收益率'],
-          top: 10
-        },
-        grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '80px',
-          containLabel: true
-        },
-        dataZoom: [
-          {
-            type: 'inside',
-            start: 0,
-            end: 100
-          },
-          {
-            type: 'slider',
-            start: 0,
-            end: 100,
-            bottom: 20
-          }
-        ],
-        xAxis: {
-          type: 'category',
-          data: dates,
-          boundaryGap: false,
-          axisLabel: {
-            formatter: (value) => dayjs(value).format('MM-DD')
-          }
-        },
-        yAxis: [
-          {
-            type: 'value',
-            name: '净值',
-            position: 'left',
-            scale: true,
-            axisLabel: {
-              formatter: '{value}'
-            }
-          },
-          {
-            type: 'value',
-            name: '日收益率(%)',
-            position: 'right',
-            axisLabel: {
-              formatter: (value) => value.toFixed(2) + '%'
-            }
-          }
-        ],
-        series: [
-          {
-            name: '净值',
-            type: 'line',
-            data: navValues,
-            smooth: true,
-            symbol: 'none',
-            yAxisIndex: 0,
-            lineStyle: {
-              width: 2,
-              color: '#409EFF'
-            },
-            areaStyle: {
-              color: {
-                type: 'linear',
-                x: 0,
-                y: 0,
-                x2: 0,
-                y2: 1,
-                colorStops: [
-                  { offset: 0, color: 'rgba(64, 158, 255, 0.2)' },
-                  { offset: 1, color: 'rgba(64, 158, 255, 0.02)' }
-                ]
-              }
-            },
-            markPoint: {
-              symbol: 'pin',
-              symbolSize: 30,
-              data: markPoints,
-              itemStyle: {
-                color: '#E6A23C'
-              }
-            }
-          },
-          {
-            name: '日收益率',
-            type: 'bar',
-            data: dailyReturns,
-            yAxisIndex: 1,
-            itemStyle: {
-              color: (params) => {
-                return params.data >= 0 ? '#F56C6C' : '#67C23A';
-              }
-            }
-          }
-        ]
-      };
-
-      this.mainChart.setOption(option, true);
-    },
-    handleResize() {
-      if (this.mainChart) {
-        this.mainChart.resize();
-      }
-      if (this.attributionChart) {
-        this.attributionChart.resize();
-      }
-    },
-    // 渲染损益归因图
-    renderAttributionChart() {
-      if (!this.$refs.attributionChart) return;
-      if (!this.attributionData || this.attributionData.length === 0) return;
-
-      // 每次重新初始化，确保容器尺寸正确（v-if 确保元素可见后才进入）
-      if (this.attributionChart) {
-        this.attributionChart.dispose();
-      }
-      this.attributionChart = echarts.init(this.$refs.attributionChart);
-      
-      // 按贡献金额排序（正值在上，负值在下）
-      var sorted = this.attributionData.slice().sort(function(a, b) {
-        return (a.contribution || 0) - (b.contribution || 0);
-      });
-      
-      var names = sorted.map(function(item) { return item.name; });
-      var values = sorted.map(function(item) { return item.contribution || 0; });
-      
-      var option = {
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: { type: 'shadow' },
-          formatter: function(params) {
-            var data = params[0];
-            var item = sorted[data.dataIndex];
-            var lines = [
-              '<b>' + data.name + '</b>',
-              '贡献: ' + (data.value >= 0 ? '+' : '') + data.value.toFixed(2) + ' 元',
-              '权重: ' + ((item && item.weight) || 0).toFixed(2) + '%',
-              '当日涨跌: ' + ((item && item.daily_change) || 0).toFixed(4) + '%'
-            ];
-            return lines.join('<br/>');
-          }
-        },
-        grid: {
-          left: '20%',
-          right: '10%',
-          top: '5%',
-          bottom: '5%'
-        },
-        xAxis: {
-          type: 'value',
-          name: '贡献(元)',
-          axisLabel: {
-            formatter: function(value) { return value.toFixed(1); }
-          }
-        },
-        yAxis: {
-          type: 'category',
-          data: names,
-          axisLabel: { fontSize: 11 }
-        },
-        series: [{
-          type: 'bar',
-          data: values,
-          itemStyle: {
-            color: function(params) {
-              return params.value >= 0 ? '#F56C6C' : '#67C23A';
-            }
-          },
-          label: {
-            show: true,
-            position: 'right',
-            formatter: function(params) {
-              return (params.value >= 0 ? '+' : '') + params.value.toFixed(2);
-            },
-            fontSize: 11
-          }
-        }]
-      };
-      
-      this.attributionChart.setOption(option, true);
-    },
-    // 更新收益表格
-    updateReturnsTable() {
-      // 计算属性会自动响应
-    },
     handleExport() {
-      if (this.navHistory.length === 0) {
+      if (this.navRows.length === 0) {
         this.$message.warning('暂无数据可导出');
         return;
       }
-      
-      // 简单导出为CSV
-      const headers = ['日期', '净值', '日收益率', '累计收益率', '回撤', '调仓日'];
-      const rows = this.navHistory.map(item => [
+      const headers = ['日期', '净值', '日收益率', '区间累计收益率', '区间回撤', '调仓日'];
+      const rows = this.navRows.map(item => [
         item.date,
-        (item.nav !== null && item.nav !== undefined) ? item.nav.toFixed(4) : '',
-        item.daily_return !== null ? (item.daily_return * 100).toFixed(4) + '%' : '',
-        item.cumulative_return !== null ? (item.cumulative_return * 100).toFixed(2) + '%' : '',
-        item.drawdown !== null ? (item.drawdown * 100).toFixed(2) + '%' : '',
+        item.nav != null ? Number(item.nav).toFixed(4) : '',
+        item.daily_return != null ? `${(item.daily_return * 100).toFixed(4)}%` : '',
+        item.cumulative_return != null ? `${(item.cumulative_return * 100).toFixed(2)}%` : '',
+        item.drawdown != null ? `${(item.drawdown * 100).toFixed(2)}%` : '',
         item.is_rebalance ? '是' : ''
       ]);
-      
-      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
       const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `净值数据_${dayjs().format('YYYYMMDD')}.csv`;
+      const range = this.panel.range || {};
+      link.download = `净值数据_${range.start || ''}_${range.end || dayjs().format('YYYY-MM-DD')}.csv`;
       link.click();
-      
-      this.$message.success('导出成功');
+      URL.revokeObjectURL(link.href);
+      this.$message.success(`已导出 ${this.navRows.length} 条净值记录`);
     },
-    formatNumber(num, decimals = 2) {
-      if (num === null || num === undefined || Number.isNaN(num)) return '-';
-      return num.toFixed(decimals);
-    },
-    formatSignedNumber(num, decimals = 2) {
-      if (num === null || num === undefined || Number.isNaN(num)) return '-';
-      const sign = num >= 0 ? '+' : '';
-      return sign + num.toFixed(decimals);
-    },
-    formatPercent(num) {
-      if (num === null || num === undefined || Number.isNaN(num)) return '-';
-      return (num * 100).toFixed(2) + '%';
-    },
-    formatSignedPercent(num) {
-      if (num === null || num === undefined || Number.isNaN(num)) return '-';
-      const sign = num >= 0 ? '+' : '';
-      return sign + num.toFixed(3) + '%';
-    },
-    getReturnColor(value) {
-      if (value === null || value === undefined) return '#909399';
-      if (value > 0) return '#F56C6C';
-      if (value < 0) return '#67C23A';
-      return '#909399';
-    }
   }
 };
 </script>
 
 <style scoped>
-.page-container {
-  padding: 0;
+.nav-history {
+  min-height: 300px;
 }
 
-.page-header {
-  display: none;
-}
-
-.page-content {
-  min-height: 400px;
-}
-
-.filter-card {
+.nav-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 10px;
 }
 
-/* ── 统计卡片行：与 Index.vue 绩效网格一致 ── */
-.stats-row {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.stat-card {
-  text-align: center;
-  padding: 10px 8px;
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
-}
-
-.stat-label {
+.range-hint {
   font-size: 12px;
   color: #909399;
-  margin-bottom: 6px;
 }
 
-.stat-value {
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
-  font-variant-numeric: tabular-nums;
-}
-
-/* 当日损益归因 + 每日收益统计 并排布局 */
-.dual-row {
+.stats-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(var(--monitor-grid-cols, 6), minmax(0, 1fr));
+  grid-auto-rows: 1fr;
   gap: 12px;
-  margin-bottom: 10px;
-}
-
-.dual-row > .info-card {
-  margin-bottom: 0;
-}
-
-.info-card {
-  margin-bottom: 10px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 500;
-}
-
-.attribution-summary {
-  margin-top: 15px;
-  padding: 10px 15px;
-  background: #f5f7fa;
-  border-radius: 4px;
-  font-size: 13px;
-  color: #606266;
+  margin-bottom: 14px;
 }
 
 @media (max-width: 1400px) {
   .stats-row {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .dual-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 </style>

@@ -78,6 +78,11 @@
             </div>
           </el-form-item>
           
+          <el-form-item label="补录模式">
+            <el-switch v-model="form.record_executed" />
+            <span class="backfill-hint">提交后按执行日重算净值</span>
+          </el-form-item>
+
           <el-form-item label="调仓说明" prop="description">
             <el-input
               type="textarea"
@@ -91,7 +96,7 @@
           
           <el-form-item>
             <el-button type="primary" @click="handleSubmit" :loading="submitting">
-              {{ submitting ? '提交中...' : '提交指令' }}
+              {{ submitting ? '提交中...' : (form.record_executed ? '补录并重算' : '提交指令') }}
             </el-button>
             <el-button @click="resetForm">重置</el-button>
             <el-button @click="formVisible = false">取消</el-button>
@@ -295,7 +300,8 @@ export default {
       form: {
         execute_date: '',
         weights: {},
-        description: ''
+        description: '',
+        record_executed: false
       },
       datePickerOptions: {
         // 允许选择任何日期，与原始 Streamlit 行为一致
@@ -503,6 +509,7 @@ export default {
       this.initFormWeights();
       this.form.execute_date = '';
       this.form.description = '';
+      this.form.record_executed = false;
       this.formVisible = true;
     },
     
@@ -510,6 +517,7 @@ export default {
       this.initFormWeights();
       this.form.execute_date = '';
       this.form.description = '';
+      this.form.record_executed = false;
       if (this.$refs.form) {
         this.$refs.form.clearValidate();
       }
@@ -534,9 +542,12 @@ export default {
         await this.$store.dispatch('monitor/addSubjectiveOverrideAction', {
           weights: weightsAsDecimal,
           execute_date: this.form.execute_date,
-          description: this.form.description
+          description: this.form.description,
+          record_executed: this.form.record_executed
         });
-        this.$message.success('主观调仓指令已添加');
+        this.$message.success(
+          this.form.record_executed ? '已补录，净值重算中…' : '主观调仓指令已添加'
+        );
         this.formVisible = false;
         this.resetForm();
       } catch (error) {
@@ -618,6 +629,12 @@ export default {
 .override-toolbar {
   margin-bottom: 16px;
   text-align: right;
+}
+
+.backfill-hint {
+  margin-left: 10px;
+  font-size: 12px;
+  color: #909399;
 }
 
 .page-content {

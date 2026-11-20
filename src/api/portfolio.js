@@ -139,13 +139,15 @@ export function deletePortfolio(portfolioId) {
 // 组合回测
 // ============================================================
 
-// 执行组合回测
-export function runPortfolioBacktest(portfolioId, data) {
+// 执行组合回测（长任务，超时放到 30 分钟）
+// progressKey：进度任务号，含义同 runBacktest；为空时后端不上报进度
+export function runPortfolioBacktest(portfolioId, data, progressKey) {
   return request({
     url: `/api/v1/backtests/run-portfolio-by-id/${portfolioId}`,
     method: 'post',
     data,
-    timeout: 600000  // 10分钟超时
+    params: progressKey ? { progress_key: progressKey } : undefined,
+    timeout: 1800000
   });
 }
 

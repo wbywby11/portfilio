@@ -1,10 +1,12 @@
 """单策略回测执行核心（自 app/api/backtests.py 平移，P8 治理）.
 
-承接回测执行链路：配置构造、主观策略校验、资产校验、DataFeed 构建
-（含 etf_discount 专用）、run_unified 调用、响应组装与异常翻译；
+承接回测执行链路：配置构造、主观策略校验、资产校验、DataFeed 构建、
+run_unified 调用、响应组装与异常翻译；
 以及快照/交易序列化与风控配置推导（单策略与组合子策略共用）。
 """
-from typing import Dict, Any, Optional
+from typing import Any, Callable, Dict, Optional
+import asyncio
+import logging
 import traceback
 
 import pandas as pd
@@ -15,7 +17,7 @@ from app.schemas.backtests import BacktestRequest, SnapshotOut, TradeOut, Backte
 from app.services.market_service import MarketService
 from app.services.asset_service import AssetService
 from app.backtesting.config import BacktestConfig
-from app.backtesting.data_feed import DataFeed
+from app.backtesting.data_feed import DataFeed, resolve_lookback_days
 from app.allocation.services.registry import create_strategy_service_from_database
 from app.analysis.formulas.drawdown import calculate_drawdown_series
 
@@ -25,11 +27,15 @@ from app.services.backtest_helpers import (
     rebalance_label_for_trade as _rebalance_label_for_trade,
 )
 
+logger = logging.getLogger(__name__)
+
 
 async def _run_backtest_core(
     request: BacktestRequest,
     market_service: MarketService,
     asset_service: AssetService,
+    digest_sink: Optional[Dict[str, Any]] = None,
+    progress_cb: Optional[Callable[[int, int, Any], None]] = None,
 ):
     """
     运行回测（使用新的 BacktestEngine）
@@ -44,6 +50,7 @@ async def _run_backtest_core(
     注意：
     - 日期格式为 YYYYMMDD（如 20230101）
     - 策略参数必须符合该策略的Schema定义
+    - ``progress_cb`` 为引擎逐日同步回调 ``(done, total, bar_time)``，为空时不上报
     """
     try:
         # 1. 创建回测配置
@@ -79,21 +86,28 @@ async def _run_backtest_core(
             config.manual_weight_adjustments = adj_dict if adj_dict else None
 
         strategy_type = getattr(request, "strategy_type", "") or ""
+        _preset_warnings: list = []
 
-        # 主观策略仅按预设日期调仓：至少需一个预设调仓日（权重可到该日再选）
+        # 主观策略仅按预设日期调仓：期初权重（manual_weights）与预设调仓日相互独立，
+        # 配置了期初权重时可无任何预设调仓日（全周期持有初始权重，不触发调仓）
         if strategy_type in ("manual_allocation", "manual_allocation_strategy"):
             config.rebalance_only_on_preset_dates = True
-            if not config.manual_weight_adjustments or len(config.manual_weight_adjustments) == 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail="主观配置策略需至少预设一个调仓日期（权重可留空，到该日再选择）。"
-                )
             sp = getattr(request, "strategy_params", None) or {}
             max_leverage = float(sp.get("max_leverage", 4))
             if max_leverage < 1:
                 max_leverage = 4
             # 期初建仓：使用策略默认权重（或本次回测覆盖的 manual_weights）在首日建仓
             mw = sp.get("manual_weights")
+            if isinstance(mw, str):
+                # 兼容模型参数以 JSON 字符串存储的历史数据（同 ManualAllocationStrategy.allocate 口径）
+                import json
+                try:
+                    mw = json.loads(mw.replace("'", '"')) if mw.strip() else {}
+                except (TypeError, ValueError):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="策略参数 manual_weights 不是合法的权重字典（JSON 解析失败），请检查策略模型的权重初始化配置。",
+                    )
             if mw and isinstance(mw, dict) and len(mw) > 0:
                 config.initial_weights = {k: float(v) for k, v in mw.items() if v is not None}
                 total = sum(config.initial_weights.values())
@@ -113,72 +127,49 @@ async def _run_backtest_core(
                                 status_code=400,
                                 detail=f"预设调仓日 {d} 的权重总和 {total*100:.2f}% 超过最大杠杆 {max_leverage*100:.0f}%。请调整权重或策略参数「最大杠杆」。"
                             )
-                first_date = min(config.manual_weight_adjustments.keys())
-                config.initial_weights_auto_normalize = config.manual_weight_adjustments[first_date].get("auto_normalize", False)
 
-        # 2. 验证资产代码是否存在（特殊策略类型跳过，资产从专用集合加载）
-        _SPECIALIZED_FEED_TYPES = {"etf_discount"}
-        if strategy_type not in _SPECIALIZED_FEED_TYPES:
-            if not request.thscodes:
-                raise HTTPException(
-                    status_code=400,
-                    detail="资产代码列表为空，请检查策略模型的资产配置"
-                )
-            
-            # 验证资产是否存在
-            missing_assets = []
-            for code in request.thscodes:
-                asset_info = await asset_service.get_asset_by_code(code)
-                if not asset_info:
-                    missing_assets.append(code)
-            
-            if missing_assets:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"以下资产代码不存在或未配置：{', '.join(missing_assets)}。请检查资产库中的资产配置。"
-                )
+        # 2. 验证资产代码是否存在
+        if not request.thscodes:
+            raise HTTPException(
+                status_code=400,
+                detail="资产代码列表为空，请检查策略模型的资产配置"
+            )
+
+        # 验证资产是否存在
+        missing_assets = []
+        for code in request.thscodes:
+            asset_info = await asset_service.get_asset_by_code(code)
+            if not asset_info:
+                missing_assets.append(code)
+
+        if missing_assets:
+            raise HTTPException(
+                status_code=400,
+                detail=f"以下资产代码不存在或未配置：{', '.join(missing_assets)}。请检查资产库中的资产配置。"
+            )
 
         # 3. 创建数据源
-        # 特殊策略类型（etf_discount）使用专用 DataFeed
-        _SPECIALIZED_FEED_TYPES = {"etf_discount"}
-        if strategy_type in _SPECIALIZED_FEED_TYPES:
-            from app.backtesting.data_feed import build_specialized_data_feed
-            data_feed = await build_specialized_data_feed(
-                strategy_type=strategy_type,
-                config=config,
-                lookback_days=request.lookback_days,
-            )
-            # ETF Discount: 自动注入 ETF 代码列表
-            if strategy_type == "etf_discount":
-                sp = request.strategy_params or {}
-                if not sp.get("etf_codes"):
-                    import json
-                    etf_cols = [
-                        str(c) for c in data_feed.prices.columns
-                        if not str(c).endswith("_discount") and not str(c).endswith("_dr")
-                    ]
-                    sp["etf_codes"] = json.dumps(etf_cols)
-                request.strategy_params = sp
-                # 更新 thscodes 为 ETF 代码（供回测引擎使用）
-                config.thscodes = [
-                    str(c) for c in data_feed.prices.columns
-                    if not str(c).endswith("_discount") and not str(c).endswith("_dr")
-                ]
-        else:
-            # momentum_reversal (7+1) / min_history_days>=260 需至少 400 日历天预加载（确保 260 交易日 + 缓冲）
-            effective_lookback = request.lookback_days
-            sp = request.strategy_params or {}
-            sel = sp.get("selection_info") or sp
-            if (
-                sel.get("selector_type") == "momentum_reversal"
-                or int(sp.get("min_history_days", 0)) >= 260
-            ):
-                effective_lookback = max(effective_lookback, 400)
-            data_feed = await DataFeed.from_market_service(
-                market_service=market_service,
-                config=config,
-                lookback_days=effective_lookback
-            )
+        # momentum_reversal (7+1) / min_history_days>=260 需至少 400 日历天预加载（确保 260 交易日 + 缓冲）
+        effective_lookback = request.lookback_days
+        sp = request.strategy_params or {}
+        sel = sp.get("selection_info") or sp
+        if (
+            sel.get("selector_type") == "momentum_reversal"
+            or int(sp.get("min_history_days") or 0) >= 260
+        ):
+            effective_lookback = max(effective_lookback, 400)
+        # 长窗口策略（如 756 日协方差、250 日 AR 链）声明的是交易日，
+        # 统一按 min_history_days 放大预加载天数，避免首段调仓拿到不足历史；
+        # 传入 strategy_type 使模板声明的默认值对存量模型同样生效
+        effective_lookback = resolve_lookback_days(
+            sp, effective_lookback, strategy_type=strategy_type
+        )
+        data_feed = await DataFeed.from_market_service(
+            market_service=market_service,
+            config=config,
+            lookback_days=effective_lookback,
+            strategy_type=strategy_type,
+        )
         
         if data_feed.prices.empty:
             # 提供更详细的错误信息
@@ -208,23 +199,44 @@ async def _run_backtest_core(
                 detail=error_msg
             )
         
-        # 预设调仓日校验：须在回测区间内，且为有数据的交易日
+        # 预设调仓日与回测区间取交集：区间外/非交易日的调仓日自动忽略，不阻断回测
         if config.manual_weight_adjustments:
             start_ymd = str(request.start_date).replace("-", "")[:8]
             end_ymd = str(request.end_date).replace("-", "")[:8]
-            preset_keys = list(config.manual_weight_adjustments.keys())
-            out_of_range = [d for d in preset_keys if d < start_ymd or d > end_ymd]
-            if out_of_range:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"调仓日不可超出回测时间区间。以下日期超出区间 [{start_ymd}, {end_ymd}]：{', '.join(sorted(out_of_range))}。请重新设置调仓日。"
-                )
             trading_days = set(pd.Series(data_feed.prices.index).dt.strftime("%Y%m%d").astype(str).tolist())
-            invalid_preset = [d for d in preset_keys if d not in trading_days]
-            if invalid_preset:
+            effective_adjustments = {}
+            ignored_preset = []
+            for d, adj in config.manual_weight_adjustments.items():
+                if d < start_ymd or d > end_ymd or d not in trading_days:
+                    ignored_preset.append(d)
+                else:
+                    effective_adjustments[d] = adj
+            if ignored_preset:
+                ignored_msg = (
+                    f"以下预设调仓日不在回测区间 [{start_ymd}, {end_ymd}] 内或非交易日，已自动忽略："
+                    f"{', '.join(sorted(ignored_preset))}"
+                )
+                logger.warning("[回测] %s", ignored_msg)
+                _preset_warnings.append(ignored_msg)
+            config.manual_weight_adjustments = effective_adjustments or None
+            # 期初建仓归一化开关跟随区间内最早的预设调仓日；无生效调仓日时不归一化
+            config.initial_weights_auto_normalize = (
+                effective_adjustments[min(effective_adjustments)].get("auto_normalize", False)
+                if effective_adjustments else False
+            )
+
+        # 主观策略权重来源校验：期初权重与区间内预设调仓日至少需其一
+        if strategy_type in ("manual_allocation", "manual_allocation_strategy"):
+            _init_weight_sum = sum(
+                float(v or 0) for v in (config.initial_weights or {}).values()
+            )
+            if _init_weight_sum <= 0 and not config.manual_weight_adjustments:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"以下调仓日在回测区间内无行情数据或为非交易日，请重新设置调仓日：{', '.join(sorted(invalid_preset))}"
+                    detail=(
+                        "主观配置策略未配置任何持仓权重：请在「权重初始化」中填写资产权重，"
+                        "或设置至少一个回测区间内的调仓日。"
+                    ),
                 )
         
         # 检查是否有部分资产没有数据
@@ -236,6 +248,25 @@ async def _run_backtest_core(
                 f"以下资产在指定日期范围内没有数据：{', '.join(missing_data_assets)}。"
                 f"将使用有数据的资产进行回测。"
             )
+
+        # 3.5 可复现性摘要（S10）：只算不落库，经 digest_sink 交给调用方随记录写入。
+        # 用保真矩阵 strategy_prices（未 ffill / 未清洗）而非 prices：在清洗后的
+        # 矩阵上取摘要，无法区分「原始数据」与「被前值填充过的数据」。
+        # 区间取回测区间，不含 lookback（预热段不属于本次结果的一部分）。
+        if digest_sink is not None:
+            try:
+                from app.services.strategy_fingerprint import data_digest_v2, pool_hash
+                from app.services.strategy_version_service import resolve_contract_hash
+
+                digest_sink["data_digest_v2"] = data_digest_v2(
+                    getattr(data_feed, "strategy_prices", None),
+                    start_date=request.start_date,
+                    end_date=request.end_date,
+                )
+                digest_sink["asset_pool_hash"] = pool_hash(request.thscodes)
+                digest_sink["contract_hash"] = resolve_contract_hash(strategy_type)
+            except Exception as exc:  # noqa: BLE001 —— 摘要失败不得影响回测
+                logger.warning("[fingerprint] 摘要计算失败（回测继续）: %s", exc)
 
         # 4. 创建策略实例（从数据库加载模板）
         strategy_service = await create_strategy_service_from_database(
@@ -289,17 +320,22 @@ async def _run_backtest_core(
 
         # 构建策略并经唯一引擎入口运行（selector=None 时自动跳过选择阶段）
         from app.backtesting.runner import RunSpec, run_unified
+        run_spec = RunSpec(
+            config=config,
+            data_feed=data_feed,
+            allocator=strategy_impl,
+            thscodes=request.thscodes,
+            composition=composition,
+            strategy_params=request.strategy_params,
+            # 支持最大杠杆>1 时权重和大于1，不强制归一化为和1
+            risk_config=_build_risk_config(request.strategy_params),
+            progress_cb=progress_cb,
+        )
         try:
-            result = run_unified(RunSpec(
-                config=config,
-                data_feed=data_feed,
-                allocator=strategy_impl,
-                thscodes=request.thscodes,
-                composition=composition,
-                strategy_params=request.strategy_params,
-                # 支持最大杠杆>1 时权重和大于1，不强制归一化为和1
-                risk_config=_build_risk_config(request.strategy_params),
-            ))
+            # 引擎是同步 CPU 密集计算（逐日撮合），必须放到工作线程：
+            # 直接调用会冻结 asyncio 事件循环，期间进度轮询与其它 API 全部挂起，
+            # 前端表现为进度条不动（与组合子策略回测同一口径）。
+            result = await asyncio.to_thread(run_unified, run_spec)
         except Exception as e:
             raise HTTPException(
                 status_code=500,
@@ -387,12 +423,16 @@ async def _run_backtest_core(
             sharpe_ratio=performance.sharpe_ratio,
             max_drawdown=performance.max_drawdown,
             calmar_ratio=performance.calmar_ratio,
+            annual_return_365=performance.annual_return_365,
+            volatility_365=performance.annual_volatility_365,
+            sharpe_ratio_365=performance.sharpe_ratio_365,
+            calmar_ratio_365=performance.calmar_ratio_365,
             win_rate=performance.win_rate,
             n_trades=performance.n_trades,
             total_commission=performance.total_commission,
             total_slippage=performance.total_slippage,
             turnover=performance.turnover,
-            warnings=list(performance.warnings),
+            warnings=list(performance.warnings) + _preset_warnings,
             asset_names=asset_names,
             selected_asset_count=selected_asset_count
         )
@@ -474,31 +514,11 @@ def _trade_to_dict(t: Any) -> Dict[str, Any]:
 
 
 def _build_risk_config(strategy_params: Dict[str, Any]):
-    """从策略参数推导风控配置（单策略回测与组合子策略回测共用）。
+    """从策略参数推导风控配置（保留别名，实现在子策略执行器）。
 
-    max_total_leverage 为 None 时不强制归一化，允许权重和小于/大于 1。
+    单策略回测、组合子策略、组合监控三条通道共用一个实现，避免
+    max_total_leverage / weight_caps / allow_short 的解析口径分叉。
     """
-    from app.backtesting.risk import RiskConfig
+    from app.services.single_strategy_executor import build_risk_config
 
-    strategy_params = strategy_params or {}
-    max_total_leverage = strategy_params.get("max_total_leverage") or strategy_params.get("max_leverage")
-    if max_total_leverage is not None:
-        try:
-            max_total_leverage = float(max_total_leverage)
-        except (TypeError, ValueError):
-            max_total_leverage = None
-    max_weight_dict = strategy_params.get("weight_caps", strategy_params.get("max_weight_dict"))
-    if not isinstance(max_weight_dict, dict) or not max_weight_dict:
-        max_weight_dict = None
-    # 类雪球 Delta 对冲等策略 allow_short=True 时，KI 后需保留负权重做空对冲，
-    # 风控层不得将负权重截断为 0（对齐四象限原型 allow_short 语义）。
-    allow_negative = bool(strategy_params.get("allow_short", False))
-    try:
-        return RiskConfig(
-            max_total_leverage=max_total_leverage,
-            max_weight_dict=max_weight_dict,
-            allow_negative_weights=allow_negative,
-        )
-    except TypeError:
-        # 兼容移植环境：旧版 RiskConfig 无 max_total_leverage/allow_negative_weights 参数
-        return RiskConfig()
+    return build_risk_config(strategy_params)

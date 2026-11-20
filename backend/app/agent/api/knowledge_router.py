@@ -43,7 +43,7 @@ def _extract_text(raw: bytes, suffix: str) -> str:
 
     Args:
         raw: 文件二进制内容
-        suffix: 文件后缀（pdf/docx/txt）
+        suffix: 文件后缀（pdf/docx/txt/md）
 
     Returns:
         提取的文本内容
@@ -51,8 +51,8 @@ def _extract_text(raw: bytes, suffix: str) -> str:
     if len(raw) > MAX_UPLOAD_BYTES:
         raise ValueError("文件超过 50MB 上限")
 
-    if suffix == "txt":
-        # 尝试 UTF-8，回退 GBK
+    if suffix in ("txt", "md", "markdown"):
+        # Markdown 原文直接入库；尝试 UTF-8，回退 GBK
         try:
             return raw.decode("utf-8")
         except UnicodeDecodeError:
@@ -250,7 +250,7 @@ async def create_document(req: KnowledgeCreateRequest):
 
 @router.post("/documents/upload", summary="上传文件自动录入")
 async def upload_document(
-    file: UploadFile = File(..., description="支持 PDF/DOCX/TXT 文件"),
+    file: UploadFile = File(..., description="支持 PDF/DOCX/TXT/MD 文件"),
     category: str = Form(default="research_report", description="分类"),
     tags: str = Form(default="", description="标签，逗号分隔"),
     related_assets: str = Form(default="", description="关联资产代码，逗号分隔"),
@@ -258,16 +258,16 @@ async def upload_document(
     """
     上传文件自动解析并录入知识库。
 
-    支持格式：.pdf / .docx / .txt
+    支持格式：.pdf / .docx / .txt / .md
     自动提取文本内容，文件名作为标题。
     """
     # 校验文件类型
     filename = file.filename or ""
     suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    allowed = {"pdf", "docx", "txt"}
+    allowed = {"pdf", "docx", "txt", "md", "markdown"}
     if suffix not in allowed:
         return Response.error(
-            message=f"不支持的文件格式 '.{suffix}'，仅支持 PDF/DOCX/TXT",
+            message=f"不支持的文件格式 '.{suffix}'，仅支持 PDF/DOCX/TXT/MD",
             code=400,
         )
 

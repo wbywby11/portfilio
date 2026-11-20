@@ -65,7 +65,9 @@ async def main() -> None:
         rebalance_freq="month_end", initial_cash=10_000_000,
     )
     market_service = MarketService()
-    data_feed = await DataFeed.from_market_service(market_service, config, lookback_days=500)
+    data_feed = await DataFeed.from_market_service(
+        market_service, config, lookback_days=500, strategy_type=model.template_code,
+    )
     print("prices shape:", data_feed.prices.shape, "cols:", list(data_feed.prices.columns))
     print("prices range:", data_feed.prices.index.min(), "->", data_feed.prices.index.max())
 

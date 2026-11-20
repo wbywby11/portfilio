@@ -1,7 +1,8 @@
 # 数据架构设计
 
-> **定位**：本文档是系统数据层的唯一设计权威。从功能需求出发定义"应该有什么"，而非记录"现在有什么"。
-> 任何新增/修改集合必须先更新本文档，再写代码。
+> **已归档（2026-10-31）**：本文档已并入 `DATA_SYSTEM.md`，后续数据层变更只更新该文档。本文保留作历史参考，不再修改。
+>
+> **原定位**：系统数据层的设计权威，定义"应该有什么"而非"现在有什么"。
 
 ---
 
@@ -168,16 +169,25 @@ app/schemas/field_mappings.py  ← 所有导入列名映射（禁止各处重复
 
 ---
 
-#### `etf_discount_market_data` — ETF 折溢价数据
+#### `factor_panel` — 因子截面面板
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|:----:|------|
-| `date` | string | ✅ | 日期 |
-| `code` | string | ✅ | ETF 代码 |
-| `close` | float | ✅ | 收盘价 |
-| 其他折溢价指标 | float | — | 由选择器定义 |
+| `dataset` | string | ✅ | 数据集标识（受控清单 `field_mappings.FACTOR_DATASETS`）；本集合被多个数据产品共用，靠它隔开；业务主键之一 |
+| `as_of_date` | string | ✅ | 权重生效日 `YYYY-MM-DD`，驱动调仓；业务主键之一 |
+| `data_date` | string | — | 因子取数日，仅留痕核对；缺省等于 `as_of_date` |
+| `code` | string | ✅ | 证券代码（带交易所后缀），须与 `assets.code` 完全一致；业务主键之一 |
+| `name` | string | — | 证券简称，冗余存储便于人工核对，不参与计算 |
+| `industry` | string | ✅ | 行业分组键，行业内限额按此字段分组 |
+| `factors` | object | — | 开放 dict `{因子英文键: 数值或类别值}`；数值因子供打分/加权，类别因子（如发行人）供分组/限额 |
+| `total_mv` | float | — | 总市值（元），`weight_method=market_cap` 时必需且须 > 0 |
+| `free_float_mv` | float | — | 自由流通市值（元），为其他加权口径预留 |
+| `source` | string | — | 数据来源：`ifind` / `wind` / `manual` |
+| `imported_at` | datetime | — | 导入时间，由 service 层写入 |
 
-- **被消费方**: ETFDiscountSelector、回测 DataFeed
+- **索引**: `uniq_dataset_period_code {dataset, as_of_date, code}`（唯一）、`idx_dataset_code_period {dataset, code, as_of_date}`、`idx_dataset_period_industry {dataset, as_of_date, industry}`；均以 `dataset` 打头。dataset 维度引入前的三个二元旧索引（`uniq_period_code` 等）由 `ensure_indexes` 先行删除：旧的唯一索引不删，两个数据集就无法存同 `(as_of_date, code)`
+- **设计要点**: 一期（`as_of_date`）一股（`code`）一行，同一 `dataset` 内唯一；`factors` 不写死因子列名，换一套因子只改导入文件与策略参数，不改表结构。因子列名→英文键的映射与类别因子登记**均按 dataset 分组**（`FACTOR_NAME_MAPPING_BY_DATASET` / `FACTOR_CATEGORICAL_KEYS_BY_DATASET`），共用一张扁平表会让同名列在两个数据集里互相覆盖
+- **被消费方**: 截面因子类独立策略 —— 经 `DataFeed` 面板通道（`load_strategy_panels` → `set_panels`）注入 `allocate`，回测与监控同源。策略必须在 `get_panel_datasets()` 声明读哪个 `dataset`，缺声明直接报错，**不退化成全表加载**（否则另一数据集同期日的行会并进截面，污染名次打分的分母 N）
 
 ---
 
@@ -640,7 +650,7 @@ DB 实际:    42 个（含 2 个懒创建尚未触发）
 
 本次新增模型定义:
 - trade_calendar.py (TradeDate)
-- etf_discount.py (EtfDiscountMarketData)
+- etf_discount.py (EtfDiscountMarketData)（该模型与集合已于 2026-10-27 随策略弃用删除，原条目未动）
 - agent_conversation.py (AgentConversation, AgentMessage, AgentToolResult)
 - agent_memory.py (AgentMemory)
 - monitor.py + SharpeRebalanceWeight

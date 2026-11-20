@@ -84,6 +84,8 @@ def get_builtin_templates() -> List[Dict[str, Any]]:
     - name: 模板名称
     - description: 模板描述
     - category: 分类（allocation/selection/control）
+    - strategy_form: 策略形态（composite=三层组合 / standalone=打包独立，
+      由 StrategyEntry.strategy_form 派生，前端据此决定是否渲染三层配置卡片）
     - source_code: 策略源代码
     - parameters: 参数定义列表
     
@@ -109,6 +111,7 @@ def get_builtin_templates() -> List[Dict[str, Any]]:
                 "code": code,
                 "name": entry.name,
                 "category": "allocation",
+                "strategy_form": entry.strategy_form,
                 "description": entry.description,
                 "source_code": source,
                 "parameters": _convert_schema_to_params(schema),
@@ -211,22 +214,7 @@ def _add_selection_templates(templates: List[Dict[str, Any]]) -> None:
     except ImportError:
         pass
     
-    # --- 6. ETF贴水率 ---
-    try:
-        from app.selection.selectors.etf_discount import ETFDiscountSelector
-        schema = ETFDiscountSelector.get_param_schema()
-        templates.append({
-            "code": "sel_etf_discount",
-            "name": "ETF贴水率",
-            "category": "selection",
-            "description": "贴水率滚动分位点信号选股，低贴水率开仓，反波动率加权。",
-            "source_code": _get_strategy_source_with_imports(ETFDiscountSelector),
-            "parameters": _convert_selection_dict_to_params(schema),
-        })
-    except ImportError:
-        pass
-
-    # --- 7. 截面多空（GMSI 2.0 GCMI 截面动量子通道）---
+    # --- 6. 截面多空（GMSI 2.0 GCMI 截面动量子通道）---
     try:
         from app.selection.selectors.cross_sectional_long_short import CrossSectionalLongShortSelector
         schema = CrossSectionalLongShortSelector.get_param_schema()

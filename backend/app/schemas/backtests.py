@@ -27,8 +27,8 @@ class BacktestRequest(BaseModel):
     end_date: str = Field(..., description="回测结束日期（格式：YYYY-MM-DD）")
     initial_cash: float = Field(10_000_000.0, description="初始资金")
     rebalance_freq: str = Field("monthly", description="调仓频率（daily/weekly/monthly/month_end/quarterly/yearly，vol_scaled_budget混合动量时自动用month_end）")
-    commission_rate: float = Field(0.0003, description="手续费率")
-    slippage: float = Field(0.0005, description="滑点率")
+    commission_rate: float = Field(0.0, description="手续费率（默认 0：不计成本，可按需设置）")
+    slippage: float = Field(0.0, description="滑点率（默认 0：不计成本，可按需设置）")
     lookback_days: int = Field(500, description="历史数据预加载天数")
     manual_weight_adjustments: Optional[List[Dict[str, Any]]] = Field(
         None,
@@ -90,6 +90,11 @@ class BacktestResultOut(BaseModel):
     sharpe_ratio: float = Field(..., description="夏普比率")
     max_drawdown: float = Field(..., description="最大回撤")
     calmar_ratio: float = Field(..., description="卡玛比率")
+    # 365 口径（自然日/年）：与 260 口径并列返回，累计收益/回撤/胜率只给一份
+    annual_return_365: Optional[float] = Field(None, description="年化收益率（365 自然日口径）")
+    volatility_365: Optional[float] = Field(None, description="年化波动率（365 自然日口径）")
+    sharpe_ratio_365: Optional[float] = Field(None, description="夏普比率（365 自然日口径）")
+    calmar_ratio_365: Optional[float] = Field(None, description="卡玛比率（365 自然日口径）")
     win_rate: Optional[float] = Field(None, description="胜率（卖出交易中盈利的比例）")
     n_trades: int = Field(0, description="成交笔数")
     total_commission: float = Field(0.0, description="累计手续费")
@@ -224,6 +229,14 @@ class SubStrategyResultOut(BaseModel):
     annual_volatility: float = Field(..., description="年化波动率")
     sharpe_ratio: float = Field(..., description="夏普比率")
     max_drawdown: float = Field(..., description="最大回撤")
+    # 365 口径（自然日/年）
+    annual_return_365: Optional[float] = Field(None, description="年化收益率（365 自然日口径）")
+    annual_volatility_365: Optional[float] = Field(None, description="年化波动率（365 自然日口径）")
+    sharpe_ratio_365: Optional[float] = Field(None, description="夏普比率（365 自然日口径）")
+    n_trades: int = Field(0, description="成交笔数")
+    total_commission: float = Field(0.0, description="累计手续费")
+    total_slippage: float = Field(0.0, description="累计滑点成本")
+    turnover: float = Field(0.0, description="累计换手额 / 期初净值（单边）")
     equity_curve: List[Dict[str, Any]] = Field(default_factory=list, description="NAV曲线 [{date, value}]")
 
 
@@ -235,7 +248,16 @@ class PortfolioBacktestResultOut(BaseModel):
     sharpe_ratio: float = Field(..., description="夏普比率")
     max_drawdown: float = Field(..., description="最大回撤")
     calmar_ratio: float = Field(..., description="卡玛比率")
+    # 365 口径（自然日/年）：与 260 口径并列返回，累计收益/回撤/胜率只给一份
+    annual_return_365: Optional[float] = Field(None, description="年化收益率（365 自然日口径）")
+    annual_volatility_365: Optional[float] = Field(None, description="年化波动率（365 自然日口径）")
+    sharpe_ratio_365: Optional[float] = Field(None, description="夏普比率（365 自然日口径）")
+    calmar_ratio_365: Optional[float] = Field(None, description="卡玛比率（365 自然日口径）")
     win_rate: Optional[float] = Field(None, description="胜率")
+    n_trades: int = Field(0, description="组合层成交笔数（合成资产再平衡）")
+    total_commission: float = Field(0.0, description="组合层累计手续费")
+    total_slippage: float = Field(0.0, description="组合层累计滑点成本")
+    turnover: float = Field(0.0, description="组合层累计换手额 / 期初净值（单边）")
     equity_curve: List[Dict[str, Any]] = Field(default_factory=list, description="NAV曲线 [{date, value, drawdown, is_rebalance_day, weights（穿透后资产级）}]")
     sub_strategies: List[SubStrategyResultOut] = Field(default_factory=list, description="子策略回测结果列表")
     # 增强：穿透后资产级权重历史与相关性分析

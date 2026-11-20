@@ -1,5 +1,7 @@
 # 数据导入子系统规范
 
+> **已归档（2026-10-31）**：本文档已并入 `DATA_SYSTEM.md` 第四节，后续导入通道变更只更新该文档。本文保留作历史参考，不再修改。
+>
 > 定义所有外部数据进入系统的标准链路。
 > - **前端导入界面**：规范交互流程、UI 组件、模板下载
 > - **后端导入脚本**：规范映射、校验、写入、审计
@@ -12,6 +14,13 @@
 
 ### 1.1 入口清单
 
+> **审计接入现状（遗留项）**：`services/import_audit_service.py`（`ImportAuditService`）
+> 的**写入侧**目前仅 `services/trade_calendar_service.py`（交易日历导入）一处调用；
+> 读取侧另有 `agent/tools/data_ops_tools.py`（审计查询/管理）。
+> 下表其余导入端点（资产主数据、单资产行情、多资产宽表、汇率）**尚未接入审计**，
+> 登记为遗留项，不在「独立策略统一接入管道」范围内。
+> 例外：因子截面（#10）为新增端点，写入侧已接入审计。
+
 | # | 数据类型 | API 端点 | 输入 | 前端入口 | 目标集合 |
 |---|---------|---------|------|---------|---------|
 | 1 | 资产主数据 | `POST /assets/import/excel` | Excel | AssetList.vue | `assets` |
@@ -23,7 +32,26 @@
 | 7 | 交易日历 | `POST /trade-dates/import` | Excel | TradeCalendarPanel.vue | `trade_dates` |
 | 8 | 波动率曲面 | `POST /options/vol-surface/import/excel` | Excel | optionPricing.js | `option_vol_surfaces` |
 | 9 | 主体风险 | `POST /subject-risk/import` | JSON(上游API) | Agent 调用 | `subject_risk_records` |
-| 10 | ETF折价数据 | `POST /etf-discount/import` | Excel | — (Agent) | `etf_discount_market_data` |
+| 10 | 因子截面 | `POST /factor-panel/import` | Excel | FactorPanelImport.vue | `factor_panel` |
+| 11 | 宏观与估值序列 | `POST /macro/import` | Excel | MacroImport.vue | `macro_series` |
+
+> **#10 因子截面的特殊之处（必读）**：`factor_panel` 集合被**多个数据产品共用**，
+> 导入时 `dataset` 为 **Form 必填参数**（受控清单 `field_mappings.FACTOR_DATASETS`，
+> 不在清单内直接报错），业务主键为 `(dataset, as_of_date, code)` 三元。
+> 选错 dataset **不会报错**，数据会静默写进另一个截面，因子键与策略参数对不上。
+> 配套端点共 6 个：`POST /import`、`GET /datasets`（数据集清单）、`GET /overview`（库内总览）、
+> `GET /period/{dataset}/{as_of_date}`（读某期核对）、`DELETE /period/{dataset}/{as_of_date}`（整期删除，
+> 只删本数据集）、`GET /template/download?dataset=`（模板按数据集出）。
+>
+> **#11 宏观与估值序列**：`macro_series` 一个集合装多条序列（指数 PE/PB/股息率、
+> 债券收益率、信用利差、ERP 分量等），业务主键 `(code, date)`，与 `assets` /
+> `asset_prices` 完全解耦（这些序列不是可交易资产）。数据表支持宽表（第一列日期 +
+> 后续列名为序列代码）与长表（含 `序列代码`/`数值`/`日期`）两种形态，自动识别；
+> 可选「序列说明」工作表标注 `series_type`（受控清单 `MACRO_SERIES_TYPES`）/单位/来源，
+> 缺表时按 `other` 归档并在返回 warnings 里列出未登记序列。`mode=replace` **只清空
+> 文件中出现的序列代码**（不是整集合清空），`incremental` 只补缺失 `(code, date)`。
+> 配套端点：`GET /macro/stats`、`GET /macro/series`、`GET /macro/data?code=`、
+> `GET /macro/template/download`。
 
 ### 1.2 分类
 
@@ -182,6 +210,9 @@
 - 导入模式单选：增量合并（upsert，默认）/ 全量覆盖（replace）/ 仅新增（incremental）
 - **下载模板**按钮
 - **预览数据**按钮
+- **数据集选择器**：仅当一个集合被多个数据产品共用时需要（当前只有因子截面）。
+  `factor_panel` 的导入、模板下载、总览、读取与删除全部按 `dataset` 分区，
+  页面必须先选定数据集再选文件；可选项走 `GET /factor-panel/datasets`，不得前端写死
 
 **规则**：
 - 默认模式为 `upsert`
@@ -230,12 +261,19 @@
 | 汇率 | `GET /fx/template/download` | 待新增 |
 | 交易日历 | `GET /trade-dates/template/download` | 待新增 |
 | 波动率曲面 | `GET /options/vol-surface/template/download` | 待新增 |
+| 因子截面 | `GET /factor-panel/template/download?dataset=<数据集>` | ✅ 已有 |
 
 **模板格式**：
 - `.xlsx` 格式，UTF-8 编码
 - 第 1 行为表头，必填列加 `*` 后缀（如 `资产代码*`、`日期*`）
 - 第 2~4 行为示例数据（3 行示例 + 注释说明行）
 - 日期示例用 `YYYY-MM-DD`，数值用小数无千分位
+
+> **模板按数据集分开出的情形**：因子截面模板由 `services/factor_panel_templates.py` 的
+> `TEMPLATE_COLUMNS_BY_DATASET` 驱动，债券券池（`bond_phoenix50`）与 A 股质量成长
+> （`equity_quality_growth`）的因子列不同，共用一份模板会让人把 A 数据集的因子填进
+> B 数据集的文件（落库不报错，属静默错误）。新增数据集必须同时在
+> `FACTOR_DATASETS` 与本模块登记模板列，否则模块导入即报错（`_validate_template_coverage`）。
 
 ---
 
@@ -262,6 +300,9 @@
 | `行情导入_收盘价.xlsx` | `gen_import_files.py` | 多资产宽表 | 资产行情页「多资产Excel导入」（metric=收盘价） |
 | `daily_px_导入版.xlsx` | `optimize_daily_px_layout.py` | 多资产宽表 | 同上 |
 | `资产列表导入_夏普18.xlsx` | `optimize_daily_px_layout.py` | 资产主数据长表 | 资产管理页「批量导入 Excel」 |
+| `因子截面导入_凤凰50债券_2026Q4全池打分.xlsx` | `gen_import_from_factor_pool.py` | 因子截面长表（sheet 名「因子截面数据」） | 数据分析 →「因子截面数据」页，dataset=`bond_phoenix50` |
+| `因子截面导入_凤凰50债券_历史成分快照.xlsx` | `gen_import_from_factor_pool.py` | 同上，**不含任何因子列**（整期无因子才被判为成分快照期） | 同上，dataset=`bond_phoenix50` |
+| `因子截面导入_凤凰50股票_2026H1初筛池.xlsx` | `gen_import_from_factor_pool.py` | 因子截面长表 | 同上，dataset=`equity_quality_growth`；导入前需先补 `assets` 与行情 |
 
 > **格式红线**：单资产行情导入（`POST /assets/prices/import/excel`）只接受长表
 > （日期 + 收盘价/开盘价等数值列至少一列）；宽表必须走多资产入口，否则 400。
@@ -273,7 +314,7 @@
 - **值**：归一化价格指数（非原始点位，基期=1.0）
 - **空值**：资产未上市期间为空，导入时跳过
 
-**资产列名 → asset_code 映射**（引用 `app/monitor/config.py` 中 `SHARPE_NAME_TO_CODE`）：
+**资产列名 → asset_code 映射**（引用 `app/monitor/config.py` 中 `SHARPE_NAME_TO_CODE`，仅供 legacy 研究员通道使用）：
 
 | 列名 | asset_code | 计价货币 |
 |------|-----------|----------|
@@ -296,7 +337,21 @@
 | 沪锡 | `SHSN` | CNH |
 | 豆粕 | `DM` | CNH |
 
-> **禁止自行编造资产代码**。必须使用上表中的标准代码，否则监控/回测引擎无法匹配。
+> **资产 code 自由命名，但一经使用不得变更**。`assets.code` 是业务主键（任意字符串），
+> `asset_prices.asset_code` 引用它，且 `uniq_asset_date` 唯一索引以 (asset_code, date) 为键：
+> 改 code 等于新建一份历史，旧行情全部失联。
+>
+> 上表 18 个代码是 `monitor/config.py` `SHARPE_NAME_TO_CODE` 的 **legacy 研究员通道专用映射**，
+> 仅 `monitor_runtime.legacy_runtime()`、`monitor_service` 基线路径与夏普 18 研究员引擎消费，
+> **不是导入白名单**——导入链路（`schemas/field_mappings.py` `ASSET_COLUMN_MAPPING`）不做任何代码合法性校验。
+>
+> 新接入的数据集建议命名 `<域前缀>_<语义>`（如 `nous_lowvol_a10y_bond`），
+> 同一底层标的的不同加工口径（原始收盘价 / 拼接连续序列 / 复权净值）**必须用不同 code**：
+> 同 code 在 `uniq_asset_date` 下会互相覆盖，且不同日历口径（交易日 vs 工作日）的行会混存，
+> 污染所有读该资产的策略。
+>
+> 数据是否符合某个策略的要求，不由导入侧判定，而由策略自己声明的
+> **数据契约**在运行前把关（`app/backtesting/data_contract.py`，见 DATA_GOVERNANCE.md §5.2）。
 
 ### 5.3 fx.xlsx 格式说明
 
@@ -383,7 +438,7 @@ Agent 通过工具调用触发的导入（如 `subject_risk_search`）：
 |---|------|:------:|---------|
 | 1 | 列名映射 3 处重复 | **P0** | 抽取到 `field_mappings.py`，各处改为引用 |
 | 2 | 响应格式 4 种不统一 | P1 | 统一为 `ImportResponse` |
-| 3 | 无导入审计日志 | P1 | 新增 `_import_audit_log` 集合 + 写入逻辑 |
+| 3 | 无导入审计日志 | P1 | 新增 `_import_audit_log` 集合 + 写入逻辑。**现状**：集合与 `ImportAuditService` 已建成，但写入侧仅 `trade_calendar_service.py` 一处接入，其余导入端点仍未写审计（遗留项） |
 | 4 | 汇率/交易日历/波动率无模板下载 | P2 | 新增模板生成端点 |
 | 5 | 前端导入 UI 不统一 | P2 | 抽取 `ImportPanel` 通用组件 |
 | 6 | 无 dry-run/预览 | P2 | 新增 `/import/preview` 端点 |

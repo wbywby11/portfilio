@@ -65,7 +65,8 @@ async def list_asset_options(
     # 旧维度兼容（仅在新维度未指定时生效）
     if not instrument_type and not asset_class and asset_type and asset_type.strip():
         query_filter["asset_type"] = asset_type.strip()
-    assets = await service.list_assets_raw(query_filter, limit=500)
+    # 六模型导入后资产数已超千只，下拉一次性取够，避免被截断
+    assets = await service.list_assets_raw(query_filter, limit=5000)
     data = [AssetOption(id=a.id or "", code=a.code, name=a.name) for a in assets]
     return Response.success(data=data)
 
@@ -91,6 +92,7 @@ async def list_assets(
     is_active: bool = Query(True, description="是否启用"),
     code: Optional[str] = Query(None, description="资产代码（模糊匹配）"),
     name: Optional[str] = Query(None, description="资产名称（模糊匹配）"),
+    tag: Optional[str] = Query(None, description="业务标签过滤，多个用逗号分隔并取交集（如 pool:nous_no_us,market:cn）"),
     skip: int = 0,
     limit: int = 100,
     service: AssetService = Depends(get_asset_service),
@@ -117,8 +119,9 @@ async def list_assets(
         code=code, name=name,
         **{k: v for k, v in query_filter.items() if k in ("asset_type",)},
     )
-    # 新维度过滤在内存中做（因为 _build_asset_query 尚未改造，用 raw 查询更可靠）
-    if instrument_type or asset_class or security_type:
+    # 新维度与标签过滤在 raw 查询中做（_build_asset_query 尚未覆盖全部维度）
+    tag_list = [t.strip() for t in (tag or "").split(",") if t.strip()]
+    if instrument_type or asset_class or security_type or tag_list:
         # 重新用 raw 查询
         raw_filter: dict = {"is_active": is_active} if is_active else {}
         if instrument_type:
@@ -127,6 +130,8 @@ async def list_assets(
             raw_filter["asset_class"] = asset_class.strip()
         if security_type:
             raw_filter["security_type"] = security_type.strip()
+        if tag_list:
+            raw_filter["tags"] = {"$all": tag_list} if len(tag_list) > 1 else tag_list[0]
         assets = await service.list_assets_raw(raw_filter, skip=skip, limit=limit, code=code, name=name)
         total = await service.count_assets_raw(raw_filter, code=code, name=name)
     else:
@@ -141,6 +146,18 @@ async def list_assets(
     return Response.success(data=PageData(
         items=data, total=total, page=page, page_size=page_size, pages=pages,
     ))
+
+
+@router.get("/tags", response_model=Response[List[dict]], summary="全部已用资产标签及使用次数")
+async def list_asset_tags(
+    service: AssetService = Depends(get_asset_service),
+):
+    """返回资产表中出现过的全部业务标签。
+
+    供前端资产页筛选与策略预设编辑使用。标签为空或无非空标签时返回空列表。
+    """
+    tags = await service.list_asset_tags()
+    return Response.success(data=tags)
 
 
 @router.get("/template/download", summary="下载资产导入模板")
@@ -261,7 +278,7 @@ async def get_asset_kline(
     """
     返回指定资产在时间区间内的K线数据,用于前台画K线图
 
-    **交易日历：** 若系统已配置 Mongo ``trade_dates`` 或 ``data/trade_dates.xlsx``，且未传
+    **交易日历：** 若系统已配置 Mongo ``trade_dates`` 集合，且未传
     ``all_calendar_days=true``，则仅返回落在交易日历内的行。需要表格展示含假期的完整序列时传
     ``all_calendar_days=true``。
 
@@ -292,7 +309,7 @@ async def get_asset_kline(
     
     prices = await service.get_asset_prices(asset_code, start_dt, end_dt)
     if not all_calendar_days:
-        td_set = await service.load_trade_calendar_date_set()
+        td_set = await service.load_asset_calendar_date_set()
         if td_set:
 
             def _dkey(d: str) -> str:
@@ -329,7 +346,7 @@ async def get_price_coverage_gaps(
     service: AssetService = Depends(get_asset_service),
 ):
     """
-    将 ``data/trade_dates.xlsx`` 中的交易日（若不存在则用工作日近似）与 Mongo ``asset_prices`` 已有日期对比，
+    将 Mongo ``trade_dates`` 集合中的交易日（若不存在则用工作日近似）与 Mongo ``asset_prices`` 已有日期对比，
     返回区间内缺失的交易日列表，便于前端提示补录。
     """
     asset = await service.get_asset_by_code(asset_code)
@@ -608,7 +625,7 @@ async def import_price_data(
     - `replace_existing=false` 且 `only_missing_dates=true`：仅新增（库中已有该日则跳过该行，否则插入）
     - `replace_existing=true`：先删除该资产全部历史行情，再插入本次请求中的数据（忽略 only_missing_dates）
 
-    **交易日历：** 若 Mongo ``trade_dates`` 或 ``data/trade_dates.xlsx`` 有数据，则请求中行日期不在交易日历内的记录会被跳过（不计入错误），便于收盘价含假期时仅向真实交易日写入 OHLC/规模/成交额等。
+    **交易日历：** 若 Mongo ``trade_dates`` 集合有数据，则请求中行日期不在交易日历内的记录会被跳过（不计入错误），便于收盘价含假期时仅向真实交易日写入 OHLC/规模/成交额等。
     """
     # 验证资产是否存在
     asset = await service.get_asset_by_code(request.asset_code)
@@ -889,7 +906,7 @@ async def import_price_data_from_excel(
     3. 成交量和成交额可以留空
     4. 支持 .xlsx 和 .xls 格式
 
-    **交易日历：** 若已配置 Mongo ``trade_dates`` 或 ``data/trade_dates.xlsx``，则 Excel 中行日期不在交易日历内的记录会被跳过（响应字段 ``skipped_non_trade_days``）。
+    **交易日历：** 价格导入不再按交易日历过滤，Excel 中所有自然日价格均会落库（多市场资产的非 A股交易日价格须完整保留）；交易日历仅在计算侧（调仓/T+2 门控）与 K线显示侧使用。
     """
     try:
         print(

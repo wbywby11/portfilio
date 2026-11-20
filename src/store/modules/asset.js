@@ -85,6 +85,8 @@ const actions = {
         is_active: params.status !== 'inactive',
         code: params.code || undefined,
         name: params.name || undefined,
+        // 业务标签过滤（数组，交由 api 层 join 成逗号分隔）
+        tags: params.tags || undefined,
         skip: ((params.page || 1) - 1) * (params.pageSize || 20),
         limit: params.pageSize || 20
       });
@@ -117,6 +119,8 @@ const actions = {
         rollover_window_q: item.rollover_window_q,
         substitute_code: item.substitute_code,
         switch_date: item.switch_date,
+        // 业务标签（存量资产无该字段时返回空数组）
+        tags: item.tags || [],
         is_active: item.is_active,
         created_at: item.created_at,
         updated_at: item.updated_at

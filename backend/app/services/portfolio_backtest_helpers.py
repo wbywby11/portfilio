@@ -6,8 +6,8 @@
 
 app/api/backtests.py 保留再导出，兼容既有 import 面。
 """
-from typing import List, Dict, Any, Optional
 import logging
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -16,13 +16,8 @@ from fastapi import HTTPException
 
 from app.schemas.backtests import SubStrategyResultOut, PortfolioBacktestResultOut
 from app.services.backtest_service import BacktestService
-from app.services.backtest_execution import _build_risk_config
 from app.backtesting.portfolio_analytics import compute_lookthrough_weights
 from app.analysis.performance import collect_warnings, compute_drawdown_series
-
-from app.services.backtest_helpers import (
-    extract_nav_series as _extract_nav_series,
-)
 
 # 四象限权重模型组件组装已下沉到组合层共享构建块
 # （app/portfolio/quadrant_components.py），回测 API 与组合服务
@@ -70,6 +65,8 @@ async def _maybe_apply_product_layer(
         product_nav,
         PerformanceAnalyzer(risk_free_rate=DEFAULT_RISK_FREE_RATE),
         getattr(portfolio_result, "rebalance_dates", None),
+        # 产品层只是叠加了现金/短债的净值变换，组合调仓成交不变，成本仍应保留
+        trades=getattr(portfolio_result, "portfolio_trades", None),
     )
     summary = summarize_product_layer(product_out)
     logger.info(
@@ -115,6 +112,8 @@ async def _run_sub_strategy_backtests(
     initial_nav: float,
     model_service,
     cost_overrides: Optional[Dict[str, float]] = None,
+    progress_cb=None,
+    engine_progress=None,
 ):
     """逐个执行子策略回测并汇总结果（两个组合回测端点共用）。
 
@@ -129,46 +128,55 @@ async def _run_sub_strategy_backtests(
     cost_overrides : Dict[str, float] or None
         组合级交易成本覆盖（commission_rate / slippage）。只包含调用方显式给出的键，
         因此 0 能正常生效；None 或缺键时沿用子策略自身默认。
+    progress_cb : async callable(done, total, message) or None
+        子策略完成回调（监控路径用于任务进度上报；回测端点不传，行为不变）。
+    engine_progress : callable(sub_idx, sub_name) -> sync callback or None
+        子策略内部逐日进度工厂：入参为该子策略在本次组合中的序号（1 起）与名称，
+        返回引擎直接调用的同步回调 ``(done, total, bar_time) -> None``。
+        引擎跑在工作线程，故这里只提供同步回调，跨线程调度由调用方负责。
 
     Returns
     -------
     (sub_nav_series, sub_weights, sub_results_out, all_trades, sub_snapshots_by_key)
-    """
-    from bson import ObjectId as _ObjId
 
-    backtest_service = BacktestService(model_service)
+    契约：组合层与子策略的唯一交互面是「净值序列」——子策略的参数组装、数据
+    与面板加载、引擎执行、绩效计算全部在
+    ``single_strategy_executor.execute_model_isolated`` 内完成；本函数只负责
+    调度子策略、收集净值序列与快照/交易明细，不构造 DataFeed、不解析
+    strategy_type、不感知面板与调仓频率。
+    """
+    from app.services.single_strategy_executor import execute_model_isolated
+
     sub_nav_series: Dict[str, pd.Series] = {}
     sub_weights: Dict[str, float] = {}
     sub_results_out: List[SubStrategyResultOut] = []
     all_trades: List[Dict[str, Any]] = []  # 组合级交易明细（带策略来源标签）
     sub_snapshots_by_key: Dict[str, list] = {}  # 子策略快照（用于穿透分析）
+    _total_subs = max(len(sub_entries), 1)
 
-    for entry in sub_entries:
+    for _sub_idx, entry in enumerate(sub_entries, start=1):
         sub_model = entry["model"]
         weight = entry["weight"]
         sub_name = entry["name"]
-        fetch_id = entry["fetch_id"]
         # 子策略可配置独立回测起点（sub_strategies[].backtest_start，YYYYMMDD）：
-        # 对齐四象限原型口径——子策略 NAV 从自身更早起点运行（如雪球 2018-12-31 开约），
-        # 组合层再截取到组合起始日并重新归一化，保证合约/选择器相位与原型一致。
+        # 对齐四象限原型口径——子策略 NAV 从自身更早起点运行，组合层再截取到
+        # 组合起始日并重新归一化，保证合约/选择器相位与原型一致。
         sub_start = entry.get("sub_start") or start_date
 
-        # 获取原始 MongoDB 文档，确保所有字段都能被正确读取
-        sub_model_data = (
-            await model_service.collection.find_one({"_id": _ObjId(fetch_id)})
-            if fetch_id else None
-        )
-
-        sub_request_data = backtest_service.to_backtest_request(
-            model=sub_model,
+        sub_result = await execute_model_isolated(
+            sub_model,
             start_date=sub_start,
             end_date=end_date,
             initial_nav=initial_nav,
-            model_data=sub_model_data,
-            **(cost_overrides or {}),
+            model_service=model_service,
+            name=sub_name,
+            cost_overrides=cost_overrides,
+            progress_cb=(
+                engine_progress(_sub_idx, sub_name)
+                if engine_progress is not None else None
+            ),
         )
-        sub_result = await _execute_single_strategy_backtest(sub_request_data, initial_nav)
-        nav_series = _extract_nav_series(sub_result, initial_nav=initial_nav)
+        nav_series = sub_result.nav_series
 
         # 子策略起点早于组合起点时：截取到组合起始日并重新归一化
         # （原型同语义：子策略全区间跑，组合层 nav[nav.index >= BACKTEST_START] 后按日收益复合）
@@ -181,7 +189,7 @@ async def _run_sub_strategy_backtests(
                     nav_series = _tail * (float(initial_nav) / float(_tail.iloc[0]))
 
         # 收集子策略交易记录，标注策略来源
-        for t in sub_result.get("trades", []):
+        for t in sub_result.trades:
             all_trades.append({
                 "strategy_name": sub_name,
                 "time": t.time.strftime("%Y-%m-%d") if hasattr(t.time, "strftime") else str(t.time),
@@ -198,23 +206,40 @@ async def _run_sub_strategy_backtests(
             sub_nav_series[key] = nav_series
             sub_weights[key] = weight
             # 收集子策略快照用于穿透分析
-            _snaps = sub_result.get("snapshots", [])
-            if _snaps:
-                sub_snapshots_by_key[key] = _snaps
+            if sub_result.snapshots:
+                sub_snapshots_by_key[key] = list(sub_result.snapshots)
             equity_curve = [
                 {"date": d.strftime("%Y-%m-%d"), "value": round(float(v), 4)}
                 for d, v in zip(nav_series.index, nav_series.values)
             ]
+            perf = sub_result.performance
             sub_results_out.append(SubStrategyResultOut(
                 model_id=sub_model.id or "",
                 name=sub_name,
                 weight=weight,
-                annual_return=sub_result.get("annual_return", 0),
-                annual_volatility=sub_result.get("annual_volatility", 0),
-                sharpe_ratio=sub_result.get("sharpe_ratio", 0),
-                max_drawdown=sub_result.get("max_drawdown", 0),
+                annual_return=getattr(perf, "annual_return", 0) or 0,
+                annual_volatility=getattr(perf, "annual_volatility", 0) or 0,
+                sharpe_ratio=getattr(perf, "sharpe_ratio", 0) or 0,
+                max_drawdown=getattr(perf, "max_drawdown", 0) or 0,
+                annual_return_365=getattr(perf, "annual_return_365", None),
+                annual_volatility_365=getattr(perf, "annual_volatility_365", None),
+                sharpe_ratio_365=getattr(perf, "sharpe_ratio_365", None),
+                n_trades=getattr(perf, "n_trades", 0) or 0,
+                total_commission=getattr(perf, "total_commission", 0.0) or 0.0,
+                total_slippage=getattr(perf, "total_slippage", 0.0) or 0.0,
+                turnover=getattr(perf, "turnover", 0.0) or 0.0,
                 equity_curve=equity_curve,
             ))
+            # 子策略完成后上报一次：前端据此看到逐个子策略推进，
+            # 而不是整段静默到合成结束。
+            if progress_cb is not None:
+                try:
+                    await progress_cb(
+                        _sub_idx, _total_subs,
+                        f"子策略回测 {_sub_idx}/{_total_subs} 完成：{sub_name}",
+                    )
+                except Exception as exc:  # noqa: BLE001 —— 进度失败不影响回测
+                    logger.warning(f"[组合回测] 子策略进度上报失败: {exc}")
 
     return sub_nav_series, sub_weights, sub_results_out, all_trades, sub_snapshots_by_key
 
@@ -284,6 +309,128 @@ def _build_portfolio_analytics(sub_nav_series, sub_weights, portfolio_nav, sub_c
     return correlation_out, attribution_out
 
 
+def _build_portfolio_record_details(
+    portfolio_equity: List[Dict[str, Any]],
+    weight_history_out: List[Dict[str, Any]],
+    portfolio_returns,
+    initial_nav: float,
+    asset_names: Dict[str, str],
+):
+    """把组合引擎输出转为回测记录明细（净值点/收益率点/权重变化/持仓记录）。"""
+    from app.models.strategy_model import (
+        AssetPosition,
+        EquityPoint,
+        PositionRecord,
+        ReturnPoint,
+        WeightChangePoint,
+    )
+
+    nav0 = float(initial_nav) if initial_nav else 0.0
+    equity_points: List[EquityPoint] = []
+    unit_values: List[float] = []
+    for pt in portfolio_equity or []:
+        value = float(pt.get("value") or 0.0)
+        unit_value = value / nav0 if nav0 else 1.0
+        unit_values.append(unit_value)
+        equity_points.append(EquityPoint(
+            date=pt.get("date"),
+            value=value,
+            unit_value=unit_value,
+            cumulative_return=unit_value - 1.0,
+            drawdown=pt.get("drawdown"),
+        ))
+
+    # 日收益与净值点等长时写入，否则留空（前端会从单位净值推导累计收益）
+    return_points: List[ReturnPoint] = []
+    returns_len = len(portfolio_returns) if portfolio_returns is not None else 0
+    if returns_len > 0 and returns_len == len(equity_points):
+        returns = list(portfolio_returns)
+        for pt, day_ret, unit_value in zip(equity_points, returns, unit_values):
+            ret = 0.0 if pd.isna(day_ret) else float(day_ret)
+            return_points.append(ReturnPoint(
+                date=pt.date,
+                daily_return=ret,
+                cumulative_return=unit_value - 1.0,
+            ))
+
+    weight_changes = [
+        WeightChangePoint(
+            date=entry.get("date"),
+            weights={k: float(v) for k, v in entry.items() if k != "date"},
+        )
+        for entry in weight_history_out or []
+        if entry.get("date")
+    ]
+
+    positions: List[PositionRecord] = []
+    for pt in portfolio_equity or []:
+        if not pt.get("is_rebalance_day"):
+            continue
+        weights = pt.get("weights") or {}
+        if not weights:
+            continue
+        value = float(pt.get("value") or 0.0)
+        positions.append(PositionRecord(
+            date=pt.get("date"),
+            portfolio_value=value,
+            positions=[
+                AssetPosition(
+                    asset_code=code,
+                    asset_name=(asset_names or {}).get(code),
+                    weight=float(weight),
+                    market_value=value * float(weight),
+                )
+                for code, weight in weights.items()
+            ],
+        ))
+
+    return equity_points, return_points, weight_changes, positions
+
+
+async def _collect_portfolio_asset_names(
+    weight_history_out: List[Dict[str, Any]],
+    sub_results_out: List[SubStrategyResultOut],
+    model_service,
+) -> Dict[str, str]:
+    """按穿透后出现的资产代码，从子策略模型取资产名称（仅用于展示）。"""
+    codes = set()
+    for entry in weight_history_out or []:
+        codes.update(k for k in entry.keys() if k != "date")
+    if not codes:
+        return {}
+    names: Dict[str, str] = {}
+    for sub in sub_results_out or []:
+        try:
+            model = await model_service.get_model(sub.model_id)
+        except Exception as exc:
+            logger.warning(f"获取子策略模型失败 model_id={sub.model_id}: {exc}")
+            continue
+        for code, name in (getattr(model, "asset_names", None) or {}).items():
+            if code in codes and name:
+                names.setdefault(code, name)
+    return names
+
+
+def _rename_correlation_matrix(
+    matrix: Optional[Dict[str, Dict[str, float]]],
+    sub_results_out: List[SubStrategyResultOut],
+) -> Optional[Dict[str, Dict[str, float]]]:
+    """把相关性矩阵的键从模型 ID 换成子策略名称，便于直接展示。"""
+    if not matrix:
+        return None
+    name_map: Dict[str, str] = {}
+    for s in sub_results_out or []:
+        name_map[str(s.model_id)] = s.name
+        name_map[s.name] = s.name
+    return {
+        name_map.get(str(row), str(row)): {
+            name_map.get(str(col), str(col)): float(val)
+            for col, val in (cols or {}).items()
+        }
+        for row, cols in matrix.items()
+    }
+
+
 async def _save_portfolio_backtest_record(
     record_model_id: str,
     start_date: str,
@@ -293,8 +440,14 @@ async def _save_portfolio_backtest_record(
     portfolio_nav,
     sub_results_out: List[SubStrategyResultOut],
     model_service,
+    equity_points: Optional[list] = None,
+    return_points: Optional[list] = None,
+    weight_changes: Optional[list] = None,
+    positions: Optional[list] = None,
+    asset_names: Optional[Dict[str, str]] = None,
+    correlation_matrix: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> Optional[str]:
-    """保存组合回测记录，失败不影响返回。返回记录 ID 或 None。"""
+    """保存组合回测记录（含净值曲线、权重变化、持仓明细），失败不影响返回。"""
     try:
         from app.models.strategy_model import BacktestRecord, BacktestResult as MBR
         bt_result = MBR(
@@ -304,7 +457,17 @@ async def _save_portfolio_backtest_record(
             sharpe_ratio=perf.sharpe_ratio,
             max_drawdown=perf.max_drawdown,
             calmar_ratio=perf.calmar_ratio,
+            annual_return_365=getattr(perf, "annual_return_365", None),
+            annual_volatility_365=getattr(perf, "annual_volatility_365", None),
+            sharpe_ratio_365=getattr(perf, "sharpe_ratio_365", None),
+            calmar_ratio_365=getattr(perf, "calmar_ratio_365", None),
             latest_unit_value=round(float(portfolio_nav.iloc[-1]), 4) if len(portfolio_nav) > 0 else 1.0,
+            equity_curve=equity_points or [],
+            return_curve=return_points or [],
+            weight_changes=weight_changes or [],
+            positions=positions or [],
+            asset_names=asset_names or None,
+            correlation_matrix=correlation_matrix,
             sub_strategies=[
                 {
                     "model_id": s.model_id,
@@ -314,6 +477,13 @@ async def _save_portfolio_backtest_record(
                     "annual_volatility": s.annual_volatility,
                     "sharpe_ratio": s.sharpe_ratio,
                     "max_drawdown": s.max_drawdown,
+                    "annual_return_365": s.annual_return_365,
+                    "annual_volatility_365": s.annual_volatility_365,
+                    "sharpe_ratio_365": s.sharpe_ratio_365,
+                    "n_trades": s.n_trades,
+                    "total_commission": s.total_commission,
+                    "total_slippage": s.total_slippage,
+                    "turnover": s.turnover,
                 }
                 for s in sub_results_out
             ],
@@ -358,9 +528,28 @@ async def _build_portfolio_backtest_result(
         sub_nav_series, sub_weights, portfolio_result.portfolio_nav,
         sub_contributions=getattr(portfolio_result, "sub_contributions", None),
     )
+
+    # 保存回测记录时同步写入明细，供历史详情页展示净值/回撤/权重/持仓
+    asset_names = await _collect_portfolio_asset_names(
+        weight_history_out, sub_results_out, model_service
+    )
+    correlation_matrix = _rename_correlation_matrix(
+        (correlation_out or {}).get("correlation_matrix"), sub_results_out
+    )
+    equity_points, return_points, weight_changes, positions = _build_portfolio_record_details(
+        portfolio_equity, weight_history_out,
+        getattr(portfolio_result, "portfolio_returns", None),
+        initial_nav, asset_names,
+    )
     backtest_record_id = await _save_portfolio_backtest_record(
         record_model_id, start_date, end_date, initial_nav,
         perf, portfolio_result.portfolio_nav, sub_results_out, model_service,
+        equity_points=equity_points,
+        return_points=return_points,
+        weight_changes=weight_changes,
+        positions=positions,
+        asset_names=asset_names,
+        correlation_matrix=correlation_matrix,
     )
 
     return PortfolioBacktestResultOut(
@@ -370,7 +559,15 @@ async def _build_portfolio_backtest_result(
         sharpe_ratio=perf.sharpe_ratio,
         max_drawdown=perf.max_drawdown,
         calmar_ratio=perf.calmar_ratio,
+        annual_return_365=getattr(perf, "annual_return_365", None),
+        annual_volatility_365=getattr(perf, "annual_volatility_365", None),
+        sharpe_ratio_365=getattr(perf, "sharpe_ratio_365", None),
+        calmar_ratio_365=getattr(perf, "calmar_ratio_365", None),
         win_rate=getattr(perf, "win_rate", None),
+        n_trades=getattr(perf, "n_trades", 0),
+        total_commission=getattr(perf, "total_commission", 0.0),
+        total_slippage=getattr(perf, "total_slippage", 0.0),
+        turnover=getattr(perf, "turnover", 0.0),
         equity_curve=portfolio_equity,
         sub_strategies=sub_results_out,
         weight_history=weight_history_out,
@@ -384,83 +581,3 @@ async def _build_portfolio_backtest_result(
         trades=all_trades,
         product_layer=product_layer_out,
     )
-
-
-async def _execute_single_strategy_backtest(
-    request_data: Dict[str, Any],
-    initial_nav: float,
-) -> Dict[str, Any]:
-    """执行单策略回测并返回结果字典。
-
-    注意：initial_cash（回测起始资金，用于仓位计算）与 initial_nav（组合起始净值，用于归一化）
-    是两个独立的概念。initial_cash 来自 request_data（默认 10M），用于回测引擎的仓位大小计算；
-    initial_nav 传入 BacktestConfig 但主要用于后续 extract_nav_series 的归一化基准。
-    组合回测时 NAV 会被归一化到 initial_nav，因此 initial_cash 的绝对值不影响复合结果。
-    """
-    from app.backtesting.config import BacktestConfig
-    from app.backtesting.data_feed import DataFeed
-    from app.backtesting.composition_builder import build_strategy_composition
-    from app.backtesting.runner import RunSpec, run_unified
-    from app.backtesting.analytics import PerformanceAnalyzer
-    from app.services.market_service import MarketService
-    from app.allocation.services.registry import create_strategy_service_from_database
-
-    strategy_params = request_data.get("strategy_params") or {}
-    # composition 必须与单策略回测同源推导：直接取 COMPOSITION_DEFAULTS 会让 selector
-    # 恒为 None，选择器不执行，带标签预算的分配模型（vol_scaled_budget/tag_based）会
-    # 退化成全资产池等分预算，与单策略回测结果严重背离。
-    spec = build_strategy_composition(
-        request_data["strategy_type"], request_data["thscodes"], strategy_params,
-    )
-
-    # 交易成本必须从 request_data 读取：此前遗漏导致组合回测的子策略恒用
-    # BacktestConfig 默认费率（0.03% + 0.05%），前端/调用方设置的 0 成本无法生效。
-    # 用 `is not None` 判断而非 or/get 默认值，确保 0 是有效取值。
-    _commission = request_data.get("commission_rate")
-    _slippage = request_data.get("slippage")
-    # 月末调仓：与单策略回测一致（按编制规则使用月末最后一个交易日）
-    _rebalance_freq = "month_end" if spec.force_month_end else request_data.get("rebalance_freq", "monthly")
-    config = BacktestConfig(
-        name=request_data["name"],
-        thscodes=request_data["thscodes"],
-        start_date=request_data["start_date"],
-        end_date=request_data["end_date"],
-        rebalance_freq=_rebalance_freq,
-        initial_cash=request_data.get("initial_cash", 10_000_000.0),
-        initial_nav=initial_nav,
-        **({"commission_rate": float(_commission)} if _commission is not None else {}),
-        **({"slippage": float(_slippage)} if _slippage is not None else {}),
-    )
-
-    market_service = MarketService()
-    # 统一使用 lookback_days=500，与 portfolio_service._run_sub_strategy_backtest 对齐
-    # 确保动量策略 min_history_days=260 有足够的历史数据缓冲
-    data_feed = await DataFeed.from_market_service(market_service, config, lookback_days=500)
-    strategy_service = await create_strategy_service_from_database(market_service)
-    strategy_cls = strategy_service.get_strategy_class(request_data["strategy_type"])
-
-    # 经唯一引擎入口运行；风控口径与单策略回测对齐：读取策略参数里的杠杆与单资产上限
-    result = run_unified(RunSpec(
-        config=config,
-        data_feed=data_feed,
-        allocator=strategy_cls(),
-        thscodes=request_data["thscodes"],
-        composition=spec.composition,
-        strategy_params=strategy_params,
-        risk_config=_build_risk_config(strategy_params),
-    ))
-
-    analyzer = PerformanceAnalyzer(risk_free_rate=0.02)
-    _sub_max_lev = (request_data.get("strategy_params") or {}).get("max_leverage")
-    _sub_max_lev = float(_sub_max_lev) if _sub_max_lev is not None else None
-    perf = analyzer.from_results(result.snapshots, max_leverage=_sub_max_lev)
-
-    return {
-        "annual_return": perf.annual_return,
-        "annual_volatility": perf.annual_volatility,
-        "sharpe_ratio": perf.sharpe_ratio,
-        "max_drawdown": perf.max_drawdown,
-        "win_rate": perf.win_rate,
-        "snapshots": result.snapshots,
-        "trades": result.trades,
-    }

@@ -13,25 +13,28 @@
 
     <template v-if="form.enable_momentum_selection">
       <el-form-item label="选择器策略">
-        <el-select
-          :value="form.selector_code"
-          placeholder="请选择选择器策略"
-          @change="handleSelectorCodeChange"
-          style="width: 100%;"
-        >
-          <el-option
-            v-for="tpl in selectionTemplateList"
-            :key="tpl.code"
-            :label="tpl.name"
-            :value="tpl.code"
+        <div class="field-row">
+          <el-select
+            :value="form.selector_code"
+            class="field-row__control"
+            placeholder="请选择选择器策略"
+            @change="handleSelectorCodeChange"
           >
-            <span style="float: left">{{ tpl.name }}</span>
-            <span style="float: right; color: #8492a6; font-size: 13px">{{ tpl.description }}</span>
-          </el-option>
-        </el-select>
-        <el-tooltip content="从策略库中选择资产选择策略，不同选择器有不同的筛选逻辑和参数" placement="top">
-          <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-        </el-tooltip>
+            <el-option
+              v-for="tpl in selectionTemplateList"
+              :key="tpl.code"
+              :label="tpl.name"
+              :value="tpl.code"
+            ></el-option>
+          </el-select>
+          <el-tooltip content="从策略库中选择资产选择策略，不同选择器有不同的筛选逻辑和参数" placement="top">
+            <i class="el-icon-question field-row__icon"></i>
+          </el-tooltip>
+        </div>
+        <!-- 描述单独成行：塞进 option 会把下拉面板按内容宽度撑到弹窗之外 -->
+        <div v-if="selectedSelectorTemplate && selectedSelectorTemplate.description" class="template-desc">
+          {{ selectedSelectorTemplate.description }}
+        </div>
       </el-form-item>
 
       <!-- 选择器参数 -->
@@ -231,6 +234,32 @@ export default {
 <style scoped>
 .form-card {
   margin-bottom: 20px;
+}
+
+/* 下拉框与右侧说明图标同一行，避免 100% 宽度把图标挤到下一行 */
+.field-row {
+  display: flex;
+  align-items: center;
+}
+
+.field-row__control {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-row__icon {
+  flex-shrink: 0;
+  margin-left: 6px;
+  color: #909399;
+  cursor: help;
+}
+
+/* 描述受表单内容宽度约束自动换行，不再撑宽下拉面板 */
+.template-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #909399;
 }
 .card-header {
   display: flex;

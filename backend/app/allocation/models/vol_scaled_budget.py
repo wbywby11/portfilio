@@ -28,6 +28,7 @@ from app.formula.rolling_volatility import (
     compute_portfolio_volatility,
 )
 from app.allocation.models.base import BaseStrategyModel
+from app.allocation.runtime_params import resolve_weight_caps
 
 _log = logging.getLogger(__name__)
 
@@ -368,7 +369,7 @@ class VolScaledBudgetStrategy(BaseStrategyModel):
         lookback_days = int(params.get("lookback_days", 260))
         vol_windows = self._resolve_vol_windows(params)
 
-        weight_caps = self._parse_json_or_dict(params.get("weight_caps", params.get("max_weight_dict", {})))
+        weight_caps = resolve_weight_caps(params)
         # 单资产权重上限默认 1.0（不限制），与原型一致；仅用户显式配置的 cap 才生效
         default_max_weight = 1.0
         asset_tags = self._parse_json_or_dict(params.get("_asset_tags", {}))
@@ -458,14 +459,9 @@ class VolScaledBudgetStrategy(BaseStrategyModel):
         max_leverage = float(params.get("max_total_leverage", 4.0))
         min_history_days = int(params.get("min_history_days", 260))
         lookback_days = int(params.get("lookback_days", 0))
-        # 单资产权重上限（用户配置，留空不限制）
-        weight_caps = params.get("weight_caps", params.get("max_weight_dict", {}))
-        if isinstance(weight_caps, str):
-            import json
-            try:
-                weight_caps = json.loads(weight_caps)
-            except Exception:
-                weight_caps = {}
+        # 单资产权重上限（用户配置，留空不限制）；历史名 max_weight_dict 由
+        # resolve_weight_caps 统一回退，JSON 字符串形态也在此解析
+        weight_caps = resolve_weight_caps(params)
 
         vol_windows = self._resolve_vol_windows(params)
 
@@ -553,7 +549,7 @@ class VolScaledBudgetStrategy(BaseStrategyModel):
         # 波动率估计方法：rolling（默认，等权滚动）/ ewma（指数加权，对齐 GMAP 原型）
         vol_method = str(params.get("vol_method_inv_var", "rolling")).lower()
         # 资产权重约束（兼容旧参数 single_cap）
-        weight_caps = self._parse_json_or_dict(params.get("weight_caps", params.get("max_weight_dict", {})))
+        weight_caps = resolve_weight_caps(params)
         single_cap_fallback = float(params.get("single_cap", 1.0))  # 旧版均匀上限，默认不截断
         selection_mask = params.get("selection_mask", None)
         # Pipeline 未注入 selection_mask 时，从 _selection_row 字典构建

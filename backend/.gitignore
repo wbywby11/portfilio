@@ -90,4 +90,22 @@ scripts/_compare_*
 scripts/_import_*
 scripts/_overwrite_*
 scripts/diag_*
+scripts/_c3_data/
+scripts/_recon_out/
 tests/regression/_*.txt
+
+# 一次性排查目录与升级包解包产物（不入库）
+/_genui_probe/
+/_import_debug/
+/_import_pkg_*/
+/_incoming_*/
+/_upgrade_*/
+/_tmp_*.py
+/_fig*.svg
+/probe_db_size.py
+/docs/_render_check_*.png
+/交付_代码增量_*/
+
+# 策略数据核对过程的中间输出（脚本本身入库）
+/scripts/fill_pack/
+/scripts/garp_pack/

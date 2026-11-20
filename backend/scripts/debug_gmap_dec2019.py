@@ -96,7 +96,9 @@ async def main() -> None:
         commission_rate=0.0, slippage=0.0,
     )
     ms = MarketService()
-    data_feed = await DataFeed.from_market_service(ms, config, lookback_days=500)
+    data_feed = await DataFeed.from_market_service(
+        ms, config, lookback_days=500, strategy_type=model.template_code,
+    )
     print("\nDataFeed 起点:", data_feed.prices.index.min().date(), "行数:", len(data_feed.prices))
     strategy_service = await create_strategy_service_from_database(ms)
     strategy_cls = strategy_service.get_strategy_class(model.template_code)

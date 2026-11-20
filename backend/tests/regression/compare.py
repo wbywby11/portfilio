@@ -33,6 +33,7 @@ VOLATILE_KEYS = frozenset({
     "updated_at",
     "completed_at",
     "published_at",
+    "frozen_at",          # 快照冻结墙钟时间（live_snapshot / published_snapshot）
     "live_published_at",
     "live_effective_date",
     "inception_date",

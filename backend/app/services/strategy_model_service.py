@@ -8,14 +8,24 @@
 - 参数版本/快照 → param_version_service.py
 """
 import json
+import logging
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
 from bson import ObjectId
 
+from app.allocation.runtime_params import (
+    MANUAL_ALLOCATION_TEMPLATE_CODES,
+    RISK_BUDGET_TARGET_VOL_TEMPLATE_CODES,
+    RUNTIME_PARAM_WHITELIST,
+    SHARPE_RISK_BUDGET_TEMPLATE_CODES,
+    effective_param_names,
+)
 from app.config.database import Database
 from app.models.strategy_model import StrategyModel, ModelStatus
 from app.services.asset_service import AssetService
 from app.services.model_template_service import ModelTemplateService
+from app.services.published_snapshot import apply_published_snapshot
+from app.services.live_portfolio_usage import ensure_not_used_by_live_portfolio
 from app.monitor.live_publish_log_scope import (
     collect_asset_codes_from_scoped_diff,
     compute_monitor_scoped_diff,
@@ -25,6 +35,8 @@ from app.monitor.live_publish_log_scope import (
     rewrite_resolved_asset_list_diff_for_display,
     summarize_monitor_scoped_diff_zh,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _merge_model_asset_name_maps(
@@ -309,44 +321,33 @@ def _strip_non_editable_monitor_params(params: Optional[Dict[str, Any]]) -> Opti
 # Schema-Driven 参数净化：只保留模板 schema 声明的参数 + 运行时必要字段
 # ---------------------------------------------------------------------------
 
-# 运行时必要字段白名单（非 schema 参数但系统执行时需要）
-_RUNTIME_PARAM_WHITELIST = frozenset({
-    "manual_weight_adjustments",  # 主观配置预设调仓记录
-    "selector_parameters",        # 选择器动态参数（前端注入）
-    "weight_caps",                # 资产权重约束配置
-    "max_weight_dict",            # 资产权重约束（旧名兼容）
-    "manual_weights",             # 主观权重配置
-    "execution_delay",            # 模型级执行延迟覆盖（Pipeline 调度声明）
-    "signal_timing",              # 模型级信号时点覆盖（prev_close/execution_bar）
-    "preserve_price_gaps",        # 缺日保真（信号计算保留品种缺日 NaN，数据源层消费）
-    "inception_weights",          # 模型级期初建仓权重（指数基日满仓口径）
-    "inception_weights_auto_normalize",  # 期初建仓权重是否归一化
-})
+# 运行时必要字段白名单：清单以 app.allocation.runtime_params 为单源，
+# 与回测门禁（strategy_preset_service._check_parameters）共用同一份定义。
+# 保留模块内别名：本文件与 tests/test_standalone_pipeline.py 沿用旧名引用。
+_RUNTIME_PARAM_WHITELIST = RUNTIME_PARAM_WHITELIST
 
 
 def _get_schema_param_names(template_code: str) -> Optional[set]:
     """根据 template_code 获取其 schema 声明的参数名集合。
-    
+
+    类加载走 :func:`app.allocation.strategy_manifest.resolve_class_safe`，
+    与门禁、回测装配同一入口（含 LEGACY_ALIASES 归一），不再自维护一份加载逻辑。
+
     Returns:
         参数名集合，或 None（未知模板 / 加载失败时）。
     """
-    from app.allocation.strategy_manifest import get_class_paths
-    
-    class_path = get_class_paths().get(template_code)
-    if not class_path:
-        return None
-    
-    try:
-        mod_path, cls_name = class_path.rsplit(".", 1)
-        mod = __import__(mod_path, fromlist=[cls_name])
-        cls = getattr(mod, cls_name)
-        schema = cls.get_param_schema()
-        return {p.name for p in schema.params}
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(
-            "获取模板 %s schema 参数失败: %s", template_code, e
+    from app.allocation.strategy_manifest import resolve_class_safe
+
+    strategy_cls = resolve_class_safe(template_code)
+    if strategy_cls is None:
+        logger.warning(
+            "获取模板 %s 的 schema 失败：模板未注册或类加载失败", template_code
         )
+        return None
+    try:
+        return {p.name for p in strategy_cls.get_param_schema().params}
+    except Exception as exc:
+        logger.warning("获取模板 %s schema 参数失败: %s", template_code, exc)
         return None
 
 
@@ -361,12 +362,15 @@ def _sanitize_params_by_schema(
     - 历史残留的污染数据
     - 其他策略泄漏的参数
     
+    保留集 = schema 参数 ∪ 运行时键（含本模板的保存固化键）：固化键必须
+    与回测门禁的放行集一致，否则会出现「存得下、回测被阻断」。
+    
     Args:
         params: 待净化的参数字典
         template_code: 策略模板代码
         
     Returns:
-        净化后的参数字典（仅包含 schema 声明 + 运行时白名单中的参数）
+        净化后的参数字典（仅包含 schema 声明 + 运行时键中的参数）
     """
     if not isinstance(params, dict):
         return params
@@ -376,17 +380,14 @@ def _sanitize_params_by_schema(
         # 未知模板或加载失败，不干预
         return params
     
-    # 保留：schema 声明的参数 + 运行时白名单
-    kept = {
-        k: v for k, v in params.items()
-        if k in schema_names or k in _RUNTIME_PARAM_WHITELIST
-    }
-    return kept
+    # 保留：schema 声明的参数 + 运行时键（白名单 ∪ 本模板固化键）
+    allowed = schema_names | effective_param_names(template_code)
+    return {k: v for k, v in params.items() if k in allowed}
 
 
-_RISK_BUDGET_TARGET_VOL_CODES = frozenset({"risk_budget_target_vol", "risk_budget_vol_target"})
-_MANUAL_ALLOCATION_TEMPLATE_CODES = frozenset({"manual_allocation", "manual_allocation_strategy"})
-_SHARPE_RISK_BUDGET_TEMPLATE_CODES = frozenset({"sharpe_risk_budget"})
+_RISK_BUDGET_TARGET_VOL_CODES = RISK_BUDGET_TARGET_VOL_TEMPLATE_CODES
+_MANUAL_ALLOCATION_TEMPLATE_CODES = MANUAL_ALLOCATION_TEMPLATE_CODES
+_SHARPE_RISK_BUDGET_TEMPLATE_CODES = SHARPE_RISK_BUDGET_TEMPLATE_CODES
 
 
 def _normalize_selector_type(model_dict: Dict[str, Any]) -> None:
@@ -706,18 +707,62 @@ class StrategyModelService:
             return StrategyModel(**data)
         return None
 
+    @staticmethod
+    def portfolio_membership(portfolio_model: StrategyModel) -> List[Dict[str, Any]]:
+        """组合成员/权重来源：已发布读发布快照，草稿读当前配置（用于发布前预览）。"""
+        snap = portfolio_model.published_snapshot or {}
+        if getattr(portfolio_model, "is_portfolio", False) and portfolio_model.status == ModelStatus.PUBLISHED:
+            members = snap.get("sub_strategies")
+            if not isinstance(members, list) or not members:
+                raise ValueError(
+                    f"组合「{portfolio_model.name}」缺少发布快照，请取消发布后重新发布"
+                )
+            return list(members)
+        return list(portfolio_model.sub_strategies or [])
+
     async def resolve_sub_strategies(
-        self, portfolio_model: StrategyModel
+        self,
+        portfolio_model: StrategyModel,
+        sub_strategies: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Tuple[StrategyModel, float]]:
-        """解析投资组合的子策略列表，返回 (子策略模型, 配置权重) 元组列表"""
-        result = []
-        for sub in portfolio_model.sub_strategies:
-            sub_model = await self.get_model(sub.get("model_id", ""))
-            if sub_model:
-                weight = float(sub.get("weight", 0))
-                result.append((sub_model, weight))
+        """解析投资组合的子策略列表，返回 (发布快照生效的子策略模型, 配置权重)。
+
+        - 成员/权重：默认取组合发布快照；组合为草稿时取当前配置（发布前预览）。
+        - 子策略内容：一律取子策略发布快照；子策略未发布或快照缺失时直接报错，不降级。
+        """
+        members = (
+            sub_strategies
+            if sub_strategies is not None
+            else self.portfolio_membership(portfolio_model)
+        )
+        result: List[Tuple[StrategyModel, float]] = []
+        unpublished: List[str] = []
+        missing: List[str] = []
+        for sub in members:
+            mid = str(sub.get("model_id") or "")
+            sub_model = await self.get_model(mid) if mid else None
+            if not sub_model:
+                missing.append(mid or "(空)")
+                continue
+            if sub_model.status != ModelStatus.PUBLISHED:
+                unpublished.append(sub_model.name)
+                continue
+            if not sub_model.published_snapshot:
+                raise ValueError(
+                    f"子策略「{sub_model.name}」缺少发布快照，请重新发布后再运行组合"
+                )
+            effective = apply_published_snapshot(sub_model, sub_model.published_snapshot)
+            result.append((effective, float(sub.get("weight", 0))))
+        if unpublished:
+            raise ValueError(
+                "组合引用的策略已取消发布："
+                + "、".join(unpublished)
+                + "；请重新发布或从组合中移除后再运行"
+            )
+        if missing:
+            raise ValueError("组合引用的策略不存在：" + "、".join(missing))
         return result
-    
+
     async def list_models(
         self,
         status: Optional[ModelStatus] = None,
@@ -753,6 +798,8 @@ class StrategyModelService:
         change_source = update_data.pop("_change_source", "strategy")
         change_operator = update_data.pop("_change_operator", None)
         existing_model = await self.get_model(model_id)
+        if existing_model is not None and existing_model.status == ModelStatus.PUBLISHED:
+            raise ValueError("模型已发布，配置已冻结；请先取消发布后再编辑")
         tpl_code = update_data.get("template_code")
         if tpl_code is None and existing_model is not None:
             tpl_code = getattr(existing_model, "template_code", None)
@@ -842,10 +889,6 @@ class StrategyModelService:
             update_data["macd_windows"] = "40,80,120,160"
             update_data["macd_long_window"] = 250
             update_data["reversal_windows"] = "10,22"
-        if existing_model and existing_model.live_publish_enabled:
-            sensitive_keys = {"asset_codes", "parameters", "rebalance_frequency", "template_code"}
-            if any(k in update_data for k in sensitive_keys):
-                update_data["live_snapshot_outdated"] = True
 
         _normalize_selector_type(update_data)
         update_data['updated_at'] = datetime.now()
@@ -934,7 +977,10 @@ class StrategyModelService:
         model = await self.get_model(model_id)
         if not model:
             return False
-        
+
+        # 被实盘组合引用时禁止删除：成员消失会使组合日常监控失败
+        await ensure_not_used_by_live_portfolio(self.collection, model_id, "删除")
+
         # 删除所有关联的回测记录
         await self.backtest_collection.delete_many({"model_id": model_id})
         

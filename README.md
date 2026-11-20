@@ -66,9 +66,13 @@ npm install
 ### 启动开发服务器
 
 ```bash
+cd portfilio
 npm run dev
 ```
-
+```bash
+cd portfilio-end
+python main.py
+```
 系统将自动在浏览器中打开 http://localhost:8080
 
 ### 构建生产版本
@@ -313,5 +317,6 @@ npm run build
 
 **版本**: v1.0.0  
 **最后更新**: 2024年1月
-#   p o r t f o l i o  
+#   p o r t f o l i o 
+ 
  

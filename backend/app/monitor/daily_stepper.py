@@ -22,12 +22,46 @@ from app.monitor.types import PortfolioState
 from app.monitor.engine_adapter import MonitorEngineAdapter
 from app.monitor.monitor_runtime import resolve_asset_currency_for_monitor
 from app.monitor.time_norm import normalize_calendar_timestamp
+from app.backtesting.events import (
+    EVENT_INIT,
+    EVENT_MONTHLY,
+    EVENT_SUBJECTIVE,
+    EVENT_VOL_RESET,
+    STAGE_EXECUTE,
+    STAGE_SKIPPED,
+    STAGE_TRIGGER,
+    make_event,
+)
 
 # 跳过波动率重置监测的策略模板集合
 _SKIP_VOL_RESET_TEMPLATES = {
     "manual_allocation", "manual_allocation_strategy",
     "etf_cycle_rotation", "risk_parity",
 }
+
+
+def _json_safe(value):
+    """递归把 numpy / 非 JSON 原生类型转成可落库形式。"""
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(v) for v in value]
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    # ndarray / Index 等多元素容器：先 tolist 再递归，避免整块退化成字符串
+    tolist = getattr(value, "tolist", None)
+    if callable(tolist):
+        try:
+            return _json_safe(tolist())
+        except Exception:
+            pass
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return item()
+        except Exception:
+            return str(value)
+    return str(value)
 
 
 class DailyStepperMixin:
@@ -47,12 +81,19 @@ class DailyStepperMixin:
                             base_date: str = None,
                             rt=None,
                             monthly_signal_dates: set = None,
-                            vol_signal_dates: set = None) -> dict:
+                            vol_signal_dates: set = None,
+                            operation_events: Optional[List[dict]] = None,
+                            enable_risk_alerts: bool = False) -> dict:
         """
         处理单个交易日（对应 run_monitor.py 的步骤 A-F）
         
         Args:
             base_date: 基日，用于判断是否是初始化第一天，默认使用 config.BASE_DATE
+            operation_events: 操作指令事件收集列表；双轨并行步进时由调用方传入实际轨的共享列表，
+                              避免模型轨事件重复落库（None 表示新建私有列表）
+            enable_risk_alerts: 是否在本日计算风险预警（步骤 E3）。预警是「当前状态」
+                              语义，主循环只在本次运行的最后一个处理日置 True；模型轨
+                              始终不计算，避免同一实例重复写批。
         """
         date = normalize_calendar_timestamp(pd.Timestamp(date_str))
         actual_base_ts = normalize_calendar_timestamp(
@@ -82,6 +123,8 @@ class DailyStepperMixin:
         vol_reset_triggered = False
         vol_reset_execute_date = None
         executed_override_id = None  # 已执行的主观调仓指令ID
+        if operation_events is None:
+            operation_events = []  # 操作指令事件（由服务层异步落库）
         
         # ================================================================
         # 步骤A: 初始日处理
@@ -117,17 +160,30 @@ class DailyStepperMixin:
             state.trade_day_count = 1 if date in trade_dates_ts_init else 0
             
             zero_weights = {a: 0.0 for a in al}
-            state.event_log.append({
-                'date': date_str,
-                'type': 'init',
-                'description': f'策略初始化，初始净值 {state.nav:.2f}',
-                'trading_cost': 0.0,
-                'old_weights': dict(zero_weights),
-                'new_weights': dict(initial_weights),
-            })
+            state.event_log.append(make_event(
+                date_str, EVENT_INIT,
+                description=f'策略初始化，初始净值 {state.nav:.2f}',
+                trading_cost=0.0,
+                old_weights=dict(zero_weights),
+                new_weights=dict(initial_weights),
+                event_log=state.event_log,
+            ))
             state.nav_history.append({'date': date_str, 'nav': state.nav, 'daily_return': 0.0})  # 初始日无涨跌
             
             init_result = self._build_daily_result(state, date_str, 0.0, True, 'init', 0.0, 0.0)
+            # 与步骤F的结果契约对齐：初始日同样携带双轨与操作指令键，
+            # 否则 run_init 首日服务层直取 result['operation_events'] 会 KeyError
+            init_result['vol_reset_triggered'] = False
+            init_result['vol_reset_execute_date'] = None
+            init_result['executed_override_id'] = None
+            init_result['operation_events'] = operation_events
+            init_result['asset_returns_local'] = {}
+            init_result['asset_returns_cny'] = {}
+            # 步骤E3（基日路径）：单日初始化时也产出预警，保证「只跑一天」也能落库
+            init_result['risk_alerts'] = (
+                self._risk_alerts_for_state(state, prices_df, date)
+                if enable_risk_alerts else []
+            )
             self._attach_manual_rebalance_observation(
                 state, date_str, prices_df, rt, True, init_result
             )
@@ -171,20 +227,24 @@ class DailyStepperMixin:
             }
             state.target_weights = new_weights.copy()
             
-            state.event_log.append({
-                'date': date_str,
-                'type': 'subjective',  # 统一事件类型名称
-                'description': f"执行主观调仓，交易费用 {trading_cost:.2f}",
-                'trading_cost': trading_cost,
-                'old_weights': old_weights,
-                'new_weights': dict(new_weights),
-                'override_id': override.get('override_id'),
-            })
+            state.event_log.append(make_event(
+                date_str, EVENT_SUBJECTIVE,
+                description="执行主观调仓",
+                trading_cost=trading_cost,
+                old_weights=old_weights,
+                new_weights=dict(new_weights),
+                override_id=override.get('override_id'),
+                event_log=state.event_log,
+            ))
                     
             is_rebalance_day = True
             rebalance_type = 'subjective'
             # 记录已执行的 override_id，供调用方标记状态
             executed_override_id = override.get('override_id')
+            operation_events.append({
+                'kind': 'subjective_executed',
+                'override_ref': executed_override_id,
+            })
         
         # ================================================================
         # 步骤C: 执行 Pending 波动率重置调仓
@@ -240,6 +300,8 @@ class DailyStepperMixin:
 
             if date == pending_exec_date and not skip_vol_due_to_monthly and not skip_vol_due_to_interval_signal:
                 pending_weights = state.pending_rebalance.get('weights', {})
+                # 信号日先取出：execute_rebalance 可能清空 pending_rebalance
+                pending_signal_date = state.pending_rebalance.get('signal_date')
                 old_weights = dict(state.target_weights)
                 trading_cost = self.tracker.execute_rebalance(
                     state, pending_weights, fx_rates, 'vol_reset', prev_nav,
@@ -248,32 +310,44 @@ class DailyStepperMixin:
                 new_weights = dict(state.target_weights)
                 state.last_rebalance_date = date_str
                 
-                state.event_log.append({
-                    'date': date_str,
-                    'type': 'vol_reset',  # 统一事件类型名称
-                    'stage': 'execute',   # 通过 stage 区分触发/执行
-                    'description': f'执行波动率重置调仓，交易费用 {trading_cost:.2f}',
-                    'trading_cost': trading_cost,
-                    'old_weights': old_weights,
-                    'new_weights': new_weights,
-                })
+                state.event_log.append(make_event(
+                    date_str, EVENT_VOL_RESET, stage=STAGE_EXECUTE,
+                    signal_date=pending_signal_date,
+                    description='执行波动率重置调仓',
+                    trading_cost=trading_cost,
+                    old_weights=old_weights,
+                    new_weights=new_weights,
+                    event_log=state.event_log,
+                ))
                 
                 is_rebalance_day = True
                 rebalance_type = 'vol_reset'
+                operation_events.append({
+                    'kind': 'vol_executed',
+                    'execute_date': date_str,
+                    'prev_weights': old_weights,
+                })
             elif (skip_vol_due_to_monthly or skip_vol_due_to_interval_signal) and date == pending_exec_date:
                 # 跳过 vol_reset
+                skip_signal_date_str = str(state.pending_rebalance.get('signal_date') or '')[:10]
                 desc = (
                     '波动率重置执行日被月度调仓覆盖（月度优先）'
                     if skip_vol_due_to_monthly
                     else f'波动率重置跳过: {skip_reason}'
                 )
-                state.event_log.append({
-                    'date': date_str,
-                    'type': 'vol_reset',
-                    'stage': 'skipped',
-                    'description': desc,
-                })
+                state.event_log.append(make_event(
+                    date_str, EVENT_VOL_RESET, stage=STAGE_SKIPPED,
+                    signal_date=state.pending_rebalance.get('signal_date'),
+                    description=desc,
+                    event_log=state.event_log,
+                ))
                 state.pending_rebalance = None
+                if skip_signal_date_str:
+                    operation_events.append({
+                        'kind': 'vol_cancelled',
+                        'signal_date': skip_signal_date_str,
+                        'reason': desc,
+                    })
         
         # ================================================================
         # 步骤D: 月度调仓检查
@@ -293,18 +367,23 @@ class DailyStepperMixin:
                 state.pending_rebalance = None
                 
                 calc_date = rebalance_signal.signal_date
-                state.event_log.append({
-                    'date': date_str,
-                    'type': 'monthly',  # 统一事件类型名称
-                    'description': f'执行月度调仓（计算日 {calc_date}），交易费用 {trading_cost:.2f}',
-                    'calc_date': calc_date,
-                    'trading_cost': trading_cost,
-                    'old_weights': old_weights,
-                    'new_weights': new_weights,
-                })
+                state.event_log.append(make_event(
+                    date_str, EVENT_MONTHLY,
+                    signal_date=calc_date,
+                    description=f'执行月度调仓（计算日 {calc_date}）',
+                    trading_cost=trading_cost,
+                    old_weights=old_weights,
+                    new_weights=new_weights,
+                    event_log=state.event_log,
+                ))
                 
                 is_rebalance_day = True
                 rebalance_type = 'monthly'
+                operation_events.append({
+                    'kind': 'monthly_executed',
+                    'execute_date': date_str,
+                    'prev_weights': old_weights,
+                })
         
         # ================================================================
         # 步骤E: 波动率监测
@@ -336,18 +415,49 @@ class DailyStepperMixin:
                 vol_reset_triggered = True
                 vol_reset_execute_date = vol_reset_signal.execute_date
                 
-                state.event_log.append({
-                    'date': date_str,
-                    'type': 'vol_reset',  # 统一事件类型名称
-                    'stage': 'trigger',   # 通过 stage 区分触发/执行
-                    'description': f'波动率触发重置，realized_vol={vol_reset_signal.vol_trigger:.4f}，'
-                                   f'scale_factor={vol_reset_signal.scale_factor:.4f}，'
-                                   f'执行日 {vol_reset_signal.execute_date}',
-                    'vol_trigger': vol_reset_signal.vol_trigger,
-                    'scale_factor': vol_reset_signal.scale_factor,
-                    'execute_date': vol_reset_signal.execute_date,
+                state.event_log.append(make_event(
+                    date_str, EVENT_VOL_RESET, stage=STAGE_TRIGGER,
+                    signal_date=vol_reset_signal.signal_date,
+                    execute_date=vol_reset_signal.execute_date,
+                    description=f'波动率触发重置，realized_vol={vol_reset_signal.vol_trigger:.4f}，'
+                                f'scale_factor={vol_reset_signal.scale_factor:.4f}，'
+                                f'执行日 {vol_reset_signal.execute_date}',
+                    vol_trigger=vol_reset_signal.vol_trigger,
+                    scale_factor=vol_reset_signal.scale_factor,
+                    event_log=state.event_log,
+                ))
+                operation_events.append({
+                    'kind': 'vol_triggered',
+                    'signal_date': str(vol_reset_signal.signal_date)[:10],
+                    'execute_date': str(vol_reset_signal.execute_date)[:10],
+                    'target_weights': dict(vol_reset_signal.new_weights or {}),
+                    'suggestion': {
+                        'vol_trigger': vol_reset_signal.vol_trigger,
+                        'vol_trigger_threshold': vol_reset_signal.vol_trigger_threshold,
+                        'vol_windows': list(vol_reset_signal.vol_windows or []),
+                        'scale_factor': vol_reset_signal.scale_factor,
+                        'description': (
+                            f'实时波动 {vol_reset_signal.vol_trigger:.4f} 超阈值 '
+                            f'{vol_reset_signal.vol_trigger_threshold:.4f}，'
+                            f'建议按 {vol_reset_signal.scale_factor:.4f} 缩放仓位'
+                        ),
+                    },
                 })
         
+        # ================================================================
+        # 步骤E2: 策略自定义监控指标（通用路径，无策略特判）
+        # ================================================================
+        state.custom_metrics = self._compute_custom_metrics(state, prices_df, date, rt)
+
+        # ================================================================
+        # 步骤E3: 风险预警计算（波动率比较 / 相关性反转）
+        # ================================================================
+        # 只计算不落库：_process_single_day 是同步方法且双轨都会经过这里，
+        # 写入 monitor_risk_alerts 统一由服务层在实际轨主循环里完成。
+        risk_alerts: List[dict] = []
+        if enable_risk_alerts:
+            risk_alerts = self._risk_alerts_for_state(state, prices_df, date)
+
         # ================================================================
         # 步骤F: 构建结果
         # ================================================================
@@ -364,8 +474,11 @@ class DailyStepperMixin:
         result['vol_reset_triggered'] = vol_reset_triggered
         result['vol_reset_execute_date'] = vol_reset_execute_date
         result['executed_override_id'] = executed_override_id  # 返回已执行的主观调仓指令ID
+        result['operation_events'] = operation_events  # 操作指令事件（服务层异步落库）
         result['asset_returns_local'] = daily_result.asset_returns_local
         result['asset_returns_cny'] = daily_result.asset_returns_cny
+        result['custom_metrics'] = dict(getattr(state, 'custom_metrics', {}) or {})
+        result['risk_alerts'] = risk_alerts
 
         self._attach_manual_rebalance_observation(
             state, date_str, prices_df, rt, is_rebalance_day, result
@@ -373,6 +486,19 @@ class DailyStepperMixin:
 
         return result
     
+    def _risk_alerts_for_state(self, state: PortfolioState, prices_df: pd.DataFrame, date) -> List[dict]:
+        """步骤E3 的内部实现：按当前目标权重算预警；异常不阻断推演。
+
+        研究员通道（独立引擎）不走本方法，本期不覆盖风险预警。
+        """
+        try:
+            return self.compute_risk_alerts(
+                dict(state.target_weights or {}), prices_df, as_of=date
+            )
+        except Exception as e:
+            logger.warning(f"风险预警计算失败（不影响推演）: date={date}, error={e}")
+            return []
+
     def _build_daily_result(self, state: PortfolioState, date_str: str,
                             nav_change_pct: float, rebalance_executed: bool,
                             rebalance_type: Optional[str], trading_cost: float,
@@ -394,6 +520,38 @@ class DailyStepperMixin:
             'day_count': state.day_count,
         }
 
+    def _compute_custom_metrics(self, state: PortfolioState, prices_df: pd.DataFrame,
+                               date: pd.Timestamp, rt=None) -> dict:
+        """通用：取本策略声明的自定义监控指标写入日度状态。
+
+        适配器内部委托 CompositionPipeline → allocator.compute_monitoring_metrics，
+        未实现该接口的策略返回空字典，存量策略落库内容不变。
+        计算失败不阻断日度推演，记 warning 并保留为空。
+        """
+        try:
+            adapter = self._get_engine_adapter(rt)
+            if adapter is None and rt is not None:
+                adapter = MonitorEngineAdapter.from_runtime_config(rt)
+            if adapter is None:
+                return {}
+            hist = prices_df.loc[prices_df.index <= date]
+            if hist is None or hist.empty:
+                return {}
+            raw_w = getattr(state, 'target_weights', None) or {}
+            weights = pd.Series({
+                str(k): float(v or 0) for k, v in raw_w.items()
+                if str(k) in hist.columns
+            })
+            if weights.empty or float(weights.abs().sum()) <= 0:
+                return {}
+            metrics = adapter.compute_monitoring_metrics(
+                current_weights=weights, prices_df=hist
+            )
+            return _json_safe(metrics) if isinstance(metrics, dict) else {}
+        except Exception as exc:
+            logger.warning(f"策略自定义监控指标计算失败 {str(date)[:10]}: {exc}")
+            return {}
+
     def _get_prices_for_date(self, prices_df: pd.DataFrame, date: pd.Timestamp) -> dict:
         """获取指定日期的价格数据"""
         if date in prices_df.index:
@@ -401,9 +559,17 @@ class DailyStepperMixin:
         return {}
     
     def _get_override_for_date(self, overrides: List[dict], date_str: str) -> Optional[dict]:
-        """获取指定日期的 pending 主观调仓指令"""
-        pending = [o for o in overrides if o.get('status') == 'pending' and o.get('execute_date') == date_str]
-        if not pending:
+        """取当日生效的主观指令；待执行与已执行补录同等参与，同日取最新创建。
+
+        已执行指令只在全量重放（初始化/补录重算）时进入列表，fold 续接场景
+        由调用方只传当前批次 pending，历史执行结果已在父状态里。
+        """
+        matched = [
+            o for o in overrides
+            if o.get('status') in ('pending', 'executed')
+            and (o.get('aligned_date') or o.get('execute_date')) == date_str
+        ]
+        if not matched:
             return None
-        pending.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-        return pending[0]
+        matched.sort(key=lambda x: str(x.get('created_at') or ''), reverse=True)
+        return matched[0]

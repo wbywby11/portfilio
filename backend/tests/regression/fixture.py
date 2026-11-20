@@ -75,7 +75,7 @@ async def _regr_model_ids() -> List[str]:
 
 
 async def cleanup() -> None:
-    """按前缀幂等清理全部回归测试文档（六个集合）。"""
+    """按前缀幂等清理全部回归测试文档。"""
     from app.config.database import Database
 
     db = Database.get_database()
@@ -94,7 +94,20 @@ async def cleanup() -> None:
         ]}
     )
     await db.strategy_live_change_logs.delete_many({"model_id": {"$in": model_ids}})
-    await db.monitor_states.delete_many({"monitor_id": {"$in": model_ids}})
+    # monitor_states 中同一监控实例有两条文档：主状态（monitor_id）与模型口径状态
+    # （monitor_id + "::model"，见 app/services/monitor_service.py:881-884）。
+    # 只按裸 monitor_id 删会漏掉 ::model 那条，而下面删完 strategy_models 后
+    # _regr_model_ids() 再也查不到这些 id，漏删的文档将永久残留。
+    monitor_ids_to_delete = list(model_ids) + [f"{m}::model" for m in model_ids]
+    await db.monitor_states.delete_many({"monitor_id": {"$in": monitor_ids_to_delete}})
+    # 监控附属集合同样挂在 monitor_id 上，随 state 一并清理；
+    # 不清理会在每次回归后留下孤儿报告/指令/预警/缓存。
+    await db.monitor_daily_reports.delete_many({"monitor_id": {"$in": monitor_ids_to_delete}})
+    await db.monitor_operations.delete_many(
+        {"monitor_id": {"$in": monitor_ids_to_delete}, "source": "auto"}
+    )
+    await db.monitor_performance_cache.delete_many({"monitor_id": {"$in": monitor_ids_to_delete}})
+    await db.monitor_risk_alerts.delete_many({"monitor_id": {"$in": monitor_ids_to_delete}})
     await db.strategy_param_versions.delete_many({"model_id": {"$in": model_ids}})
     await db.portfolios.delete_many({"name": {"$regex": f"^{PREFIX}"}})
     await db.strategy_models.delete_many({"name": {"$regex": f"^{PREFIX}"}})
@@ -102,6 +115,22 @@ async def cleanup() -> None:
         "[regression] cleanup 完成: 模型 {} 个 / 组合文档 {} 个",
         len(model_ids), len(portfolio_ids),
     )
+
+
+async def _publish_all(model_ids: List[str]) -> None:
+    """把 fixture 模型逐个发布（冻结配置快照）。
+
+    生产语义要求：``live_publish_model`` 仅接受已发布模型、组合回测的
+    已发布分支要求子策略带发布快照。fixture 走同一套生产服务层代码，
+    因此创建后必须先发布，才能复现前端「建模→发布→实盘发布→监控」的真实链路。
+    """
+    from app.services.live_publish_service import LivePublishService
+
+    svc = LivePublishService()
+    for mid in model_ids:
+        ok = await svc.publish_model(mid, source="strategy", operator="regression")
+        if not ok:
+            raise RuntimeError(f"回归 fixture 发布失败: model_id={mid}")
 
 
 async def _create_strategy_model(
@@ -231,6 +260,9 @@ async def create() -> Dict[str, str]:
         ],
         weight_method="custom",
     )
+    # ---- 发布全部模型（生产语义：实盘发布/组合回测均要求已发布 + 快照）----
+    await _publish_all([m_rp, m_mv, m_eq, m_tc, p_fixed, p_quadrant])
+
     pf_doc_id = await PortfolioService().create_portfolio(portfolio_doc)
 
     # ---- 监控实例：实盘发布（生产代码生成 live_snapshot）+ run_init ----

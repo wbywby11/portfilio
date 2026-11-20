@@ -76,6 +76,9 @@ class PortfolioBacktestResult:
     # 子策略交易记录（带策略名称标签）
     trades: List[Dict[str, Any]] = field(default_factory=list)
 
+    # 母层（合成资产）成交记录：组合层成本统计来源，与子策略成交分开保存
+    portfolio_trades: List[Any] = field(default_factory=list)
+
     # 再平衡日期列表
     rebalance_dates: List[Any] = field(default_factory=list)
 
@@ -84,6 +87,7 @@ def _performance_from_nav(
     nav: pd.Series,
     analyzer: PerformanceAnalyzer,
     rebalance_dates: Optional[List[Any]] = None,
+    trades: Optional[List[Any]] = None,
 ) -> PerformanceSummary:
     """从 NAV 序列构造 PortfolioSnapshot，统一调用 PerformanceAnalyzer.from_results.
 
@@ -92,6 +96,8 @@ def _performance_from_nav(
 
     rebalance_dates : 调仓日列表（pd.Timestamp），用于标记快照的 is_rebalance_day，
     使 PerformanceAnalyzer 能基于调仓周期收益正确计算胜率；不传则胜率为 0。
+    trades : 母层成交记录，传入后才能统计组合层手续费/滑点/换手率；
+    不传或为空时成本字段为 0（历史上该参数缺失导致母层成本始终为 0）。
     """
     if nav is None or nav.empty:
         return PerformanceSummary(
@@ -119,7 +125,7 @@ def _performance_from_nav(
         )
         for t, v in nav.items()
     ]
-    return analyzer.from_results(snapshots)
+    return analyzer.from_results(snapshots, trades=trades)
 
 
 def run_composite_unified(
@@ -140,11 +146,13 @@ def run_composite_unified(
     weight_drift: bool = True,
     commission_rate: float = 0.0,
     slippage: float = 0.0,
+    progress_cb=None,
 ) -> PortfolioBacktestResult:
     """统一引擎路径的组合回测（composite_engine.run_portfolio_backtest 的替代）.
 
     参数语义与 run_portfolio_backtest 一致，另增：
     commission_rate / slippage: 组合层交易成本（默认 0，与旧路径零成本可比）。
+    progress_cb: 逐日进度回调 ``(done, total, bar_time) -> None``（同步，引擎在工作线程调用）。
     """
     if not sub_nav_series:
         raise ValueError("sub_nav_series 为空，无法构建投资组合")
@@ -246,6 +254,7 @@ def run_composite_unified(
         composition=composition,
         strategy_params=strategy_params,
         thscodes=keys,
+        progress_cb=progress_cb,
     ))
 
     # 9. 结果聚合为 PortfolioBacktestResult（与旧路径同结构）
@@ -290,7 +299,9 @@ def _aggregate_result(
     rebalance_dates = [s.time for s in result.snapshots if s.is_rebalance_day]
 
     analyzer = PerformanceAnalyzer(risk_free_rate=DEFAULT_RISK_FREE_RATE)
-    portfolio_perf = _performance_from_nav(portfolio_nav, analyzer, rebalance_dates)
+    portfolio_perf = _performance_from_nav(
+        portfolio_nav, analyzer, rebalance_dates, trades=result.trades
+    )
     sub_perfs = {
         k: _performance_from_nav(prices[k], analyzer) for k in keys
     }
@@ -305,4 +316,5 @@ def _aggregate_result(
         weight_history=weight_history,
         sub_contributions=sub_contributions,
         rebalance_dates=rebalance_dates,
+        portfolio_trades=list(result.trades or []),
     )

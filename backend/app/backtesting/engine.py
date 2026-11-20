@@ -20,11 +20,14 @@ from app.backtesting.data_feed import DataFeed
 from app.backtesting.strategy_api import IStrategy
 from app.backtesting.risk import RiskManager
 from app.backtesting.execution import ExecutionEngine, ExecutionResult
+from app.backtesting.state import mark_to_market, weights_of
 from app.backtesting.types import Position, PortfolioSnapshot, Bar, Trade
 from app.backtesting.schedule import (
     ExecutionSchedule,
     ScheduleResolver,
     resolve_execution_schedule,
+    resolve_vol_reset_policy,
+    VOL_RESET_POLICY_LEGACY_ENGINE,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,17 +55,34 @@ class BacktestEngine:
         strategy: IStrategy,
         risk_manager: RiskManager,
         execution_engine: ExecutionEngine,
+        progress_cb=None,
     ) -> None:
         self._config = config
         self._data_feed = data_feed
         self._strategy = strategy
         self._risk = risk_manager
         self._exec = execution_engine
+        # 逐日进度回调（可选，同步）：(done, total, bar_time) -> None。
+        # 仅监控/长任务需要；默认 None 时引擎行为与性能完全不变。
+        self._progress_cb = progress_cb
 
         # 执行调度：从策略声明读取调度规则，构建 ScheduleResolver
         # （解析口径与 Step1 generate_targets 同源，见 schedule.resolve_execution_schedule）
         self._schedule_resolver: Optional[ScheduleResolver] = None
         self._execute_to_signal: Dict[pd.Timestamp, pd.Timestamp] = {}
+
+        # 面板注入：必须在 resolve_execution_schedule 之前——面板期日要作为
+        # event_dates 驱动调仓（见 CompositionPipeline.get_execution_schedule）。
+        # 与 set_price_calendar 同款 hasattr + try/except，声明异常不阻断回测。
+        if hasattr(self._strategy, "set_panels"):
+            try:
+                self._strategy.set_panels(
+                    getattr(data_feed, "panels", None),
+                    getattr(data_feed, "panel_dates", None),
+                )
+            except Exception as exc:
+                logger.warning("[引擎] set_panels 注入失败，面板类策略将无法取数: %s", exc)
+
         schedule = resolve_execution_schedule(self._strategy, config)
         trade_dates = list(data_feed.prices.index)
         self._schedule_resolver = ScheduleResolver(schedule, trade_dates)
@@ -106,28 +126,46 @@ class BacktestEngine:
         time_norm = pd.Timestamp(time.date()) if hasattr(time, 'date') else time.normalize()
         return time_norm in self._execute_to_signal
 
+    def _vol_reset_policy(self) -> Dict[str, bool]:
+        """日度波动率重置的裁决规则.
+
+        由策略在 get_execution_schedule() 里声明 vol_reset_policy，引擎只读开关；
+        未声明时取 LEGACY_ENGINE（历史行为），不改变任何存量策略净值。
+        """
+        schedule = getattr(self._schedule_resolver, "_schedule", None)
+        raw = getattr(schedule, "vol_reset_policy", None) if schedule is not None else None
+        return resolve_vol_reset_policy(raw, VOL_RESET_POLICY_LEGACY_ENGINE)
+
+    def _has_regular_exec_between(
+        self, signal_date: pd.Timestamp, execute_date: pd.Timestamp
+    ) -> bool:
+        """(signal_date, execute_date] 内是否存在常规调仓执行日（不含信号日本身）."""
+        resolver = self._schedule_resolver
+        calendar = getattr(resolver, "_trade_dates", None) if resolver is not None else None
+        if not calendar:
+            return False
+        start = int(np.searchsorted(calendar, signal_date, side="right"))
+        end = int(np.searchsorted(calendar, execute_date, side="right"))
+        return any(self._is_execute_day(pd.Timestamp(d)) for d in calendar[start:end])
+
     def _compute_total_value(self, position: Position, bar: Bar) -> float:
-        """根据当前持仓和最新价格计算组合总市值."""
+        """根据当前持仓和最新价格计算组合总市值（委托共享记账内核）."""
         # 防御性检查：确保 bar.close 是字典
         if not isinstance(bar.close, dict):
             raise TypeError(
                 f"bar.close 必须是字典类型，实际类型为 {type(bar.close)}。"
                 f"可能是数据格式问题，请检查数据源。"
             )
-        return position.cash + sum(
-            qty * bar.close.get(code, 0.0)
-            for code, qty in position.quantity.items()
-        )
+        return mark_to_market(position, bar.close, position.quantity)
 
     def _compute_traditional_value_and_weights(
         self, position: Position, bar: Bar
     ) -> Tuple[float, pd.Series]:
         """传统市值模式：计算组合总市值与当前权重（run/run_step 公共逻辑）."""
         total_value = self._compute_total_value(position, bar)
-        current_weights = pd.Series({
-            code: (qty * bar.close.get(code, 0.0) / total_value) if total_value > 0 else 0.0
-            for code, qty in position.quantity.items()
-        })
+        current_weights = pd.Series(
+            weights_of(position, bar.close, total_value, position.quantity)
+        )
         return total_value, current_weights
 
     def _recalc_post_rebalance_vol(
@@ -249,13 +287,10 @@ class BacktestEngine:
         position: Position,
         total_value: float,
     ):
-        """传统市值模式下的净值与权重更新."""
+        """传统市值模式下的净值与权重更新（权重委托共享记账内核）."""
         holdings_value = total_value - position.cash
         cash_value = position.cash
-        weights = {
-            code: (qty * bar.close.get(code, 0.0) / total_value) if total_value > 0 else 0.0
-            for code, qty in position.quantity.items()
-        }
+        weights = weights_of(position, bar.close, total_value, position.quantity)
         return total_value, holdings_value, cash_value, weights
 
     def _resolve_snapshot_weight_source(self) -> str:
@@ -362,7 +397,8 @@ class BacktestEngine:
         start_dt = pd.to_datetime(self._config.start_date)
         end_dt = pd.to_datetime(self._config.end_date)
         self._build_schedule_maps(start_dt, end_dt)
-        self._month_end_dates_set = set()
+        # 日度波动率重置的裁决规则（策略声明 → 引擎开关；默认历史行为）
+        vol_policy = self._vol_reset_policy()
 
         first_bar_in_range = True  # 用于期初建仓：首日按策略权重建仓
         # 信号时点能力：signal_timing="execution_bar" 表示策略用执行日当日收盘价做信号
@@ -385,12 +421,37 @@ class BacktestEngine:
         rt_applied_leverage = 1.0    # 当前持仓内嵌的缩放倍数（lev_{t-1}）
         rt_prev_total_value: Optional[float] = None
 
+        # 逐日进度：总步数取回测区间内的 bar 数（与循环口径一致）。
+        # 按 1% 节流，避免数千次同步回调拖慢引擎；无回调时整段开销为零。
+        _progress_total = 0
+        _progress_done = 0
+        _progress_last_pct = -1
+        if self._progress_cb is not None:
+            try:
+                _px_index = self._data_feed.prices.index
+                _progress_total = int(((_px_index >= start_dt) & (_px_index <= end_dt)).sum())
+            except Exception as exc:  # noqa: BLE001 —— 进度失败不影响回测
+                logger.debug("[引擎] 进度总步数解析失败: %s", exc)
+                _progress_total = 0
+
         for time, bar in self._data_feed.iter_bars():
             # 仅在回测设置的区间内进行模拟
             if time < pd.to_datetime(self._config.start_date):
                 continue
             if time > pd.to_datetime(self._config.end_date):
                 break
+
+            # 逐日进度：放在当日业务计算之前上报，保证单日计算卡顿时
+            # 也能看到「当前推进到哪一天」，而不是等到整段结束才跳。
+            if _progress_total > 0:
+                _progress_done += 1
+                _pct = int(_progress_done * 100 / _progress_total)
+                if _pct > _progress_last_pct:
+                    _progress_last_pct = _pct
+                    try:
+                        self._progress_cb(_progress_done, _progress_total, time)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("[引擎] 逐日进度回调异常: %s", exc)
 
             # 当前组合总市值与权重（用于波动率监控与净值更新）
             total_value, current_weights = self._compute_traditional_value_and_weights(position, bar)
@@ -431,15 +492,31 @@ class BacktestEngine:
                                 portfolio_vol = vol_value
                             # 如果触发且当前没有待处理的重置信号：始终记录信号（含常规调仓日），通过 ScheduleResolver 计算执行日
                             if is_triggered and vol_reset_signal_date is None and vol_value is not None:
-                                vol_reset_signal_date = time
-                                vol_reset_trigger_value = vol_value
-                                # 用 ScheduleResolver 计算执行日（+delay 并处理 skip_dates）
                                 time_norm = pd.Timestamp(time.date()) if hasattr(time, 'date') else time.normalize()
-                                vol_reset_execute_date = self._schedule_resolver.resolve_execute_date(time_norm) if self._schedule_resolver else None
-                                if self._is_execute_day(time):
-                                    logger.info(f"[波动率重置] 信号日记录(同日常规调仓): {time.date()} 组合波动率={vol_value:.4%}，执行日={vol_reset_execute_date.date() if vol_reset_execute_date else 'N/A'}")
+                                # 用 ScheduleResolver 计算执行日（+delay 并处理 skip_dates）
+                                _pending_exec = self._schedule_resolver.resolve_execute_date(time_norm) if self._schedule_resolver else None
+                                _skip_reason = None
+                                if vol_policy["skip_on_rebalance_day"] and self._is_execute_day(time):
+                                    _skip_reason = "信号日即常规调仓执行日"
+                                elif (
+                                    vol_policy["skip_interval_conflict"]
+                                    and _pending_exec is not None
+                                    and self._has_regular_exec_between(time_norm, _pending_exec)
+                                ):
+                                    _skip_reason = "信号日至执行日之间存在常规调仓执行日"
+                                if _skip_reason is None:
+                                    vol_reset_signal_date = time
+                                    vol_reset_trigger_value = vol_value
+                                    vol_reset_execute_date = _pending_exec
+                                    if self._is_execute_day(time):
+                                        logger.info(f"[波动率重置] 信号日记录(同日常规调仓): {time.date()} 组合波动率={vol_value:.4%}，执行日={vol_reset_execute_date.date() if vol_reset_execute_date else 'N/A'}")
+                                    else:
+                                        logger.info(f"[波动率重置] 信号日记录: {time.date()} 组合波动率={vol_value:.4%}，执行日={vol_reset_execute_date.date() if vol_reset_execute_date else 'N/A'}")
                                 else:
-                                    logger.info(f"[波动率重置] 信号日记录: {time.date()} 组合波动率={vol_value:.4%}，执行日={vol_reset_execute_date.date() if vol_reset_execute_date else 'N/A'}")
+                                    logger.info(
+                                        "[波动率重置] 跳过日度信号 %s：%s（组合波动率=%.4f%%）",
+                                        time_norm.strftime("%Y-%m-%d"), _skip_reason, vol_value * 100,
+                                    )
                         
                         # 3. 波动率公式属于策略/控制层：策略未给出时引擎不自行计算，
                         #    仅记录为空（快照会如实上报 None，前端跳过该点）。
@@ -454,7 +531,7 @@ class BacktestEngine:
                         logger.debug(f"[波动率重置] 异常详情", exc_info=True)
 
             # 是否在该时点调仓
-            # 优先级：期初建仓 > 交互式权重调整 > 波动率重置 > 常规调仓
+            # 优先级：预设调仓 > 期初建仓 > 波动率重置 > 常规调仓
             do_rebalance = False
             rebalance_type = None
             rebalance_reason = None
@@ -466,38 +543,50 @@ class BacktestEngine:
             rebalance_only_preset = getattr(self._config, "rebalance_only_on_preset_dates", False)
             initial_weights = getattr(self._config, "initial_weights", None) or {}
 
-            # 期初建仓：若配置了 initial_weights 且当前无持仓，则在首日按该权重建仓（主观策略）
-            if initial_weights and sum((v or 0) for v in initial_weights.values()) > 0:
-                has_position = bool(position.quantity)
-                if not has_position:
-                    do_rebalance = True
-                    rebalance_type = "manual_adjustment"
-                    rebalance_reason = "期初建仓"
-
-            # 期初建仓（量化策略）：首日无持仓且未配置有效 initial_weights 时，按策略权重建仓
-            # 与常规调仓一致，调用 generate_target_weights；risk_budget_target_vol 混合动量会执行资产选择（7+1 动量/反转）
-            if not do_rebalance and first_bar_in_range:
-                has_position = bool(position.quantity)
-                init_sum = sum((v or 0) for v in (initial_weights or {}).values())
-                if not has_position and init_sum == 0:
-                    do_rebalance = True
-                    rebalance_type = "期初建仓"
-                    rebalance_reason = "期初建仓"
-
-            # 交互式权重调整：指定日期使用用户预设的权重（仅当配置了 manual_weight_adjustments 时）
-            if not do_rebalance and date_str in manual_adjustments:
+            # 预设调仓日：仅在「回测区间 ∩ 行情交易日 ∩ 预设日期」的时点调仓
+            # （区间外/非交易日的预设日期在行情日上不会命中，自然不生效）
+            if date_str in manual_adjustments:
                 adj_item = manual_adjustments.get(date_str, {})
                 if adj_item.get("weights") and len(adj_item.get("weights", {})) > 0:
                     do_rebalance = True
                     rebalance_type = "manual_adjustment"
                     rebalance_reason = "预设调仓"
 
+            # 期初建仓：仅在回测首日执行（首日已是预设调仓日时以预设权重为准）。
+            # - 配置有效 initial_weights：按该权重建仓，之后全周期持有，不因清仓而自动补建仓；
+            # - 主观策略未配置 initial_weights：保持现金，等待预设调仓日；
+            # - 量化策略：与常规调仓一致调用 generate_target_weights（risk_budget_target_vol
+            #   混合动量会执行资产选择，7+1 动量/反转）
+            if not do_rebalance and first_bar_in_range:
+                init_sum = sum((v or 0) for v in initial_weights.values())
+                if not position.quantity:
+                    if init_sum > 0:
+                        do_rebalance = True
+                        rebalance_type = "manual_adjustment"
+                        rebalance_reason = "期初建仓"
+                    elif not rebalance_only_preset:
+                        do_rebalance = True
+                        rebalance_type = "期初建仓"
+                        rebalance_reason = "期初建仓"
+
             # 主观策略仅按预设日期调仓：不执行周期性调仓与波动率阈值重置
             if not rebalance_only_preset:
                 if not do_rebalance and vol_reset_signal_date is not None:
                     # 通过 ScheduleResolver 计算的执行日判断是否到达执行日
                     time_norm = pd.Timestamp(time.date()) if hasattr(time, 'date') else time.normalize()
-                    if vol_reset_execute_date is not None and time_norm >= vol_reset_execute_date:
+                    _vol_due = vol_reset_execute_date is not None and time_norm >= vol_reset_execute_date
+                    # 月度优先：同一执行日既有常规调仓又有日度重置时，丢弃日度信号按常规调仓
+                    if _vol_due and vol_policy["monthly_priority"] and self._is_execute_day(time):
+                        logger.info(
+                            "[波动率重置] %s 与常规调仓同日，月度优先：丢弃挂起的日度信号（信号日=%s）",
+                            time_norm.strftime("%Y-%m-%d"),
+                            pd.Timestamp(vol_reset_signal_date).strftime("%Y-%m-%d"),
+                        )
+                        vol_reset_signal_date = None
+                        vol_reset_trigger_value = None
+                        vol_reset_execute_date = None
+                        _vol_due = False
+                    if _vol_due:
                         do_rebalance = True
                         rebalance_type = "vol_reset"
                         _vol_signal_date = vol_reset_signal_date
@@ -716,8 +805,12 @@ class BacktestEngine:
                 execution_delay_days=_exec_delay_days,
             ))
 
-            # 每日结算钩子：策略可执行闲置资金利息、GC001回购利息等每日调整
-            position, total_value = self._run_daily_settle(time, position, total_value, bar.extra)
+            # 每日结算钩子：策略可执行闲置资金利息、GC001回购利息、成本/年费拖拽等
+            # 每日调整。close 并入 extra：结算按当日收盘价折算持仓市值，
+            # extra 原本只含 vwap/open/high/low 等额外价格维度，结构相同。
+            _settle_extra = dict(bar.extra) if bar.extra else {}
+            _settle_extra.setdefault("close", bar.close)
+            position, total_value = self._run_daily_settle(time, position, total_value, _settle_extra)
 
             # return-level 定标：快照已记录当日净值，此处按 leverage 变化无成本调整
             # 仓位敞口（持仓数量×k、现金反向补偿，净值不变），使次日收益体现 lev_t

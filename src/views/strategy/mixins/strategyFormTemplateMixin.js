@@ -1,14 +1,227 @@
 /**
  * 策略表单 - 模板切换与参数重置 Mixin
- * 包含：模板变更三层联动、参数重置、主观策略固定参数
+ * 包含：模板变更三层联动、参数重置、主观策略固定参数、原型预设应用
  */
 import {
   RISK_BUDGET_TARGET_VOL_FIXED,
   SUBJECTIVE_MONITOR_FIXED_PARAMETERS
 } from '@/utils/strategyTemplateFlags';
+import { getStrategyPresets, resolveStrategyPreset } from '@/api/strategy';
 
 export default {
+  data() {
+    return {
+      // 原型预设：当前模板可选项、待应用结果、问题弹窗、应用基准
+      presetList: [],
+      presetApplying: false,
+      pendingPreset: null,
+      presetIssuesVisible: false,
+      presetBaseline: '',
+      presetModified: false,
+      presetOutdated: false
+    };
+  },
+  computed: {
+    /** 待应用预设的问题按三级分组 */
+    pendingPresetIssues() {
+      const issues = (this.pendingPreset && this.pendingPreset.issues) || [];
+      return {
+        blocking: issues.filter(i => i.level === 'blocking_error'),
+        data: issues.filter(i => i.level === 'data_error'),
+        warning: issues.filter(i => i.level === 'warning')
+      };
+    },
+    /** 待应用预设的问题分段（按阻断 → 数据 → 提示排列，模板直接循环） */
+    presetIssueSections() {
+      const groups = this.pendingPresetIssues;
+      const sections = [];
+      if (groups.blocking.length) {
+        sections.push({
+          level: 'blocking_error',
+          title: '阻断问题 · 应用后必然跑不通，不可应用',
+          items: groups.blocking
+        });
+      }
+      if (groups.data.length) {
+        sections.push({
+          level: 'data_error',
+          title: '数据缺口 · 可保存，但未通过数据门禁，禁止回测',
+          items: groups.data
+        });
+      }
+      if (groups.warning.length) {
+        sections.push({ level: 'warning', title: '提示', items: groups.warning });
+      }
+      return sections;
+    },
+    /** 当前表单配置指纹（键排序后序列化），与预设应用基准比对 */
+    currentConfigSignature() {
+      const params = this.form.parameters || {};
+      const ordered = {};
+      Object.keys(params).sort().forEach(k => { ordered[k] = params[k]; });
+      const codes = Array.isArray(this.form.asset_codes)
+        ? this.form.asset_codes.slice().sort()
+        : [];
+      return JSON.stringify({ asset_codes: codes, parameters: ordered });
+    },
+    /** 当前模型所基于的预设名称（未应用预设时为空） */
+    presetSourceName() {
+      if (!this.form.preset_code) return '';
+      const item = this.presetList.find(p => p.code === this.form.preset_code);
+      return item ? item.name : this.form.preset_code;
+    }
+  },
+  watch: {
+    /** 模板切换时重新拉取该模板的预设清单；
+     *  覆盖新建、编辑回填、手动切换三条入口 */
+    'form.template_code'(code) {
+      this.loadPresets(code);
+    },
+    currentConfigSignature(signature) {
+      // 编辑模式由后端给 preset_modified（前端算不了指纹 hash）；
+      // 只有应用过预设（存在 baseline）后才由前端接管实时判定
+      if (!this.presetBaseline) return;
+      this.presetModified = signature !== this.presetBaseline;
+    }
+  },
   methods: {
+    /** 拉取当前模板的原型预设（失败不阻断手动配置） */
+    async loadPresets(templateCode) {
+      this.presetList = [];
+      if (!templateCode) return;
+      try {
+        const res = await getStrategyPresets(templateCode);
+        this.presetList = (res && res.data) || [];
+      } catch (error) {
+        console.error('加载策略预设失败:', error);
+        this.presetList = [];
+      }
+    },
+
+    /** 点击预设：先确认覆盖，再展开并弹出门禁结果 */
+    async previewPreset(presetCode) {
+      if (!presetCode) return;
+
+      if (this.formAlreadyEdited()) {
+        try {
+          await this.$confirm(
+            '当前表单已有修改，应用预设会覆盖参数与资产池，是否继续？',
+            '覆盖确认',
+            { confirmButtonText: '继续应用', cancelButtonText: '取消', type: 'warning' }
+          );
+        } catch (e) {
+          return;
+        }
+      }
+
+      this.presetApplying = true;
+      try {
+        const res = await resolveStrategyPreset(presetCode);
+        const data = (res && res.data) || null;
+        if (!data) {
+          this.$message.error('预设展开结果为空');
+          return;
+        }
+        this.pendingPreset = data;
+        this.presetIssuesVisible = true;
+      } catch (error) {
+        const detail = error && error.response && error.response.data && error.response.data.detail;
+        this.$message.error(detail || error.message || '预设展开失败');
+      } finally {
+        this.presetApplying = false;
+      }
+    },
+
+    /** 确认应用（仅 blocking 阻断） */
+    applyPendingPreset() {
+      const data = this.pendingPreset;
+      if (!data) return;
+      if (data.applicable === false) {
+        this.$message.error('预设存在阻断问题，无法应用');
+        return;
+      }
+      this.writePresetToForm(data);
+      this.presetIssuesVisible = false;
+      this.pendingPreset = null;
+      this.$message.success(`已应用预设：${data.name || ''}`);
+    },
+
+    /** 关闭问题弹窗（不应用） */
+    closePresetDialog() {
+      this.presetIssuesVisible = false;
+      this.pendingPreset = null;
+    },
+
+    /** 把展开结果写入表单 */
+    writePresetToForm(data) {
+      // 参数先用模板 schema 默认值打底，避免预设漏给的键变 undefined
+      const parameters = {};
+      const specs = (this.currentTemplate && this.currentTemplate.parameters) || [];
+      specs.forEach(param => {
+        const defVal = this.getParamDefault(param);
+        if (param.param_type === 'dict' || param.param_type === 'max_weight_dict') {
+          parameters[param.name] = defVal !== undefined && defVal !== null
+            ? (typeof defVal === 'object' ? JSON.stringify(defVal, null, 2) : String(defVal))
+            : '{}';
+        } else {
+          parameters[param.name] = defVal;
+        }
+      });
+
+      const incoming = data.parameters || {};
+      Object.keys(incoming).forEach(key => {
+        const spec = specs.find(p => p.name === key);
+        const type = spec ? (spec.param_type || spec.type) : '';
+        const raw = incoming[key];
+        if ((type === 'dict' || type === 'max_weight_dict') && raw !== null && typeof raw === 'object') {
+          parameters[key] = JSON.stringify(raw, null, 2);
+        } else {
+          parameters[key] = raw;
+        }
+      });
+
+      this.form.asset_codes = Array.isArray(data.asset_codes) ? data.asset_codes.slice() : [];
+      this.form.parameters = parameters;
+      if (data.rebalance_frequency && !this.isManualAllocationTemplate) {
+        this.form.rebalance_frequency = data.rebalance_frequency;
+      }
+      if (data.min_history_days !== null && data.min_history_days !== undefined) {
+        this.form.min_history_days = data.min_history_days;
+      }
+      this.form.preset_code = data.preset_code || '';
+      this.form.preset_version = data.preset_version || '';
+      this.form.asset_selection_snapshot = data.asset_selection_snapshot || null;
+
+      // 基准指纹与 currentConfigSignature 同口径，用于识别应用后的手动调整
+      this.$nextTick(() => {
+        this.presetBaseline = this.currentConfigSignature;
+        this.presetModified = false;
+        this.presetOutdated = false;
+      });
+    },
+
+    /** 当前表单是否已偏离模板默认值（决定应用预设前是否弹覆盖确认） */
+    formAlreadyEdited() {
+      if (Array.isArray(this.form.asset_codes) && this.form.asset_codes.length > 0) {
+        return true;
+      }
+      const specs = (this.currentTemplate && this.currentTemplate.parameters) || [];
+      return specs.some(param => {
+        const def = this.getParamDefault(param);
+        const cur = (this.form.parameters || {})[param.name];
+        const isDict = param.param_type === 'dict' || param.param_type === 'max_weight_dict';
+        if (isDict) {
+          const defText = def !== undefined && def !== null
+            ? (typeof def === 'object' ? JSON.stringify(def, null, 2) : String(def))
+            : '{}';
+          return cur !== undefined && cur !== defText;
+        }
+        if (def !== null && typeof def === 'object') {
+          return JSON.stringify(cur) !== JSON.stringify(def);
+        }
+        return cur !== undefined && cur !== def;
+      });
+    },
     handleTemplateChange(templateCode) {
       const template = this.templateList.find(t => t.code === templateCode);
       if (template && template.parameters) {
@@ -95,6 +308,15 @@ export default {
           this.maxWeightDict = {};
         }
       }
+
+      // 换模板等于换语义：旧预设来源与「已调整」基准全部失效
+      this.form.preset_code = '';
+      this.form.preset_version = '';
+      this.form.preset_applied_at = null;
+      this.form.asset_selection_snapshot = null;
+      this.presetBaseline = '';
+      this.presetModified = false;
+      this.presetOutdated = false;
     },
 
     resetParameters() {

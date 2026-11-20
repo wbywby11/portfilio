@@ -148,118 +148,69 @@
 
           <!-- 多策略对比 -->
 
-          <!-- 主观配置策略：杠杆倍数限制 + 权重初始化与交互式权重调整 -->
+          <!-- 主观配置策略：只读展示策略模型预设的杠杆、权重初始化与预设调仓日 -->
           <template v-if="form.backtest_mode === 'single' && isManualAllocationStrategy">
-            <el-form-item label="杠杆倍数限制">
-              <el-input-number
-                v-model="form.run_max_leverage"
-                :min="1"
-                :max="10"
-                :step="0.5"
-                :precision="1"
-                placeholder="不填则使用策略模型配置"
-                controls-position="right"
-                style="width: 160px;"
-              ></el-input-number>
-              <span style="margin-left: 8px; color: #909399; font-size: 12px;">（如 4 表示 400%，初始化/预设调仓日/步进调仓权重和均不得超过此倍数×100%）</span>
+            <el-form-item label="杠杆上限">
+              <span class="preset-inline-value">{{ manualPreset.maxLeverage.toFixed(1) }} 倍（{{ (manualPreset.maxLeverage * 100).toFixed(0) }}%）</span>
+              <span class="preset-inline-hint">来自策略模型，回测按模型预设执行；如需调整请编辑策略模型</span>
             </el-form-item>
-            <el-form-item label="权重初始化（本次回测）">
-              <el-card shadow="never" style="background-color: #fafafa; border: 1px solid #e4e7ed;">
-                <div slot="header" style="font-size: 14px; font-weight: 500; color: #303133;">
-                  <i class="el-icon-s-operation"></i> 权重初始化
+            <el-form-item label="权重初始化">
+              <el-card shadow="never" class="preset-card">
+                <div slot="header" class="preset-card-header">
+                  <i class="el-icon-s-operation"></i> 权重初始化（策略模型预设）
                 </div>
-                <div style="margin-bottom: 12px; color: #606266; font-size: 13px;">
-                  主观配置策略必须至少有一个资产的权重大于 0。若模型已配置权重初始化，将自动带出；也可在此修改后仅对本次回测生效。
-                  <span v-if="Object.keys(maxWeightDict).length > 0" style="color: #909399;">各资产权重按指数编制规则设上限，悬停输入框可查看上限。</span>
+                <div class="preset-desc">
+                  回测在首个交易日按该权重建仓；权重来自策略模型配置，回测页不单独配置。
                 </div>
-                <el-form :model="{}" label-width="80px" style="margin-bottom: 0;">
-                  <el-form-item label="资产权重" label-width="80px">
-                  <div style="display: flex; flex-wrap: wrap; gap: 12px;">
-                    <div
-                      v-for="code in (selectedStrategyInfo && selectedStrategyInfo.asset_codes) || []"
-                      :key="code"
-                      style="display: flex; align-items: center; gap: 4px; min-width: 140px;"
-                    >
-                      <span style="font-size: 12px; min-width: 120px; overflow: hidden; text-overflow: ellipsis;" :title="(selectedStrategyInfo.asset_names && selectedStrategyInfo.asset_names[code]) ? code + ' - ' + selectedStrategyInfo.asset_names[code] : code">{{ (selectedStrategyInfo.asset_names && selectedStrategyInfo.asset_names[code]) ? code + ' - ' + selectedStrategyInfo.asset_names[code] : code }}</span>
-                      <el-tooltip v-if="maxWeightDict[code] != null" :content="'指数编制规则上限 ' + ((maxWeightDict[code] || 0) * 100).toFixed(0) + '%'" placement="top">
-                        <span>
-                          <el-input-number
-                            v-model="form.run_manual_weights[code]"
-                            :min="0"
-                            :max="maxWeightDict[code] != null ? maxWeightDict[code] : 1"
-                            :step="0.05"
-                            :precision="4"
-                            size="small"
-                            controls-position="right"
-                            style="width: 90px;"
-                          ></el-input-number>
-                        </span>
-                      </el-tooltip>
-                      <el-input-number
-                        v-else
-                        v-model="form.run_manual_weights[code]"
-                        :min="0"
-                        :max="1"
-                        :step="0.05"
-                        :precision="4"
-                        size="small"
-                        controls-position="right"
-                        style="width: 90px;"
-                      ></el-input-number>
-                    </div>
+                <div v-if="manualWeightRows.length > 0" class="preset-weight-grid">
+                  <div v-for="row in manualWeightRows" :key="row.code" class="preset-weight-item">
+                    <span class="preset-weight-label" :title="row.label">{{ row.label }}</span>
+                    <span class="preset-weight-value">{{ row.percent }}</span>
                   </div>
-                  <div v-if="runManualWeightsSum !== null" style="margin-top: 8px; font-size: 12px;" :style="{ color: runManualWeightsSum > runMaxLeverage ? '#F56C6C' : (Math.abs(runManualWeightsSum - 1) < 0.001 ? '#67C23A' : '#E6A23C') }">
-                    权重和：{{ (runManualWeightsSum * 100).toFixed(2) }}%
-                    <span v-if="runMaxLeverage != null" style="color: #909399;">（不得超过杠杆 {{ (runMaxLeverage * 100).toFixed(0) }}%）</span>
-                  </div>
-                </el-form-item>
-                </el-form>
+                </div>
+                <div v-else class="preset-empty">
+                  策略模型未配置权重初始化，请先在策略模型「主观配置权重」中配置后再回测。
+                </div>
+                <div v-if="manualWeightRows.length > 0" class="preset-sum" :class="manualWeightSumClass">
+                  权重和：{{ manualWeightSumPercent }}
+                  <span class="preset-sum-hint">（上限 {{ (manualPreset.maxLeverage * 100).toFixed(0) }}%）</span>
+                </div>
               </el-card>
             </el-form-item>
-            <!-- 主观策略：预设调仓日期与权重（仅在这些日期调仓） -->
             <el-form-item label="预设调仓日期与权重">
-              <el-card shadow="never" style="background-color: #f0f9ff; border: 1px solid #b3d8ff;">
-                <div slot="header" style="font-size: 14px; font-weight: 500; color: #409EFF;">
-                  <i class="el-icon-date"></i> 仅在这些日期调仓
+              <el-card shadow="never" class="preset-card preset-card-date">
+                <div slot="header" class="preset-card-header preset-card-header-date">
+                  <i class="el-icon-date"></i> 预设调仓日期与权重（策略模型预设）
                 </div>
-                <div style="margin-bottom: 12px; color: #606266; font-size: 13px;">
-                  主观策略<strong>不设</strong>周期性调仓与波动率阈值重置，仅在下方预设的日期调仓。若策略模型中已配置调仓日与权重，将自动带出；否则请在此添加。每个调仓日可填预设权重——回测将<strong>直接按预设仓位完整执行</strong>。请至少添加一个调仓日。
+                <div class="preset-desc">
+                  主观策略不设周期性调仓，仅在下列日期按预设权重重配；未预设调仓日时，回测按权重初始化建仓并全周期持有。
                 </div>
                 <SubjectiveWeightsMatrixTable
+                  v-if="manualPreset.adjustments.length > 0"
+                  readonly
                   :asset-codes="(selectedStrategyInfo && selectedStrategyInfo.asset_codes) || []"
                   :resolve-label="resolveSingleAssetLabel"
-                  :adjustments="form.manual_weight_adjustments"
-                  :max-leverage="runMaxLeverage || getMaxLeverageForStrategy(selectedStrategyInfo)"
-                  @update:adjustments="onManualAdjustmentsUpdate"
+                  :adjustments="manualPreset.adjustments"
+                  :max-leverage="manualPreset.maxLeverage"
                 />
+                <div v-else class="preset-empty">
+                  策略模型未预设调仓日，回测将按权重初始化建仓并全周期持有。
+                </div>
               </el-card>
             </el-form-item>
           </template>
 
-          <!-- 多策略对比：杠杆倍数限制 + 主观策略预设调仓日期与权重 -->
+          <!-- 多策略对比：只读展示各主观策略模型预设的权重与预设调仓日 -->
           <template v-if="form.backtest_mode === 'multi' && selectedStrategiesWithManual.length > 0">
-            <el-form-item label="杠杆倍数限制">
-              <el-input-number
-                v-model="form.run_max_leverage"
-                :min="1"
-                :max="10"
-                :step="0.5"
-                :precision="1"
-                placeholder="不填则使用各策略模型配置"
-                controls-position="right"
-                style="width: 160px;"
-              ></el-input-number>
-              <span style="margin-left: 8px; color: #909399; font-size: 12px;">（主观策略：权重和不得超过此倍数；动量选择策略：资产权重按此倍数缩放，不归一化）</span>
-            </el-form-item>
-            <el-form-item label="主观策略：预设调仓日期与权重">
-              <el-card shadow="never" style="background-color: #f0f9ff; border: 1px solid #b3d8ff;">
-                <div slot="header" style="font-size: 14px; font-weight: 500; color: #409EFF;">
-                  <i class="el-icon-date"></i> 多策略中的主观策略需至少一个调仓日
+            <el-form-item label="主观策略预设">
+              <el-card shadow="never" class="preset-card preset-card-date">
+                <div slot="header" class="preset-card-header preset-card-header-date">
+                  <i class="el-icon-date"></i> 主观策略的权重初始化与预设调仓日（策略模型预设）
                 </div>
-                <div style="margin-bottom: 12px; color: #606266; font-size: 13px;">
-                  每个主观策略与单策略一致：可设置<strong>权重初始化</strong>（默认取策略模型默认权重），并在下方预设调仓日与权重。若策略模型中已配置，将自动带出；否则请在此添加。资产权重按指数编制规则设上限。
+                <div class="preset-desc">
+                  下列内容来自各策略模型配置，回测按模型预设执行；如需调整请编辑对应策略模型。
                 </div>
-                <el-collapse>
+                <el-collapse v-model="multiPresetActiveNames">
                   <el-collapse-item
                     v-for="s in selectedStrategiesWithManual"
                     :key="s.id"
@@ -268,57 +219,32 @@
                     <template slot="title">
                       <span style="font-weight: 500;">{{ s.name || s.id }}</span>
                     </template>
-                    <el-form :model="form" label-width="80px" style="margin-bottom: 0;">
-                    <!-- 多策略主观：权重初始化（本次回测），默认值为策略模型默认权重 -->
-                    <div v-if="form.multiStrategyRunManualWeights[s.id]" style="margin-bottom: 16px; padding: 12px; background: #fafafa; border: 1px solid #e4e7ed; border-radius: 4px;">
-                      <div style="font-size: 13px; font-weight: 500; margin-bottom: 8px; color: #303133;">权重初始化（本次回测）</div>
-                      <div style="font-size: 12px; color: #909399; margin-bottom: 8px;">默认取自策略模型默认权重，可修改后仅对本次回测生效。</div>
-                      <div style="display: flex; flex-wrap: wrap; gap: 12px;">
-                        <div
-                          v-for="code in (s.asset_codes || [])"
-                          :key="'init-' + code"
-                          style="display: flex; align-items: center; gap: 4px; min-width: 140px;"
-                        >
-                          <span style="font-size: 12px; min-width: 120px; overflow: hidden; text-overflow: ellipsis;" :title="(s.asset_names && s.asset_names[code]) ? code + ' - ' + s.asset_names[code] : code">{{ (s.asset_names && s.asset_names[code]) ? code + ' - ' + s.asset_names[code] : code }}</span>
-                          <el-tooltip v-if="multiStrategyMaxWeightDict[code] != null" :content="'指数编制规则上限 ' + ((multiStrategyMaxWeightDict[code] || 0) * 100).toFixed(0) + '%'" placement="top">
-                            <el-input-number
-                              v-model="form.multiStrategyRunManualWeights[s.id][code]"
-                              :min="0"
-                              :max="multiStrategyMaxWeightDict[code] != null ? multiStrategyMaxWeightDict[code] : 1"
-                              :step="0.05"
-                              :precision="4"
-                              size="small"
-                              controls-position="right"
-                              style="width: 90px;"
-                            ></el-input-number>
-                          </el-tooltip>
-                          <el-input-number
-                            v-else
-                            v-model="form.multiStrategyRunManualWeights[s.id][code]"
-                            :min="0"
-                            :max="1"
-                            :step="0.05"
-                            :precision="4"
-                            size="small"
-                            controls-position="right"
-                            style="width: 90px;"
-                          ></el-input-number>
+                    <div class="preset-block">
+                      <div class="preset-block-title">权重初始化</div>
+                      <div v-if="getMultiPresetWeightRows(s).length > 0" class="preset-weight-grid">
+                        <div v-for="row in getMultiPresetWeightRows(s)" :key="'init-' + row.code" class="preset-weight-item">
+                          <span class="preset-weight-label" :title="row.label">{{ row.label }}</span>
+                          <span class="preset-weight-value">{{ row.percent }}</span>
                         </div>
                       </div>
-                      <div v-if="getMultiStrategyRunManualWeightsSum(s.id) !== null" style="margin-top: 8px; font-size: 12px;" :style="{ color: getMultiStrategyRunManualWeightsSum(s.id) > getEffectiveMaxLeverage(s) ? '#F56C6C' : (Math.abs(getMultiStrategyRunManualWeightsSum(s.id) - 1) < 0.001 ? '#67C23A' : '#E6A23C') }">
-                        权重和：{{ (getMultiStrategyRunManualWeightsSum(s.id) * 100).toFixed(2) }}%
-                        <span v-if="getEffectiveMaxLeverage(s) != null" style="color: #909399;">（不得超过杠杆 {{ (getEffectiveMaxLeverage(s) * 100).toFixed(0) }}%）</span>
+                      <div v-else class="preset-empty">该策略模型未配置权重初始化。</div>
+                      <div v-if="getMultiPresetWeightRows(s).length > 0" class="preset-sum" :class="getMultiPresetWeightSumClass(s)">
+                        权重和：{{ getMultiPresetWeightSumPercent(s) }}
+                        <span class="preset-sum-hint">（上限 {{ (getMultiPreset(s).maxLeverage * 100).toFixed(0) }}%）</span>
                       </div>
                     </div>
-                    <div style="font-size: 13px; font-weight: 500; margin-bottom: 8px; color: #303133;">预设调仓日期与权重</div>
-                    <SubjectiveWeightsMatrixTable
-                      :asset-codes="s.asset_codes || []"
-                      :resolve-label="(code) => resolveMultiAssetLabel(s, code)"
-                      :adjustments="getMultiStrategyManualAdjustmentsList(s.id)"
-                      :max-leverage="getEffectiveMaxLeverage(s)"
-                      @update:adjustments="(val) => onMultiStrategyAdjustmentsUpdate(s.id, val)"
-                    />
-                    </el-form>
+                    <div class="preset-block">
+                      <div class="preset-block-title">预设调仓日期与权重</div>
+                      <SubjectiveWeightsMatrixTable
+                        v-if="getMultiPreset(s).adjustments.length > 0"
+                        readonly
+                        :asset-codes="s.asset_codes || []"
+                        :resolve-label="(code) => resolveMultiAssetLabel(s, code)"
+                        :adjustments="getMultiPreset(s).adjustments"
+                        :max-leverage="getMultiPreset(s).maxLeverage"
+                      />
+                      <div v-else class="preset-empty">未预设调仓日，回测按权重初始化建仓并全周期持有。</div>
+                    </div>
                   </el-collapse-item>
                 </el-collapse>
               </el-card>
@@ -349,7 +275,7 @@
           
           <el-form-item prop="commission_rate">
             <span slot="label">手续费率
-              <el-tooltip content="交易手续费率，默认0.03%（万三），包含买卖双向成本；范围0-0.01，步长0.0001" placement="top">
+              <el-tooltip content="交易手续费率，默认 0（不计成本），包含买卖双向成本；范围0-0.01，步长0.0001" placement="top">
                 <i class="el-icon-question" style="color: #909399; cursor: help;"></i>
               </el-tooltip>
             </span>
@@ -365,7 +291,7 @@
 
           <el-form-item prop="slippage">
             <span slot="label">滑点
-              <el-tooltip content="市场冲击成本（滑点），默认0.05%（万五），用于模拟大额交易对价格的影响；范围0-0.01，步长0.0001" placement="top">
+              <el-tooltip content="市场冲击成本（滑点），默认 0（不计成本），用于模拟大额交易对价格的影响；范围0-0.01，步长0.0001" placement="top">
                 <i class="el-icon-question" style="color: #909399; cursor: help;"></i>
               </el-tooltip>
             </span>
@@ -381,11 +307,24 @@
 
           <!-- 操作按钮 -->
           <el-form-item>
-            <el-button type="primary" @click="handleExecute" :loading="executing" size="medium">
-              <i class="el-icon-video-play"></i> {{ executing ? '回测中...' : '执行回测' }}
-            </el-button>
+            <el-tooltip :disabled="!backtestBlocked" :content="backtestBlockedTip" placement="top">
+              <span class="execute-btn-wrap">
+                <el-button
+                  type="primary"
+                  @click="handleExecute"
+                  :loading="executing"
+                  :disabled="backtestBlocked"
+                  size="medium"
+                >
+                  <i class="el-icon-video-play"></i> {{ executing ? '回测中...' : '执行回测' }}
+                </el-button>
+              </span>
+            </el-tooltip>
             <el-button @click="handleReset" size="medium">重置</el-button>
             <el-button @click="handleViewHistory" size="medium">历史记录</el-button>
+            <div v-if="backtestBlocked" class="backtest-gate-tip">
+              <i class="el-icon-warning-outline"></i> {{ backtestBlockedTip }}
+            </div>
           </el-form-item>
         </el-form>
 
@@ -398,6 +337,13 @@
           show-icon
           style="margin-top: 20px;"
         ></el-alert>
+
+        <!-- 进度框被收起后保留一条横幅，随时可回到进度 -->
+        <div v-if="executing && progressUserClosed" class="backtest-progress-bar">
+          <i class="el-icon-loading"></i>
+          <span class="backtest-progress-bar__text">{{ progressBannerText }}</span>
+          <el-button type="text" size="mini" @click="reopenProgress">查看进度</el-button>
+        </div>
       </el-card>
 
       <!-- 回测结果展示 -->
@@ -409,36 +355,34 @@
         :model-id="backtestModelId"
       ></backtest-result>
 
-      <!-- 策略多维验证（第5层增强） -->
-      <!--
-        暂时隐藏：敏感度 / 情景推演 / 鲁棒性的产品效果尚未确定，
-        后端 API 已就绪（/api/v1/backtests/{sensitivity,scenario,robustness}），
-        待产品方案明确后再开放前端展示。
-        当前策略验证仍以「单策略回测 + 多策略对比」为主。
-      -->
+      <!-- 策略多维验证：敏感度 / 情景推演 / 鲁棒性（单策略模型，按上方区间独立重跑） -->
+      <strategy-analysis-panel
+        v-if="form.backtest_mode === 'single'"
+        :strategy="selectedStrategyInfo"
+        :is-portfolio="isSelectedPortfolio"
+        :date-range="form.date_range"
+        :initial-cash="form.initial_cash"
+      ></strategy-analysis-panel>
 
-
-
-      <!-- 同步调仓日与权重到策略模型确认 -->
+      <!-- 回测进度：与日常监控跑批共用同一张任务表与同一个进度面板 -->
       <el-dialog
-        title="同步调仓配置到策略模型"
-        :visible.sync="syncConfirmDialog.visible"
+        :title="progressDialogTitle"
+        :visible.sync="progressDialogVisible"
         width="480px"
         :close-on-click-modal="false"
-        :append-to-body="false"
-        @close="onSyncConfirmDialogClose"
+        append-to-body
+        @close="progressUserClosed = true"
       >
-        <p style="color: #606266; margin-bottom: 12px;">
-          您已修改了调仓日期或权重，是否将修改同步回对应的主观策略模型？同步后，下次回测将默认使用新配置。
-        </p>
-        <span slot="footer" class="dialog-footer">
-          <el-button @click="syncConfirmChoose('cancel')">取消</el-button>
-          <el-button @click="syncConfirmChoose('runOnly')">仅回测</el-button>
-          <el-button type="primary" :loading="syncConfirmDialog.loading" @click="syncConfirmChoose('syncAndRun')">
-            同步并回测
-          </el-button>
+        <task-progress-panel :task="progressTask"></task-progress-panel>
+        <div v-if="!progressTask" class="backtest-progress-wait">正在启动回测任务…</div>
+        <span slot="footer">
+          <el-button v-if="executing" size="small" @click="progressDialogVisible = false">后台运行</el-button>
+          <el-button v-else type="primary" size="small" @click="progressDialogVisible = false">关闭</el-button>
         </span>
       </el-dialog>
+
+
+
     </div>
   </div>
 </template>
@@ -447,14 +391,29 @@
 import { mapState } from 'vuex';
 import dayjs from 'dayjs';
 import BacktestResult from './BacktestResult.vue';
+import StrategyAnalysisPanel from './components/StrategyAnalysisPanel.vue';
 import SubjectiveWeightsMatrixTable from '@/components/SubjectiveWeightsMatrixTable.vue';
-import { getMaxWeightsByCodes, computeMetricsFromSnapshots } from '@/api/strategy';
+import TaskProgressPanel from '@/components/TaskProgressPanel.vue';
+import { validateStrategyConfig } from '@/api/strategy';
+import { getMonitorTask } from '@/api/monitor';
+import {
+  isTaskActive,
+  taskKindLabel as resolveTaskKindLabel,
+  taskBannerProgressText as resolveTaskBannerProgressText
+} from '@/utils/taskProgress';
+
+/** 进度轮询间隔：与监控跑批同一节奏 */
+const PROGRESS_POLL_INTERVAL_MS = 2000;
+/** 超过该时长仍未结束才弹进度框：快回测不打扰用户 */
+const PROGRESS_DIALOG_DELAY_MS = 3000;
 
 export default {
   name: 'BacktestExecution',
   components: {
     BacktestResult,
-    SubjectiveWeightsMatrixTable
+    StrategyAnalysisPanel,
+    SubjectiveWeightsMatrixTable,
+    TaskProgressPanel
   },
   data() {
     return {
@@ -467,45 +426,36 @@ export default {
           dayjs().subtract(1, 'year').format('YYYY-MM-DD'),
           dayjs().format('YYYY-MM-DD')
         ],
-        commission_rate: 0.0003,
-        slippage: 0.0005,
+        commission_rate: 0,
+        slippage: 0,
         // 波动率阈值重置（所有策略可选）
         enable_vol_reset: false,  // 所有策略默认关闭波动率重置
         vol_reset_threshold: 0.06,
-        // 交互式权重调整（仅主观配置策略）
-        enable_interactive_adjustment: false,
-        manual_weight_adjustments: [],
-        // 权重初始化（本次回测覆盖，仅主观配置策略；为空时使用模型配置）
-        run_manual_weights: {},
-        // 多策略对比：每个主观策略的预设调仓日与权重 { [strategyId]: [ { date, weights, auto_normalize }, ... ] }
-        multiStrategyManualAdjustments: {},
-        // 多策略对比：每个主观策略的权重初始化（本次回测）{ [strategyId]: { [code]: number } }，默认值为策略模型默认权重
-        multiStrategyRunManualWeights: {},
-        // 杠杆倍数限制（本次回测，不填则使用策略模型配置；用于动态限制初始化权重、预设调仓日权重、步进调仓权重）
-        run_max_leverage: null,
+        // 多策略对比：各主观策略从模型带出的只读预设 { [strategyId]: { weights, adjustments, maxLeverage } }
+        multiManualPresets: {}
       },
       executing: false,
       backtestResults: null,
       backtestModelId: null,
       selectedStrategyInfo: null,
-
-      maxWeightDict: {},  // 指数编制规则下每类资产权重上限，供权重初始化与预设调仓输入限制
-      multiStrategyMaxWeightDict: {},  // 多策略主观：所有主观策略资产池的指数编制规则权重上限 { [assetCode]: max }
+      // 多策略预设：默认展开已选择的主观策略面板，直接看到模型权重
+      multiPresetActiveNames: [],
       // 调仓日期禁用：节假日列表（YYYY-MM-DD），可从接口扩展；空则仅禁用周末
       rebalanceHolidayDates: [],
-      // 用于检测回测表单中的调仓日/权重是否被修改（以便提示同步回策略模型）
-      originalManualAdjustments: null,      // 单策略：从策略加载的预设调仓日与权重
-      originalRunManualWeights: null,       // 单策略：从策略加载的权重初始化
-      originalMultiStrategyManualAdjustments: {},   // 多策略：{ [strategyId]: [...] }
-      originalMultiStrategyRunManualWeights: {},   // 多策略：{ [strategyId]: {...} }
-      // 同步确认对话框
-      syncConfirmDialog: {
-        visible: false,
-        loading: false,
-        resolve: null  // Promise resolve，用于返回用户选择
-      },
+      // 回测实时门禁：blocking_error / data_error 两级问题（warning 不阻断）
+      backtestGateIssues: [],
       // 组合回测
-      portfolioList: []
+      portfolioList: [],
+      // 回测进度：progressKey 由前端生成，后端建同 id 的进度任务，页面并行轮询
+      progressDialogVisible: false,
+      progressTask: null,
+      progressSubject: '',
+      progressKey: '',
+      progressTimer: null,
+      progressOpenTimer: null,
+      progressPolling: false,
+      // 用户点过「后台运行 / 关闭」后，本轮不再自动弹出进度框
+      progressUserClosed: false
     };
   },
   computed: {
@@ -514,16 +464,34 @@ export default {
     strategyList() {
       return this.strategyModelList || [];
     },
+    /** 进度框标题：任务文档未建好前按「回测」兜底 */
+    progressDialogTitle() {
+      const kind = this.progressTask ? resolveTaskKindLabel(this.progressTask) : '回测';
+      return this.progressSubject ? `${kind}进度：${this.progressSubject}` : `${kind}进度`;
+    },
+    /** 横幅文案：主体名 + 百分比（无总量时为「引擎计算中」） */
+    progressBannerText() {
+      const name = this.progressSubject ? `「${this.progressSubject}」` : '';
+      const detail = this.progressTask ? resolveTaskBannerProgressText(this.progressTask) : '启动中';
+      return `正在回测${name} ${detail}`;
+    },
+    /** 回测实时门禁：blocking 与数据缺口都禁用「执行回测」（与 resolve 的 backtest_ready 同口径） */
+    backtestBlocked() {
+      return this.backtestGateIssues.length > 0;
+    },
+    /** 门禁提示：首条问题 + 其余条数 */
+    backtestBlockedTip() {
+      const first = this.backtestGateIssues[0];
+      if (!first) return '';
+      const prefix = first.level === 'blocking_error' ? '配置阻断' : '数据缺口';
+      const rest = this.backtestGateIssues.length > 1
+        ? `（另有 ${this.backtestGateIssues.length - 1} 项问题）` : '';
+      return `${prefix}：${first.message}${rest}`;
+    },
     selectedStrategies() {
       if (!this.form.strategy_ids) return [];
       const ids = Array.isArray(this.form.strategy_ids) ? this.form.strategy_ids : [this.form.strategy_ids];
       return ids.map(id => this.strategyList.find(s => s.id === id)).filter(Boolean);
-    },
-    // 检查是否有策略启用了动量选择器（选择器参数由策略模型配置，回测页不展示）
-    // 获取所有启用了选择器的策略（多策略模式）
-    selectedStrategiesWithSelection() {
-      if (this.form.backtest_mode !== 'multi') return [];
-      return this.selectedStrategies.filter(s => s.enable_momentum_selection === true);
     },
     // 多策略模式下选中的主观配置策略（需配置预设调仓日与权重）
     selectedStrategiesWithManual() {
@@ -603,6 +571,12 @@ export default {
     assetPoolSize() {
       return this.assetPoolForSelection.length || 100;
     },
+    /** 当前选择是否为投资组合（组合不支持按单策略模型做多维验证） */
+    isSelectedPortfolio() {
+      const ids = this.form.strategy_ids;
+      const single = Array.isArray(ids) ? ids[0] : ids;
+      return String(single || '').startsWith('portfolio:');
+    },
     // 是否为主观配置策略（支持权重初始化与交互式权重调整）
     isManualAllocationStrategy() {
       if (!this.selectedStrategyInfo) return false;
@@ -610,84 +584,56 @@ export default {
       return code === 'manual_allocation' || code === 'manual_allocation_strategy'
         || (code.toLowerCase && code.toLowerCase().includes('manual') && code.toLowerCase().includes('allocation'));
     },
-    // 策略模型中的权重初始化（用于回测页展示/覆盖）
-    modelManualWeights() {
-      if (!this.selectedStrategyInfo) return {};
-      const p = this.selectedStrategyInfo.parameters || this.selectedStrategyInfo.strategy_params || {};
-      const mw = p.manual_weights;
-      if (typeof mw === 'object' && mw !== null) return mw;
-      return {};
-    },
-    runManualWeightsSum() {
-      const mw = this.form.run_manual_weights;
-      if (typeof mw !== 'object' || !mw) return null;
-      return Object.values(mw).reduce((s, v) => s + (Number(v) || 0), 0);
-    },
-    /** 本次回测有效杠杆倍数（用于显示与校验）；单策略且主观配置时有效，否则为 null */
-    runMaxLeverage() {
-      if (this.form.backtest_mode !== 'single' || !this.isManualAllocationStrategy) return null;
-      return this.getEffectiveMaxLeverage(this.selectedStrategyInfo);
-    },
-    /** 是否修改了调仓日或权重（单策略或多策略主观） */
-    hasManualAdjustmentsModified() {
-      if (this.form.backtest_mode === 'single' && this.isManualAllocationStrategy) {
-        if (this.originalManualAdjustments == null && this.originalRunManualWeights == null) return false;
-        const adjEq = this.deepEqual(this.form.manual_weight_adjustments || [], this.originalManualAdjustments || []);
-        const runEq = this.deepEqual(this.form.run_manual_weights || {}, this.originalRunManualWeights || {});
-        return !adjEq || !runEq;
-      }
-      if (this.form.backtest_mode === 'multi' && (this.selectedStrategiesWithManual || []).length > 0) {
-        const m = this.form.multiStrategyManualAdjustments || {};
-        const r = this.form.multiStrategyRunManualWeights || {};
-        const origM = this.originalMultiStrategyManualAdjustments || {};
-        const origR = this.originalMultiStrategyRunManualWeights || {};
-        for (const s of this.selectedStrategiesWithManual || []) {
-          const id = s.id;
-          const adjEq = this.deepEqual(m[id] || [], origM[id] || []);
-          const runEq = this.deepEqual(r[id] || {}, origR[id] || {});
-          if (!adjEq || !runEq) return true;
-        }
-        return false;
-      }
-      return false;
-    },
-    // 调仓日期选择器：禁用周末、节假日，且限制在回测时间区间内
-    rebalanceDatePickerOptions() {
-      const holidaySet = new Set(this.rebalanceHolidayDates || []);
-      const start = this.form.date_range && this.form.date_range[0];
-      const end = this.form.date_range && this.form.date_range[1];
+    // 策略模型中的权重初始化、预设调仓日与杠杆上限（回测只读执行，不覆盖模型配置）
+    manualPreset() {
+      const s = this.selectedStrategyInfo;
+      if (!s) return { weights: {}, adjustments: [], maxLeverage: 4 };
+      const params = s.parameters || s.strategy_params || {};
+      const codes = s.asset_codes || [];
       return {
-        disabledDate(time) {
-          const day = time.getDay();
-          if (day === 0 || day === 6) return true; // 周六、周日
-          const y = time.getFullYear();
-          const m = String(time.getMonth() + 1).padStart(2, '0');
-          const d = String(time.getDate()).padStart(2, '0');
-          const dateStr = `${y}-${m}-${d}`;
-          if (holidaySet.has(dateStr)) return true;
-          if (start && dateStr < start) return true;
-          if (end && dateStr > end) return true;
-          return false;
-        }
+        weights: this.parseWeightDict(params.manual_weights, codes),
+        adjustments: this.parsePresetAdjustments(params.manual_weight_adjustments, codes),
+        maxLeverage: this.getMaxLeverageForStrategy(s)
       };
+    },
+    manualWeightRows() {
+      const s = this.selectedStrategyInfo;
+      if (!s) return [];
+      const codes = (s.asset_codes && s.asset_codes.length)
+        ? s.asset_codes
+        : Object.keys(this.manualPreset.weights);
+      return codes.map(code => {
+        const weight = Number(this.manualPreset.weights[code] || 0);
+        return {
+          code,
+          label: this.resolveSingleAssetLabel(code),
+          weight,
+          percent: (weight * 100).toFixed(2) + '%'
+        };
+      });
+    },
+    manualWeightSum() {
+      return this.manualWeightRows.reduce((sum, row) => sum + row.weight, 0);
+    },
+    manualWeightSumPercent() {
+      return (this.manualWeightSum * 100).toFixed(2) + '%';
+    },
+    manualWeightSumClass() {
+      if (this.manualWeightSum > this.manualPreset.maxLeverage + 1e-6) return 'is-over';
+      return Math.abs(this.manualWeightSum - 1) < 0.001 ? 'is-ok' : 'is-under';
     }
   },
-    watch: {
+  watch: {
     'form.strategy_ids': {
       handler() {
         this.updateSelectedStrategyInfo();
-        // 策略切换时清空交互式权重调整
-        this.form.enable_interactive_adjustment = false;
-        this.form.manual_weight_adjustments = [];
-        // 主观配置策略：预设调仓日由 updateSelectedStrategyInfo 中 initManualWeightAdjustmentsFromStrategy 加载
         this.$nextTick(() => {
-          this.syncRunManualWeights();
           if (this.isManualAllocationStrategy && this.$refs.form) this.$refs.form.clearValidate();
         });
-        // 如果是多策略模式，初始化主观策略的调仓日与权重
+        // 多策略模式：从各主观策略模型加载只读预设
         if (this.form.backtest_mode === 'multi') {
           this.$nextTick(() => {
-            this.initMultiStrategyManualAdjustments();
+            this.initMultiStrategyManualPresets();
           });
         }
       },
@@ -708,28 +654,8 @@ export default {
       }
       this.updateSelectedStrategyInfo();
       if (newMode === 'multi') {
-        this.$nextTick(() => this.initMultiStrategyManualAdjustments());
+        this.$nextTick(() => this.initMultiStrategyManualPresets());
       }
-    },
-    selectedStrategyInfo: {
-      handler(info) {
-        if (!info || this.form.backtest_mode !== 'single') return;
-        const code = (info.template_code || '').toString();
-        const isManual = code === 'manual_allocation' || code === 'manual_allocation_strategy'
-          || (code.toLowerCase && code.toLowerCase().includes('manual') && code.toLowerCase().includes('allocation'));
-        // 仅动量/量化策略应用指数编制规则权重上限；主观策略不限制
-        if (!isManual && info.asset_codes && info.asset_codes.length > 0) {
-          getMaxWeightsByCodes(info.asset_codes).then(res => {
-            const data = (res && res.data && typeof res.data === 'object' && !Array.isArray(res.data)) ? res.data : {};
-            this.maxWeightDict = data;
-          }).catch(() => {
-            this.maxWeightDict = {};
-          });
-        } else {
-          this.maxWeightDict = {};
-        }
-      },
-      immediate: true
     }
   },
   created() {
@@ -739,6 +665,9 @@ export default {
     this.$nextTick(() => {
       this.updateSelectedStrategyInfo();
     });
+  },
+  beforeDestroy() {
+    this.stopProgressPolling();
   },
   methods: {
     async loadStrategyList() {
@@ -772,42 +701,55 @@ export default {
         this.portfolioList = [];
       }
     },
-    /** 从策略模型加载预设调仓日与权重；若无预设则添加一个默认项 */
-    initManualWeightAdjustmentsFromStrategy() {
-      if (!this.isManualAllocationStrategy) return;
-      const strategy = this.selectedStrategyInfo;
-      if (!strategy) {
-        this.addManualAdjustment();
-        this.saveOriginalManualValues();
-        return;
+    /** 解析模型权重字典；兼容 JSON 字符串，仅保留资产池内资产 */
+    parseWeightDict(raw, codes) {
+      let mw = raw;
+      if (typeof mw === 'string') {
+        mw = this.parseJsonLoose(mw, {});
       }
-      let preset = strategy.parameters && strategy.parameters.manual_weight_adjustments;
-      if (typeof preset === 'string') {
-        try { preset = preset.trim() ? JSON.parse(preset) : []; } catch (_) { preset = []; }
+      if (!mw || typeof mw !== 'object' || Array.isArray(mw)) return {};
+      const out = {};
+      const keys = (codes && codes.length) ? codes : Object.keys(mw);
+      keys.forEach(code => {
+        const v = mw[code];
+        const n = Number(v);
+        if (v !== undefined && v !== null && Number.isFinite(n)) out[code] = n;
+      });
+      return out;
+    },
+    /** 解析模型预设调仓日；只展示模型真实配置，不生成默认行 */
+    parsePresetAdjustments(raw, codes) {
+      let list = raw;
+      if (typeof list === 'string') {
+        list = this.parseJsonLoose(list, []);
       }
-      if (Array.isArray(preset) && preset.length > 0) {
-        const codes = strategy.asset_codes || [];
-        this.form.manual_weight_adjustments = preset.map(adj => {
+      if (!Array.isArray(list)) return [];
+      return list
+        .filter(adj => adj && adj.date)
+        .map(adj => {
           const weights = {};
-          codes.forEach(c => {
-            weights[c] = (adj.weights && adj.weights[c] != null) ? Number(adj.weights[c]) : 0;
+          const src = adj.weights || {};
+          const keys = (codes && codes.length) ? codes : Object.keys(src);
+          keys.forEach(code => {
+            const n = Number(src[code]);
+            weights[code] = Number.isFinite(n) ? n : 0;
           });
-          if (codes.length > 0 && Object.values(weights).every(v => !v || v === 0)) {
-            weights[codes[0]] = 1;
-          }
           return {
-            date: this.normalizeDateForPicker(adj.date || '') || '',
+            date: this.normalizeDateForPicker(String(adj.date)) || '',
             weights,
             auto_normalize: !!adj.auto_normalize
           };
-        });
-      } else {
-        this.addManualAdjustment();
-      }
-      this.saveOriginalManualValues();
-      if (this.$refs.form) this.$refs.form.clearValidate();
+        })
+        .filter(adj => adj.date);
     },
-    /** 将后端返回的日期（YYYYMMDD 或 YYYY-MM-DD）转为 el-date-picker 需要的 YYYY-MM-DD */
+    /** 宽松 JSON 解析：兼容单引号形式的历史数据，失败时返回 fallback */
+    parseJsonLoose(text, fallback) {
+      const s = String(text || '').trim();
+      if (!s) return fallback;
+      try { return JSON.parse(s); } catch (_) { /* 继续尝试单引号兼容 */ }
+      try { return JSON.parse(s.replace(/'/g, '"')); } catch (_) { return fallback; }
+    },
+    /** 将后端返回的日期（YYYYMMDD 或 YYYY-MM-DD）转为 YYYY-MM-DD */
     normalizeDateForPicker(val) {
       if (!val || typeof val !== 'string') return val;
       const s = String(val).replace(/-/g, '').trim().slice(0, 8);
@@ -816,187 +758,70 @@ export default {
       }
       return val;
     },
-    /** 深度比较两个值是否相等 */
-    deepEqual(a, b) {
-      if (a === b) return true;
-      if (a == null || b == null) return a === b;
-      if (typeof a !== typeof b) return false;
-      if (typeof a !== 'object') return a === b;
-      if (Array.isArray(a) !== Array.isArray(b)) return false;
-      if (Array.isArray(a)) {
-        if (a.length !== b.length) return false;
-        return a.every((v, i) => this.deepEqual(v, b[i]));
-      }
-      const keysA = Object.keys(a);
-      const keysB = Object.keys(b);
-      if (keysA.length !== keysB.length) return false;
-      return keysA.every(k => keysB.includes(k) && this.deepEqual(a[k], b[k]));
-    },
-    /** 保存当前表单值为原始值（用于检测用户是否修改） */
-    saveOriginalManualValues() {
-      if (this.form.backtest_mode === 'single' && this.isManualAllocationStrategy) {
-        this.originalManualAdjustments = JSON.parse(JSON.stringify(this.form.manual_weight_adjustments || []));
-        this.originalRunManualWeights = JSON.parse(JSON.stringify(this.form.run_manual_weights || {}));
-      } else if (this.form.backtest_mode === 'multi') {
-        const m = this.form.multiStrategyManualAdjustments || {};
-        const r = this.form.multiStrategyRunManualWeights || {};
-        this.originalMultiStrategyManualAdjustments = JSON.parse(JSON.stringify(m));
-        this.originalMultiStrategyRunManualWeights = JSON.parse(JSON.stringify(r));
-      }
-    },
-    addManualAdjustment() {
-      const codes = (this.selectedStrategyInfo && this.selectedStrategyInfo.asset_codes) || [];
-      const weights = {};
-      codes.forEach(c => { weights[c] = 0; });
-      if (codes.length > 0) {
-        weights[codes[0]] = 1; // 默认第一个资产 100%
-      }
-      this.form.manual_weight_adjustments.push({
-        date: this.form.date_range && this.form.date_range[0] ? this.form.date_range[0] : '',
-        weights,
-        auto_normalize: false
-      });
-      if (this.$refs.form) this.$refs.form.clearValidate();
-    },
-    removeManualAdjustment(idx) {
-      this.form.manual_weight_adjustments.splice(idx, 1);
-      if (this.$refs.form) this.$refs.form.clearValidate();
-    },
     isStrategyManual(strategy) {
       if (!strategy) return false;
       const code = (strategy.template_code || '').toString();
       return code === 'manual_allocation' || code === 'manual_allocation_strategy'
         || (code.toLowerCase && code.toLowerCase().includes('manual') && code.toLowerCase().includes('allocation'));
     },
-    /** 从策略模型取默认权重（新增策略时填写的默认权重）；支持后端返回的 JSON 字符串 */
-    getModelManualWeightsForStrategy(s) {
-      if (!s) return {};
-      const p = s.parameters || s.strategy_params || {};
-      let mw = p.manual_weights;
-      if (typeof mw === 'string') {
-        try {
-          mw = JSON.parse(mw);
-        } catch (e) {
-          return {};
-        }
-      }
-      if (typeof mw === 'object' && mw !== null) return mw;
-      return {};
-    },
-    async initMultiStrategyManualAdjustments() {
+    /** 多策略：从各主观策略模型加载只读预设（权重初始化、预设调仓日、杠杆上限） */
+    async initMultiStrategyManualPresets() {
       if (this.form.backtest_mode !== 'multi') return;
-      const manual = this.selectedStrategiesWithManual || [];
-      const m = this.form.multiStrategyManualAdjustments || {};
-      const runWeights = this.form.multiStrategyRunManualWeights || {};
-      const allCodes = new Set();
-      for (let i = 0; i < manual.length; i++) {
-        const s = manual[i];
-        const id = s.id;
-        (s.asset_codes || []).forEach(c => allCodes.add(c));
-        let fromModel = this.getModelManualWeightsForStrategy(s);
-        let presetAdjustments = s.parameters && s.parameters.manual_weight_adjustments;
-        if (Object.keys(fromModel).length === 0 || !Array.isArray(presetAdjustments)) {
+      for (const s of this.selectedStrategiesWithManual || []) {
+        let full = s;
+        const p = s.parameters || {};
+        const needsFull = Object.keys(p).length === 0
+          || p.manual_weights == null
+          || !Array.isArray(p.manual_weight_adjustments);
+        if (needsFull) {
           try {
-            const full = await this.$store.dispatch('strategy/fetchStrategyModel', id);
-            const fullModel = (full && full.data !== undefined) ? full.data : full;
-            fromModel = this.getModelManualWeightsForStrategy(fullModel && (fullModel.parameters !== undefined ? { parameters: fullModel.parameters } : fullModel) || fullModel);
-            if (fullModel && fullModel.parameters && fullModel.parameters.manual_weight_adjustments) {
-              presetAdjustments = fullModel.parameters.manual_weight_adjustments;
-            }
+            full = (await this.$store.dispatch('strategy/fetchStrategyModel', s.id)) || s;
           } catch (e) {
-            fromModel = {};
+            console.error('获取主观策略模型失败:', s.id, e);
+            full = s;
           }
         }
-        if (typeof presetAdjustments === 'string') {
-          try { presetAdjustments = presetAdjustments.trim() ? JSON.parse(presetAdjustments) : []; } catch (_) { presetAdjustments = []; }
-        }
-        const buildWeightsFromModel = (codes) => {
-          const weights = {};
-          (codes || []).forEach(c => {
-            weights[c] = (fromModel[c] !== undefined && fromModel[c] !== null) ? Number(fromModel[c]) : 0;
-          });
-          if ((codes || []).length > 0 && Object.values(weights).every(v => !v || v === 0)) {
-            weights[(codes || [])[0]] = 1;
-          }
-          return weights;
+        const params = full.parameters || full.strategy_params || {};
+        const codes = full.asset_codes || s.asset_codes || [];
+        this.$set(this.form.multiManualPresets, s.id, {
+          weights: this.parseWeightDict(params.manual_weights, codes),
+          adjustments: this.parsePresetAdjustments(params.manual_weight_adjustments, codes),
+          maxLeverage: this.getMaxLeverageForStrategy(full)
+        });
+      }
+      // 默认展开全部已选主观策略，无需额外点击即可看到模型预设权重
+      this.multiPresetActiveNames = (this.selectedStrategiesWithManual || []).map(s => s.id);
+    },
+    /** 多策略：单个策略的只读预设（未加载完成时回退为空） */
+    getMultiPreset(s) {
+      const preset = this.form.multiManualPresets && this.form.multiManualPresets[s.id];
+      return preset || { weights: {}, adjustments: [], maxLeverage: this.getMaxLeverageForStrategy(s) };
+    },
+    getMultiPresetWeightRows(s) {
+      const preset = this.getMultiPreset(s);
+      const codes = (s.asset_codes && s.asset_codes.length)
+        ? s.asset_codes
+        : Object.keys(preset.weights);
+      return codes.map(code => {
+        const weight = Number(preset.weights[code] || 0);
+        return {
+          code,
+          label: this.resolveMultiAssetLabel(s, code),
+          weight,
+          percent: (weight * 100).toFixed(2) + '%'
         };
-        let list = m[id];
-        if (!list || list.length === 0) {
-          const codes = s.asset_codes || [];
-          if (Array.isArray(presetAdjustments) && presetAdjustments.length > 0) {
-            list = presetAdjustments.map(adj => {
-              const weights = {};
-              codes.forEach(c => {
-                weights[c] = (adj.weights && adj.weights[c] != null) ? Number(adj.weights[c]) : 0;
-              });
-              if (codes.length > 0 && Object.values(weights).every(v => !v || v === 0)) {
-                weights[codes[0]] = 1;
-              }
-              return {
-                date: this.normalizeDateForPicker(adj.date || '') || '',
-                weights,
-                auto_normalize: !!adj.auto_normalize
-              };
-            });
-          } else {
-            list = [];
-            const weights = buildWeightsFromModel(codes);
-            const startDate = (this.form.date_range && this.form.date_range[0]) ? this.form.date_range[0] : '';
-            list.push({ date: startDate, weights, auto_normalize: false });
-          }
-          this.$set(this.form.multiStrategyManualAdjustments, id, list);
-        }
-        if (!runWeights[id]) {
-          const weights = buildWeightsFromModel(s.asset_codes || []);
-          this.$set(this.form.multiStrategyRunManualWeights, id, weights);
-        }
-      }
-      this.saveOriginalManualValues();
-      // 主观策略不应用指数编制规则权重上限，多策略对比中的 manual 均为主观策略
-      this.multiStrategyMaxWeightDict = {};
+      });
     },
-    getMultiStrategyManualAdjustmentsList(strategyId) {
-      const m = this.form.multiStrategyManualAdjustments;
-      if (!m || !m[strategyId]) return [];
-      return m[strategyId];
+    getMultiPresetWeightSum(s) {
+      return this.getMultiPresetWeightRows(s).reduce((sum, row) => sum + row.weight, 0);
     },
-    addMultiStrategyManualAdjustment(strategyId) {
-      const strategy = this.strategyList.find(s => s.id === strategyId);
-      if (!strategy) return;
-      const m = this.form.multiStrategyManualAdjustments || {};
-      if (!m[strategyId]) {
-        this.$set(this.form, 'multiStrategyManualAdjustments', { ...m, [strategyId]: [] });
-      }
-      const list = this.form.multiStrategyManualAdjustments[strategyId];
-      const codes = strategy.asset_codes || [];
-      const weights = {};
-      codes.forEach(c => { weights[c] = 0; });
-      if (codes.length > 0) weights[codes[0]] = 1;
-      const startDate = this.form.date_range && this.form.date_range[0] ? this.form.date_range[0] : '';
-      list.push({ date: startDate, weights, auto_normalize: false });
+    getMultiPresetWeightSumPercent(s) {
+      return (this.getMultiPresetWeightSum(s) * 100).toFixed(2) + '%';
     },
-    removeMultiStrategyManualAdjustment(strategyId, idx) {
-      const list = this.form.multiStrategyManualAdjustments && this.form.multiStrategyManualAdjustments[strategyId];
-      if (!list) return;
-      list.splice(idx, 1);
-    },
-    getMultiStrategyAdjustmentWeightSum(strategyId, idx) {
-      const list = this.form.multiStrategyManualAdjustments && this.form.multiStrategyManualAdjustments[strategyId];
-      if (!list || !list[idx] || !list[idx].weights) return null;
-      return Object.values(list[idx].weights).reduce((s, v) => s + (Number(v) || 0), 0);
-    },
-    getMultiStrategyRunManualWeightsSum(strategyId) {
-      const w = this.form.multiStrategyRunManualWeights && this.form.multiStrategyRunManualWeights[strategyId];
-      if (!w || typeof w !== 'object') return null;
-      return Object.values(w).reduce((s, v) => s + (Number(v) || 0), 0);
-    },
-    getMultiStrategyMaxWeight(strategyOrCodes, code) {
-      return this.multiStrategyMaxWeightDict && this.multiStrategyMaxWeightDict[code];
-    },
-    getAdjustmentWeightSum(idx) {
-      const adj = this.form.manual_weight_adjustments[idx];
-      if (!adj || !adj.weights) return null;
-      return Object.values(adj.weights).reduce((s, v) => s + (Number(v) || 0), 0);
+    getMultiPresetWeightSumClass(s) {
+      const sum = this.getMultiPresetWeightSum(s);
+      if (sum > this.getMultiPreset(s).maxLeverage + 1e-6) return 'is-over';
+      return Math.abs(sum - 1) < 0.001 ? 'is-ok' : 'is-under';
     },
     /** 单策略主观：解析资产代码到展示名称 */
     resolveSingleAssetLabel(code) {
@@ -1013,126 +838,12 @@ export default {
       }
       return code;
     },
-    /** 矩阵表更新单策略预设调仓数据 */
-    onManualAdjustmentsUpdate(val) {
-      this.form.manual_weight_adjustments = Array.isArray(val) ? val : [];
-      if (this.$refs.form) this.$refs.form.clearValidate();
-    },
-    /** 矩阵表更新多策略某个主观策略的预设调仓数据 */
-    onMultiStrategyAdjustmentsUpdate(strategyId, val) {
-      const m = this.form.multiStrategyManualAdjustments || {};
-      this.$set(this.form, 'multiStrategyManualAdjustments', {
-        ...m,
-        [strategyId]: Array.isArray(val) ? val : []
-      });
-    },
     /** 从策略模型取最大杠杆（默认 4 = 400%） */
     getMaxLeverageForStrategy(strategy) {
       if (!strategy) return 4;
       const p = strategy.parameters || strategy.strategy_params || {};
       const v = p.max_leverage;
       return (v !== undefined && v !== null && !Number.isNaN(Number(v))) ? Number(v) : 4;
-    },
-    /** 本次回测有效杠杆倍数：优先使用表单「杠杆倍数限制」，否则用策略模型配置 */
-    getEffectiveMaxLeverage(strategy) {
-      const fromForm = this.form.run_max_leverage;
-      if (fromForm != null && fromForm !== '' && !Number.isNaN(Number(fromForm))) {
-        const n = Number(fromForm);
-        if (n >= 1) return n;
-      }
-      return this.getMaxLeverageForStrategy(strategy);
-    },
-    onAdjustmentWeightChange(idx) {
-      this.$forceUpdate();
-      if (this.$refs.form) this.$refs.form.clearValidate();
-    },
-    /** 同步调仓日与权重到策略模型（单策略或多策略中的主观策略） */
-    async syncManualAdjustmentsToStrategy(strategyId, strategy) {
-      const isSingle = this.form.backtest_mode === 'single';
-      let adjustments = [];
-      let manualWeights = {};
-      if (isSingle) {
-        adjustments = (this.form.manual_weight_adjustments || []).map(adj => ({
-          date: (adj.date || '').replace(/-/g, '').slice(0, 8),
-          weights: adj.weights && Object.keys(adj.weights).length > 0 ? { ...adj.weights } : undefined,
-          auto_normalize: !!adj.auto_normalize
-        }));
-        manualWeights = this.form.run_manual_weights || {};
-      } else {
-        const list = (this.form.multiStrategyManualAdjustments && this.form.multiStrategyManualAdjustments[strategyId]) || [];
-        adjustments = list.map(adj => ({
-          date: (adj.date || '').replace(/-/g, '').slice(0, 8),
-          weights: adj.weights && Object.keys(adj.weights).length > 0 ? { ...adj.weights } : undefined,
-          auto_normalize: !!adj.auto_normalize
-        }));
-        manualWeights = (this.form.multiStrategyRunManualWeights && this.form.multiStrategyRunManualWeights[strategyId]) || {};
-      }
-      try {
-        const full = await this.$store.dispatch('strategy/fetchStrategyModel', strategyId);
-        const model = full && full.data !== undefined ? full.data : full;
-        const params = { ...(model.parameters || {}) };
-        params.manual_weight_adjustments = adjustments;
-        if (Object.keys(manualWeights).length > 0) {
-          params.manual_weights = manualWeights;
-        }
-        const updateData = {
-          name: model.name,
-          description: model.description,
-          template_code: model.template_code,
-          asset_codes: model.asset_codes,
-          parameters: params,
-          rebalance_frequency: model.rebalance_frequency,
-          enable_momentum_selection: model.enable_momentum_selection,
-          selector_type: model.selector_type || '',
-          asset_selection_count: model.asset_selection_count ?? 1,
-          min_history_days: model.min_history_days ?? 260,
-          momentum_windows: model.momentum_windows || '20,60,120,250',
-          tie_break_window: model.tie_break_window ?? 22
-        };
-        if (model.enable_momentum_selection && ['hybrid', 'reversal', 'momentum_reversal'].includes(model.selector_type)) {
-          updateData.macd_windows = model.macd_windows || '40,80,120,160';
-        }
-        await this.$store.dispatch('strategy/updateStrategyModel', { modelId: strategyId, data: updateData });
-        this.$message.success(`策略「${strategy && strategy.name ? strategy.name : strategyId}」调仓配置已同步`);
-        this.saveOriginalManualValues();
-      } catch (e) {
-        console.error('同步策略调仓配置失败:', e);
-        this.$message.error('同步失败：' + (e.response?.data?.detail || e.message || '未知错误'));
-        throw e;
-      }
-    },
-    /** 同步所有已修改的主观策略 */
-    async syncAllModifiedStrategies() {
-      if (this.form.backtest_mode === 'single' && this.isManualAllocationStrategy) {
-        const id = Array.isArray(this.form.strategy_ids) ? this.form.strategy_ids[0] : this.form.strategy_ids;
-        if (id) {
-          const s = this.strategyList.find(r => r.id === id);
-          await this.syncManualAdjustmentsToStrategy(id, s);
-        }
-      } else if (this.form.backtest_mode === 'multi') {
-        for (const s of this.selectedStrategiesWithManual || []) {
-          await this.syncManualAdjustmentsToStrategy(s.id, s);
-        }
-      }
-    },
-    syncConfirmChoose(choice) {
-      if (this.syncConfirmDialog.resolve) {
-        this.syncConfirmDialog.resolve(choice);
-        this.syncConfirmDialog.resolve = null;
-      }
-      if (choice === 'syncAndRun') {
-        this.syncConfirmDialog.loading = true;
-      } else {
-        this.syncConfirmDialog.visible = false;
-        this.syncConfirmDialog.loading = false;
-      }
-    },
-    onSyncConfirmDialogClose() {
-      if (this.syncConfirmDialog.resolve) {
-        this.syncConfirmDialog.resolve('cancel');
-        this.syncConfirmDialog.resolve = null;
-      }
-      this.syncConfirmDialog.loading = false;
     },
     handleStrategyChange() {
       // 策略选择变化时的处理
@@ -1203,19 +914,16 @@ export default {
             this.selectedStrategyInfo = fullStrategy;
             // 构建 asset_names 映射
             await this.buildAssetNamesForStrategy(this.selectedStrategyInfo);
-            this.initSelectionParams(fullStrategy);
           } catch (error) {
             console.error('获取策略详情失败:', error);
             this.selectedStrategyInfo = strategy;
             // 构建 asset_names 映射
             await this.buildAssetNamesForStrategy(this.selectedStrategyInfo);
-            this.initSelectionParams(strategy);
           }
         } else {
           this.selectedStrategyInfo = strategy;
           // 构建 asset_names 映射
           await this.buildAssetNamesForStrategy(this.selectedStrategyInfo);
-          this.initSelectionParams(strategy);
         }
       } else {
         this.selectedStrategyInfo = null;
@@ -1224,17 +932,46 @@ export default {
       // 波动率阈值重置：若已选策略模型配置过，则表单默认使用模型配置值（单策略用该策略，多策略用第一个策略）
       this.applyVolResetDefaultsFromStrategy(this.selectedStrategyInfo);
 
-      // 主观配置策略：同步权重初始化到本次回测表单
-      this.syncRunManualWeights();
-
-      // 单策略主观：从策略预设加载调仓日与权重（若有）
-      if (this.form.backtest_mode === 'single' && strategyId && this.isManualAllocationStrategy) {
-        this.initManualWeightAdjustmentsFromStrategy();
-      }
-
-      // 多策略模式：清理已取消选择的策略的调仓日/权重参数
+      // 多策略模式：清理已取消选择的策略的只读预设
       if (this.form.backtest_mode === 'multi') {
         this.cleanupDeselectedStrategies();
+      }
+
+      // 单策略模式下实时算门禁，决定「执行回测」是否可点
+      await this.refreshBacktestGate();
+    },
+    /** 单策略回测的实时门禁：与预设 resolve 共用同一套校验（check_static_contract + 价格聚合）
+     *
+     * 详情页与回测页都不能依赖「保存时校验」的结果：模型可能被直接改库或
+     * 数据在保存后才补齐，所以每次选择策略都重新算一遍。
+     * 校验接口失败时放行（不阻断用户），后端回测前仍有 enforce_static_contract。
+     */
+    async refreshBacktestGate() {
+      const strategy = this.selectedStrategyInfo;
+      if (!strategy || this.form.backtest_mode !== 'single') {
+        this.backtestGateIssues = [];
+        return;
+      }
+      // 组合伪策略不参与策略门禁
+      if (String(strategy.id || '').startsWith('portfolio:')) {
+        this.backtestGateIssues = [];
+        return;
+      }
+      try {
+        const res = await validateStrategyConfig({
+          template_code: strategy.template_code,
+          asset_codes: strategy.asset_codes || [],
+          parameters: strategy.parameters || {},
+          min_history_days: strategy.min_history_days
+        });
+        const data = (res && res.data) || {};
+        const issues = data.issues || [];
+        this.backtestGateIssues = issues.filter(
+          i => i.level === 'blocking_error' || i.level === 'data_error'
+        );
+      } catch (error) {
+        console.error('回测门禁校验失败:', error);
+        this.backtestGateIssues = [];
       }
     },
     /** 为策略构建 asset_names 映射(从资产库获取名称) */
@@ -1266,19 +1003,6 @@ export default {
         });
         this.$set(strategy, 'asset_names', assetNames);
       }
-    },
-    /** 从模型带出权重初始化到 form.run_manual_weights,供本次回测使用或覆盖 */
-    syncRunManualWeights() {
-      const codes = (this.selectedStrategyInfo && this.selectedStrategyInfo.asset_codes) || [];
-      const fromModel = this.modelManualWeights;
-      const run = {};
-      codes.forEach(c => {
-        run[c] = (fromModel[c] !== undefined && fromModel[c] !== null) ? Number(fromModel[c]) : 0;
-      });
-      if (codes.length > 0 && Object.values(run).every(v => !v || v === 0)) {
-        run[codes[0]] = 1;
-      }
-      this.form.run_manual_weights = run;
     },
     /** 格式化回测 snapshot 的 time 为 YYYY-MM-DD */
     formatSnapshotDate(t) {
@@ -1317,25 +1041,6 @@ export default {
         }
       }
     },
-    // 初始化单策略的权重上限（maxWeightDict）
-    initSelectionParams(strategy) {
-      if (!strategy) return;
-      // 仅动量/量化策略拉取指数编制规则权重上限；主观策略不限制
-      const code = (strategy.template_code || '').toString();
-      const isManual = code === 'manual_allocation' || code === 'manual_allocation_strategy'
-        || (code.toLowerCase && code.toLowerCase().includes('manual') && code.toLowerCase().includes('allocation'));
-      if (!isManual && strategy.asset_codes && strategy.asset_codes.length > 0) {
-        getMaxWeightsByCodes(strategy.asset_codes).then(res => {
-          const data = (res && res.data && typeof res.data === 'object' && !Array.isArray(res.data)) ? res.data : {};
-          this.maxWeightDict = data;
-        }).catch(() => {
-          this.maxWeightDict = {};
-        });
-      } else {
-        this.maxWeightDict = {};
-      }
-    },
-    // ========== 多策略模式的资产选择方法（已移除，选择器参数由策略模型配置） ==========
     // ========== 多策略模式的资产选择方法 ==========
     // 获取指定策略的资产池（多策略模式）
     getStrategyAssetPool(strategyId) {
@@ -1354,102 +1059,75 @@ export default {
       return strategy?.asset_codes?.length || 100;
     },
     // ========== 多策略模式的资产选择方法（已移除，选择器参数由策略模型配置） ==========
-    // 清理已取消选择的策略的多策略参数（调仓日/权重）
+    // 清理已取消选择的策略的只读预设
     cleanupDeselectedStrategies() {
       const selectedStrategies = this.selectedStrategies;
-      Object.keys(this.form.multiStrategyManualAdjustments || {}).forEach(strategyId => {
+      Object.keys(this.form.multiManualPresets || {}).forEach(strategyId => {
         if (!selectedStrategies.find(s => s.id === strategyId)) {
-          this.$delete(this.form.multiStrategyManualAdjustments, strategyId);
-        }
-      });
-      Object.keys(this.form.multiStrategyRunManualWeights || {}).forEach(strategyId => {
-        if (!selectedStrategies.find(s => s.id === strategyId)) {
-          this.$delete(this.form.multiStrategyRunManualWeights, strategyId);
+          this.$delete(this.form.multiManualPresets, strategyId);
         }
       });
     },
-    /** 主观策略时自检必填项，避免 el-form 对隐藏/动态表单项误报；返回 Promise<boolean> */
+    /** 基础回测参数校验，返回错误信息（无错则为空） */
+    baseValidationMessage() {
+      const f = this.form;
+      if (!f.strategy_ids && f.strategy_ids !== 0) return '请选择策略';
+      if (!f.date_range || !Array.isArray(f.date_range) || f.date_range.length !== 2 || !f.date_range[0] || !f.date_range[1]) {
+        return '请选择完整的回测时间范围';
+      }
+      const nComm = Number(f.commission_rate);
+      if (f.commission_rate === undefined || f.commission_rate === null || f.commission_rate === '' || !Number.isFinite(nComm) || nComm < 0) {
+        return '请输入手续费率';
+      }
+      const nSlip = Number(f.slippage);
+      if (f.slippage === undefined || f.slippage === null || f.slippage === '' || !Number.isFinite(nSlip) || nSlip < 0) {
+        return '请输入滑点';
+      }
+      return '';
+    },
+    /** 主观策略自检：仅校验基础参数与模型预设是否足以建仓 */
     validateManualStrategyForm() {
       return new Promise((resolve) => {
-        this.$refs.form.clearValidate();
-        const f = this.form;
-        if (!f.strategy_ids && f.strategy_ids !== 0) {
-          this.$message.warning('请选择策略');
+        if (this.$refs.form) this.$refs.form.clearValidate();
+        const baseMsg = this.baseValidationMessage();
+        if (baseMsg) {
+          this.$message.warning(baseMsg);
           return resolve(false);
         }
-        if (!f.date_range || !Array.isArray(f.date_range) || f.date_range.length !== 2 || !f.date_range[0] || !f.date_range[1]) {
-          this.$message.warning('请选择完整的回测时间范围');
+        const preset = this.manualPreset;
+        if ((!preset.adjustments || preset.adjustments.length === 0) && this.manualWeightSum <= 1e-6) {
+          this.$message.warning('策略模型未配置权重初始化，请先在策略模型「主观配置权重」中配置后再回测');
           return resolve(false);
-        }
-        const nComm = Number(f.commission_rate);
-        if (f.commission_rate === undefined || f.commission_rate === null || f.commission_rate === '' || !Number.isFinite(nComm) || nComm < 0) {
-          this.$message.warning('请输入手续费率');
-          return resolve(false);
-        }
-        const nSlip = Number(f.slippage);
-        if (f.slippage === undefined || f.slippage === null || f.slippage === '' || !Number.isFinite(nSlip) || nSlip < 0) {
-          this.$message.warning('请输入滑点');
-          return resolve(false);
-        }
-        if (!f.manual_weight_adjustments || f.manual_weight_adjustments.length === 0) {
-          this.$message.warning('主观策略需至少预设一个调仓日期');
-          return resolve(false);
-        }
-        for (let i = 0; i < f.manual_weight_adjustments.length; i++) {
-          if (!f.manual_weight_adjustments[i].date) {
-            this.$message.warning(`调仓日 ${i + 1} 的日期不能为空`);
-            return resolve(false);
-          }
         }
         resolve(true);
       });
     },
-    /** 多策略且含主观策略时自检必填项，避免 el-form 对预设调仓区块误报 */
+    /** 多策略含主观策略自检：仅校验基础参数与各模型预设是否足以建仓 */
     validateMultiStrategyWithManualForm() {
       return new Promise((resolve) => {
         if (this.$refs.form) this.$refs.form.clearValidate();
-        const f = this.form;
-        const ids = Array.isArray(f.strategy_ids) ? f.strategy_ids : (f.strategy_ids ? [f.strategy_ids] : []);
-        if (ids.length < 2) {
-          this.$message.warning('多策略对比请至少选择 2 个策略');
+        const baseMsg = this.baseValidationMessage();
+        if (baseMsg) {
+          this.$message.warning(baseMsg);
           return resolve(false);
         }
-        if (ids.length > 10) {
-          this.$message.warning('多策略对比最多选择 10 个策略');
-          return resolve(false);
-        }
-        if (!f.date_range || !Array.isArray(f.date_range) || f.date_range.length !== 2 || !f.date_range[0] || !f.date_range[1]) {
-          this.$message.warning('请选择完整的回测时间范围');
-          return resolve(false);
-        }
-        const nComm = Number(f.commission_rate);
-        if (f.commission_rate === undefined || f.commission_rate === null || f.commission_rate === '' || !Number.isFinite(nComm) || nComm < 0) {
-          this.$message.warning('请输入手续费率');
-          return resolve(false);
-        }
-        const nSlip = Number(f.slippage);
-        if (f.slippage === undefined || f.slippage === null || f.slippage === '' || !Number.isFinite(nSlip) || nSlip < 0) {
-          this.$message.warning('请输入滑点');
-          return resolve(false);
-        }
-        const manualList = this.selectedStrategiesWithManual || [];
-        for (const s of manualList) {
-          const list = (f.multiStrategyManualAdjustments && f.multiStrategyManualAdjustments[s.id]) || [];
-          if (list.length === 0) {
-            this.$message.warning(`主观策略「${s.name || s.id}」需至少预设一个调仓日期`);
+        for (const s of this.selectedStrategiesWithManual || []) {
+          const preset = this.getMultiPreset(s);
+          if ((!preset.adjustments || preset.adjustments.length === 0) && this.getMultiPresetWeightSum(s) <= 1e-6) {
+            this.$message.warning(`主观策略「${s.name || s.id}」的模型未配置权重初始化，请先编辑策略模型后再回测`);
             return resolve(false);
-          }
-          for (let i = 0; i < list.length; i++) {
-            if (!list[i].date) {
-              this.$message.warning(`主观策略「${s.name || s.id}」调仓日 ${i + 1} 的日期不能为空`);
-              return resolve(false);
-            }
           }
         }
         resolve(true);
       });
     },
     handleExecute() {
+      // 预设门禁未通过（配置阻断或数据缺口）时不进入回测流程，
+      // 直接提示首条问题并中止（后端回测前仍有 enforce_static_contract 兜底）
+      if (this.backtestBlocked) {
+        this.$message.warning(this.backtestBlockedTip);
+        return;
+      }
       const runValidation = () => {
         // 主观策略（单策略或多策略含主观）时用自检避免 el-form 对预设调仓区块误报
         if (this.form.backtest_mode === 'single' && this.isManualAllocationStrategy) {
@@ -1512,64 +1190,34 @@ export default {
           return;
         }
 
-        // 主观配置策略：至少有一个资产权重大于 0（模型默认或本次回测覆盖）
+        // 主观策略：展示值来自模型预设，仅做杠杆上限提示（后端会再次校验）
         if (this.form.backtest_mode === 'single' && this.isManualAllocationStrategy) {
-          const modelSum = Object.values(this.modelManualWeights).reduce((s, v) => s + (Number(v) || 0), 0);
-          const runSum = this.runManualWeightsSum;
-          if ((!modelSum || modelSum < 1e-6) && (runSum == null || runSum < 1e-6)) {
-            this.$message.warning('主观配置策略请至少为一个资产配置权重大于 0（在「权重初始化（本次回测）」中填写，或先在策略模型中保存权重初始化）');
+          const maxLev = this.manualPreset.maxLeverage;
+          if (this.manualWeightSum > maxLev + 1e-6) {
+            this.$message.warning(`权重初始化总和 ${this.manualWeightSumPercent} 超过模型杠杆上限 ${(maxLev * 100).toFixed(0)}%，请先调整策略模型`);
             return;
           }
-          if (!this.form.manual_weight_adjustments || this.form.manual_weight_adjustments.length === 0) {
-            this.$message.warning('主观策略需至少预设一个调仓日期');
-            return;
-          }
-          for (let i = 0; i < this.form.manual_weight_adjustments.length; i++) {
-            const adj = this.form.manual_weight_adjustments[i];
-            if (!adj.date) {
-              this.$message.warning(`调仓日 ${i + 1} 的日期不能为空`);
-              return;
-            }
-          }
-          const maxLev = this.getEffectiveMaxLeverage(this.selectedStrategyInfo);
-          if (runSum !== null && runSum > maxLev) {
-            this.$message.warning(`总仓位权重不能超过最大杠杆 ${(maxLev * 100).toFixed(0)}%。当前权重初始化总和 ${(runSum * 100).toFixed(2)}%`);
-            return;
-          }
-          for (let i = 0; i < (this.form.manual_weight_adjustments || []).length; i++) {
-            const sumAdj = this.getAdjustmentWeightSum(i);
-            if (sumAdj !== null && sumAdj > maxLev) {
-              this.$message.warning(`预设调仓日 ${i + 1} 的权重总和不能超过最大杠杆 ${(maxLev * 100).toFixed(0)}%。当前 ${(sumAdj * 100).toFixed(2)}%`);
+          for (const adj of this.manualPreset.adjustments) {
+            const sumAdj = Object.values(adj.weights || {}).reduce((sum, v) => sum + (Number(v) || 0), 0);
+            if (sumAdj > maxLev + 1e-6) {
+              this.$message.warning(`预设调仓日 ${adj.date} 的权重总和超过模型杠杆上限 ${(maxLev * 100).toFixed(0)}%，请先调整策略模型`);
               return;
             }
           }
         }
 
-        // 多策略模式：每个主观策略需至少一个预设调仓日
+        // 多策略：各主观策略模型预设的杠杆上限提示（后端会再次校验）
         if (this.form.backtest_mode === 'multi') {
-          const manualList = this.selectedStrategiesWithManual || [];
-          for (const s of manualList) {
-            const list = (this.form.multiStrategyManualAdjustments && this.form.multiStrategyManualAdjustments[s.id]) || [];
-            if (list.length === 0) {
-              this.$message.warning(`主观策略「${s.name || s.id}」需至少预设一个调仓日期`);
+          for (const s of this.selectedStrategiesWithManual || []) {
+            const preset = this.getMultiPreset(s);
+            if (this.getMultiPresetWeightSum(s) > preset.maxLeverage + 1e-6) {
+              this.$message.warning(`主观策略「${s.name || s.id}」权重初始化总和超过模型杠杆上限 ${(preset.maxLeverage * 100).toFixed(0)}%，请先调整策略模型`);
               return;
             }
-            for (let i = 0; i < list.length; i++) {
-              if (!list[i].date) {
-                this.$message.warning(`主观策略「${s.name || s.id}」调仓日 ${i + 1} 的日期不能为空`);
-                return;
-              }
-            }
-            const maxLev = this.getEffectiveMaxLeverage(s);
-            const runSum = this.getMultiStrategyRunManualWeightsSum(s.id);
-            if (runSum !== null && runSum > maxLev) {
-              this.$message.warning(`主观策略「${s.name || s.id}」权重初始化总和不能超过最大杠杆 ${(maxLev * 100).toFixed(0)}%。当前 ${(runSum * 100).toFixed(2)}%`);
-              return;
-            }
-            for (let i = 0; i < list.length; i++) {
-              const sumAdj = this.getMultiStrategyAdjustmentWeightSum(s.id, i);
-              if (sumAdj !== null && sumAdj > maxLev) {
-                this.$message.warning(`主观策略「${s.name || s.id}」预设调仓日 ${i + 1} 的权重总和不能超过最大杠杆 ${(maxLev * 100).toFixed(0)}%。当前 ${(sumAdj * 100).toFixed(2)}%`);
+            for (const adj of preset.adjustments) {
+              const sumAdj = Object.values(adj.weights || {}).reduce((sum, v) => sum + (Number(v) || 0), 0);
+              if (sumAdj > preset.maxLeverage + 1e-6) {
+                this.$message.warning(`主观策略「${s.name || s.id}」预设调仓日 ${adj.date} 的权重总和超过模型杠杆上限 ${(preset.maxLeverage * 100).toFixed(0)}%，请先调整策略模型`);
                 return;
               }
             }
@@ -1578,28 +1226,10 @@ export default {
 
         // 动量选择器由策略模型配置，回测时由选择器自动选资产，无需在回测页配置「选择资产数量」与「具体资产」
 
-        // 若用户修改了调仓日或权重，弹窗确认是否同步回策略模型
-        if (this.hasManualAdjustmentsModified) {
-          this.syncConfirmDialog.visible = true;
-          const choice = await new Promise(resolve => {
-            this.syncConfirmDialog.resolve = resolve;
-          });
-          if (choice === 'cancel') return;
-          if (choice === 'syncAndRun') {
-            try {
-              await this.syncAllModifiedStrategies();
-            } catch (e) {
-              this.syncConfirmDialog.visible = false;
-              this.syncConfirmDialog.loading = false;
-              return;
-            }
-            this.syncConfirmDialog.visible = false;
-            this.syncConfirmDialog.loading = false;
-          }
-        }
-
         this.executing = true;
         this.backtestResults = null;
+        // 新一轮回测：重置「用户已收起进度框」标记，允许进度框重新自动弹出
+        this.progressUserClosed = false;
 
         try {
           const results = {};
@@ -1633,13 +1263,17 @@ export default {
                   'daily': 'daily', 'weekly': 'weekly', 'monthly': 'monthly',
                   'quarterly': 'quarterly', 'yearly': 'yearly'
                 };
+                const progressKey = this.startProgress(portfolio ? portfolio.name : `组合${portfolioId}`);
                 const res = await runPortfolioBacktest(portfolioId, {
                   start_date: startDate,
                   end_date: endDate,
                   initial_nav: this.form.initial_cash,
                   rebalance_freq: freqMapping[this.form.rebalance_freq] || this.form.rebalance_freq || 'monthly',
-                  mother_vol_target: this.form.enable_vol_reset ? this.form.vol_reset_threshold : null
-                });
+                  mother_vol_target: this.form.enable_vol_reset ? this.form.vol_reset_threshold : null,
+                  // 子策略与母层同一组成本参数，否则组合层成交只计入零成本
+                  commission_rate: Number(this.form.commission_rate),
+                  slippage: Number(this.form.slippage)
+                }, progressKey);
                 const data = res.data || res;
                 // 组合回测结果转换为与策略回测相同的结构
                 const portfolioName = portfolio ? portfolio.name : `组合${portfolioId}`;
@@ -1653,9 +1287,21 @@ export default {
                     sharpe_ratio: data.sharpe_ratio,
                     max_drawdown: data.max_drawdown,
                     calmar_ratio: data.calmar_ratio,
+                    // 365 口径（自然日/年）：组合后端字段名与单策略不同，同值双写
+                    annual_return_365: data.annual_return_365,
+                    annual_volatility_365: data.annual_volatility_365,
+                    volatility_365: data.annual_volatility_365,
+                    sharpe_ratio_365: data.sharpe_ratio_365,
+                    calmar_ratio_365: data.calmar_ratio_365,
                     // 携带交易明细与胜率，避免交易次数/胜率为空
                     trades: data.trades || [],
                     win_rate: data.win_rate != null ? data.win_rate : null,
+                    // 组合层成本统计（后端统一口径）与子策略成本明细
+                    n_trades: data.n_trades != null ? data.n_trades : null,
+                    total_commission: data.total_commission != null ? data.total_commission : null,
+                    total_slippage: data.total_slippage != null ? data.total_slippage : null,
+                    turnover: data.turnover != null ? data.turnover : null,
+                    sub_strategies: data.sub_strategies || [],
                     // 后端如实上报的数据质量告警与子策略归因
                     warnings: data.warnings || [],
                     attribution: data.attribution || null,
@@ -1680,6 +1326,8 @@ export default {
               } catch (error) {
                 console.error(`组合 ${portfolioId} 回测失败:`, error);
                 this.$message.error(`组合回测失败：${error.response?.data?.detail || error.message || '未知错误'}`);
+              } finally {
+                this.stopProgressPolling();
               }
               continue; // 跳过后续策略回测逻辑
             }
@@ -1712,51 +1360,11 @@ export default {
                 rebalance_freq: rebalanceFreq,
                 commission_rate: this.form.commission_rate,
                 slippage: this.form.slippage,
-                lookback_days: 252,  // 默认252天（约1年交易日）
+                lookback_days: 252,  // 自然日（≈169 交易日）；后端按策略 min_history_days 反推并取更大值
                 enable_vol_reset: this.form.enable_vol_reset,
                 vol_reset_threshold: this.form.vol_reset_threshold
               };
-              // 杠杆倍数限制（本次回测覆盖策略模型配置；用于限制初始化/预设调仓日/步进调仓权重和）
-              if (this.form.run_max_leverage != null && this.form.run_max_leverage !== '' && !Number.isNaN(Number(this.form.run_max_leverage))) {
-                const lev = Number(this.form.run_max_leverage);
-                if (lev >= 1) backtestData.max_leverage = lev;
-              }
-              // 主观配置策略：权重初始化（本次回测覆盖；若模型未配置则必填）
-              if (this.form.backtest_mode === 'single' && this.isManualAllocationStrategy) {
-                const mw = this.form.run_manual_weights || {};
-                const sum = Object.values(mw).reduce((s, v) => s + (Number(v) || 0), 0);
-                if (sum >= 1e-6) {
-                  backtestData.manual_weights = { ...mw };
-                }
-              }
-              // 主观策略：预设调仓日期与权重（单策略或多策略中的主观策略）
-              const isManualStrategy = this.form.backtest_mode === 'single' ? this.isManualAllocationStrategy : this.isStrategyManual(strategy);
-              const manualAdjustmentsList = this.form.backtest_mode === 'single'
-                ? (this.form.manual_weight_adjustments || [])
-                : (this.form.multiStrategyManualAdjustments && this.form.multiStrategyManualAdjustments[strategyId]) || [];
-              if (isManualStrategy && manualAdjustmentsList.length > 0) {
-                backtestData.manual_weight_adjustments = manualAdjustmentsList
-                  .filter(adj => adj.date)
-                  .map(adj => ({
-                    date: (adj.date || '').replace(/-/g, '').slice(0, 8),
-                    weights: adj.weights && Object.keys(adj.weights).length > 0 ? { ...adj.weights } : undefined,
-                    auto_normalize: adj.auto_normalize === true
-                  }));  
-                // 多策略主观：优先用本次回测权重初始化（multiStrategyRunManualWeights），无则用首个预设日权重
-                if (this.form.backtest_mode === 'multi') {
-                  const runWeights = this.form.multiStrategyRunManualWeights && this.form.multiStrategyRunManualWeights[strategyId];
-                  const runSum = runWeights && typeof runWeights === 'object' ? Object.values(runWeights).reduce((s, v) => s + (Number(v) || 0), 0) : 0;
-                  if (runSum >= 1e-6) {
-                    backtestData.manual_weights = { ...runWeights };
-                  } else {
-                    const firstWithWeights = manualAdjustmentsList.find(adj => adj.weights && Object.keys(adj.weights).length > 0);
-                    if (firstWithWeights && firstWithWeights.weights) {
-                      const sum = Object.values(firstWithWeights.weights).reduce((s, v) => s + (Number(v) || 0), 0);
-                      if (sum >= 1e-6) backtestData.manual_weights = { ...firstWithWeights.weights };
-                    }
-                  }
-                }
-              }
+              // 主观策略的权重初始化与预设调仓日由后端直接读取策略模型配置，不在此覆盖
 
               // 资产选择器：仅标记启用，具体参数由策略模型配置决定（后端从 model_data 读取）
               if (strategy.enable_momentum_selection === true) {
@@ -1764,9 +1372,12 @@ export default {
                 backtestData.asset_selection_count = strategy.asset_selection_count || (strategy.asset_codes && strategy.asset_codes.length) || 5;
               }
               
+              // 进度任务号随请求带给后端，页面同时开始轮询该任务
+              const progressKey = this.startProgress(strategy.name);
               const result = await this.$store.dispatch('strategy/runBacktest', {
                 modelId: strategyId,
-                data: backtestData
+                data: backtestData,
+                progressKey
               });
 
               // 处理返回结果（统一解包 code/data 结构，保证 record_id 可用）
@@ -1867,6 +1478,8 @@ export default {
                 console.warn('3. 数据格式不匹配');
                 console.warn('4. 请查看后端日志获取详细错误堆栈');
               }
+            } finally {
+              this.stopProgressPolling();
             }
           }
 
@@ -1896,6 +1509,7 @@ export default {
           this.$message.error('回测执行失败：' + (error.response?.data?.detail || error.message));
         } finally {
           this.executing = false;
+          this.endProgress();
         }
       });
     },
@@ -1910,23 +1524,88 @@ export default {
           dayjs().subtract(1, 'year').format('YYYY-MM-DD'),
           dayjs().format('YYYY-MM-DD')
         ],
-        commission_rate: 0.0003,
-        slippage: 0.0005,
+        commission_rate: 0,
+        slippage: 0,
         enable_vol_reset: false,  // 所有策略默认关闭波动率重置
         vol_reset_threshold: 0.06,
-        enable_interactive_adjustment: false,
-        manual_weight_adjustments: [],
-        run_manual_weights: {},
-        multiStrategyManualAdjustments: {},
-        multiStrategyRunManualWeights: {}
+        multiManualPresets: {}
       };
       this.backtestResults = null;
       this.backtestModelId = null;
       this.selectedStrategyInfo = null;
+      this.multiPresetActiveNames = [];
     },
     handleViewHistory() {
       this.$message.info('历史记录功能开发中...');
       // TODO: 跳转到历史记录页面
+    },
+    // ===== 回测进度：与日常监控共用 monitor_tasks 与 GET /monitor/tasks/{task_id} =====
+    /** 生成进度任务号（后端 task_id 上限 64 字符） */
+    newProgressKey() {
+      const part = () => Math.floor(Math.random() * 4294967296).toString(16);
+      return `bt${Date.now().toString(16)}${part()}${part()}${part()}${part()}`.slice(0, 64);
+    },
+    /**
+     * 开启一次回测的进度上报：生成 key、重置面板、启动轮询。
+     * 返回的 key 要随回测请求一起传给后端，轮询与回测请求并行发出，
+     * 后端一建好进度文档前端就能读到。
+     */
+    startProgress(subject) {
+      this.stopProgressPolling();
+      this.progressSubject = subject || '';
+      this.progressTask = null;
+      this.progressKey = this.newProgressKey();
+      // 几秒内结束的快回测不弹框，避免遮挡表单与结果区
+      if (!this.progressUserClosed) {
+        this.progressOpenTimer = setTimeout(() => {
+          if (this.executing && !this.progressUserClosed) {
+            this.progressDialogVisible = true;
+          }
+        }, PROGRESS_DIALOG_DELAY_MS);
+      }
+      this.progressTimer = setInterval(this.pollProgress, PROGRESS_POLL_INTERVAL_MS);
+      // 不在这里立即拉一次：进度文档是后端收到本次回测请求后才建的，
+      // 请求尚未发出就轮询必然 404（浏览器网络面板会留一条红色失败记录）。
+      // 首个轮询放到一个间隔之后，此时后端已完成建文档。
+      return this.progressKey;
+    },
+    /** 单次拉取：失败静默保留上一次状态，任务到终态即停轮询 */
+    async pollProgress() {
+      const key = this.progressKey;
+      if (!key || this.progressPolling) return;
+      this.progressPolling = true;
+      try {
+        const res = await getMonitorTask(key, { skipGlobal404Message: true });
+        const task = res.data || res;
+        // 已切到下一个策略时丢弃旧响应，避免多策略对比时进度串台
+        if (!task || !task.task_id || key !== this.progressKey) return;
+        this.progressTask = task;
+        if (!isTaskActive(task)) this.stopProgressPolling();
+      } catch (e) {
+        // 进度只读失败不影响回测本身
+      } finally {
+        this.progressPolling = false;
+      }
+    },
+    stopProgressPolling() {
+      if (this.progressTimer) {
+        clearInterval(this.progressTimer);
+        this.progressTimer = null;
+      }
+      if (this.progressOpenTimer) {
+        clearTimeout(this.progressOpenTimer);
+        this.progressOpenTimer = null;
+      }
+    },
+    /** 整轮回测结束：停轮询并收起进度框，让位给下方结果区 */
+    endProgress() {
+      this.stopProgressPolling();
+      this.progressDialogVisible = false;
+      this.progressKey = '';
+    },
+    reopenProgress() {
+      this.progressUserClosed = false;
+      this.progressDialogVisible = true;
     },
     getStatusTagType(status) {
       // 根据策略状态返回对应的标签类型
@@ -1962,6 +1641,19 @@ export default {
   margin: 0 auto;
 }
 
+/* 回测门禁：禁用时 tooltip 需要包一层 span 才能触发 */
+.execute-btn-wrap {
+  display: inline-block;
+  margin-right: 10px;
+}
+
+.backtest-gate-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #e6a23c;
+}
+
 .card-header {
   font-weight: 500;
   font-size: 16px;
@@ -1992,6 +1684,100 @@ export default {
   box-shadow: 0 2px 8px rgba(64, 158, 255, 0.4);
 }
 
+/* 主观策略模型预设（只读展示） */
+.preset-card {
+  background-color: #fafafa;
+  border: 1px solid #e4e7ed;
+}
+.preset-card-date {
+  background-color: #f7fbff;
+  border-color: #d9ecff;
+}
+.preset-card-header {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+}
+.preset-card-header-date {
+  color: #409EFF;
+}
+.preset-desc {
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.preset-inline-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+.preset-inline-hint {
+  margin-left: 8px;
+  color: #909399;
+  font-size: 12px;
+}
+.preset-weight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px 16px;
+}
+.preset-weight-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+}
+.preset-weight-label {
+  font-size: 12px;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preset-weight-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  font-variant-numeric: tabular-nums;
+}
+.preset-sum {
+  margin-top: 10px;
+  font-size: 12px;
+}
+.preset-sum.is-ok {
+  color: #67C23A;
+}
+.preset-sum.is-under {
+  color: #E6A23C;
+}
+.preset-sum.is-over {
+  color: #F56C6C;
+}
+.preset-sum-hint {
+  color: #909399;
+}
+.preset-block + .preset-block {
+  margin-top: 16px;
+}
+.preset-block-title {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #303133;
+}
+.preset-empty {
+  padding: 12px;
+  color: #909399;
+  font-size: 12px;
+  background: #fff;
+  border: 1px dashed #dcdfe6;
+  border-radius: 4px;
+}
+
 /* 预设调仓日对话框：当前绩效指标 */
 .metric-item {
   display: flex;
@@ -2006,5 +1792,26 @@ export default {
   font-size: 14px;
   font-weight: 600;
   color: #303133;
+}
+
+/* 回测进度：收起进度框后的页面横幅 */
+.backtest-progress-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 8px 12px;
+  color: #606266;
+  font-size: 13px;
+  background: #f4f4f5;
+  border-radius: 4px;
+}
+.backtest-progress-bar__text {
+  flex: 1;
+}
+/* 进度文档尚未建好时的占位文案 */
+.backtest-progress-wait {
+  color: #909399;
+  font-size: 13px;
 }
 </style>

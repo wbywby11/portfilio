@@ -90,7 +90,12 @@ class QueryBacktestsTool(BaseTool):
         collection = model_service.backtest_collection
         limit = max(1, min(int(limit or 20), 50))
 
+        # list 模式只列回测记录：监控批次产物（run_kind=monitor）同存本集合，
+        # 不过滤会让 Agent 把每日监控跑批当成回测历史。detail 模式按 record_id 直查不过滤。
+        from app.services.backtest_service import build_run_kind_filter
+
         query = {"model_id": model_id} if model_id else {}
+        query.update(build_run_kind_filter("backtest"))
         docs = []
         cursor = collection.find(query, _LIST_PROJECTION).sort("created_at", -1).limit(limit)
         async for doc in cursor:
@@ -239,7 +244,8 @@ class RunBacktestTool(ConfirmableTool):
         "回测参数（策略参数/资产池/调仓频率）取自该实例的当前配置，"
         "仅指定回测日期区间。执行成功后自动保存回测记录，"
         "可用 query_backtests 查看结果。组合类模型（is_portfolio）不支持，"
-        "请到回测页面操作。"
+        "请到回测页面操作。主观配置模型（manual_allocation）未预设调仓日期时，"
+        "按模型 manual_weights 在区间首个交易日建仓，其后全区间持有固定权重。"
     )
     parameters = {
         "type": "object",
@@ -268,7 +274,7 @@ class RunBacktestTool(ConfirmableTool):
 
     async def execute(self, **kwargs) -> dict:
         # 预校验：模型存在且非组合类，避免生成无效确认卡片
-        error = await self._precheck(kwargs)
+        error, _ = await self._precheck(kwargs)
         if error:
             return {"success": False, "error": error}
         kwargs["start_date"] = _normalize_date(kwargs.get("start_date", ""))
@@ -290,7 +296,7 @@ class RunBacktestTool(ConfirmableTool):
         from app.services.market_service import MarketService
 
         model_id = kwargs.get("model_id", "")
-        error = await self._precheck(kwargs)
+        error, _ = await self._precheck(kwargs)
         if error:
             return {"success": False, "error": error}
 
@@ -326,19 +332,19 @@ class RunBacktestTool(ConfirmableTool):
         }
 
     @staticmethod
-    async def _precheck(kwargs: dict) -> str:
-        """返回错误文案（空串=通过）"""
+    async def _precheck(kwargs: dict) -> tuple[str, object]:
+        """返回（错误文案，模型对象）；错误文案为空串=通过"""
         from app.services.strategy_model_service import StrategyModelService
 
         model_id = kwargs.get("model_id", "")
         if not model_id:
-            return "缺少 model_id"
+            return "缺少 model_id", None
         for key in ("start_date", "end_date"):
             if len(_normalize_date(kwargs.get(key, ""))) != 8 or not _normalize_date(kwargs.get(key, "")).isdigit():
-                return f"{key} 格式无效，应为 YYYYMMDD 或 YYYY-MM-DD"
+                return f"{key} 格式无效，应为 YYYYMMDD 或 YYYY-MM-DD", None
         model = await StrategyModelService().get_model(model_id)
         if not model:
-            return f"策略配置实例不存在: {model_id}，请先用 query_strategies 确认"
+            return f"策略配置实例不存在: {model_id}，请先用 query_strategies 确认", None
         if getattr(model, "is_portfolio", False):
-            return "该实例为组合模型，暂不支持对话内回测，请到回测页面操作"
-        return ""
+            return "该实例为组合模型，暂不支持对话内回测，请到回测页面操作", None
+        return "", model

@@ -231,6 +231,10 @@ class PortfolioOut(BaseModel):
     annual_volatility: Optional[float] = Field(None, description="年化波动率")
     max_drawdown: Optional[float] = Field(None, description="最大回撤")
     sharpe_ratio: Optional[float] = Field(None, description="夏普比率")
+    # 365 口径（自然日/年）
+    annual_return_365: Optional[float] = Field(None, description="年化收益率（365 自然日口径）")
+    annual_volatility_365: Optional[float] = Field(None, description="年化波动率（365 自然日口径）")
+    sharpe_ratio_365: Optional[float] = Field(None, description="夏普比率（365 自然日口径）")
     latest_unit_value: Optional[float] = Field(None, description="最新单位净值")
 
     # 最近回测快照（列表页展示回测区间+指标）
@@ -241,6 +245,17 @@ class PortfolioOut(BaseModel):
 
     # 实盘状态（来自关联策略模型）
     live_publish_enabled: bool = Field(False, description="关联模型是否已实盘发布")
+
+    # 发布状态（来自关联组合模型）
+    portfolio_model_status: Optional[str] = Field(
+        None, description="关联组合模型状态：草稿/已发布/已归档"
+    )
+    published_version: Optional[int] = Field(
+        None, description="关联组合模型发布版本号（每次发布 +1）"
+    )
+    live_published_version: Optional[int] = Field(
+        None, description="关联组合模型实盘发布对应的发布版本号"
+    )
 
     # 时间
     inception_date: datetime = Field(..., description="建仓日期")
@@ -259,6 +274,10 @@ class SubStrategyPerformanceOut(BaseModel):
     annual_vol: Optional[float] = Field(None, description="年化波动率")
     sharpe: Optional[float] = Field(None, description="夏普比率")
     max_drawdown: Optional[float] = Field(None, description="最大回撤")
+    # 365 口径（自然日/年）
+    annual_return_365: Optional[float] = Field(None, description="年化收益率（365 自然日口径）")
+    annual_vol_365: Optional[float] = Field(None, description="年化波动率（365 自然日口径）")
+    sharpe_365: Optional[float] = Field(None, description="夏普比率（365 自然日口径）")
     contribution: Optional[float] = Field(None, description="对组合收益的贡献")
     contribution_pct: Optional[float] = Field(None, description="贡献占比")
     equity_curve: List[Dict[str, Any]] = Field(default_factory=list, description="子策略净值曲线")

@@ -26,7 +26,6 @@ from app.selection.selectors.cross_sectional_momentum import CrossSectionalMomen
 from app.selection.selectors.trend_following import TrendFollowingSelector
 from app.selection.selectors.cross_sectional_long_short import CrossSectionalLongShortSelector
 from app.selection.selectors.etf_rotation import ETFRotationSelector
-from app.selection.selectors.etf_discount import ETFDiscountSelector
 
 # ---------------------------------------------------------------------------
 # 注册表：selector_type -> Selector 类
@@ -38,7 +37,6 @@ SELECTION_REGISTRY: Dict[str, Type[BaseAssetSelector]] = {
     "trend_following": TrendFollowingSelector,
     "cross_sectional_long_short": CrossSectionalLongShortSelector,
     "etf_rotation": ETFRotationSelector,
-    "etf_discount": ETFDiscountSelector,
 }
 
 

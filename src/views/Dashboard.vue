@@ -51,11 +51,19 @@
               </template>
             </el-table-column>
             <el-table-column prop="template_code" label="模板" width="130" show-overflow-tooltip></el-table-column>
-            <el-table-column label="年化收益" width="90" align="right">
+            <el-table-column label="年化收益（260日）" width="115" align="right">
               <template slot-scope="scope">
                 <span v-if="getBacktestMetric(scope.row, 'annual_return') != null"
                       :class="returnClass(getBacktestMetric(scope.row, 'annual_return'))">
                   {{ formatPercent(getBacktestMetric(scope.row, 'annual_return')) }}
+                </span>
+                <span v-else class="text-muted">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="年化收益（365日）" width="115" align="right">
+              <template slot-scope="scope">
+                <span v-if="getBacktestMetric(scope.row, 'annual_return_365') != null">
+                  {{ formatPercent(getBacktestMetric(scope.row, 'annual_return_365')) }}
                 </span>
                 <span v-else class="text-muted">—</span>
               </template>

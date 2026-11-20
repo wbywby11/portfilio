@@ -5,16 +5,45 @@
 两种构建路径：
 1. from MonitoredStrategy（新路径）：直接从模型的 composition/strategy_params 构建
 2. from MonitorRuntimeConfig（兼容路径）：将旧运行时配置翻译为 composition 格式
+
+回退开关 ``ALLOW_LEGACY_FALLBACK``（默认 True）：
+    - True：allocator / template_code 解析失败时静默回退 ``vol_scaled_budget``，
+      写 ``strategy_resolution_events`` 影子事件并记 warning（历史行为不变）；
+    - False：不再回退，直接抛 ``ValueError``（文本含 ``[monitor_engine_adapter]``
+      前缀与修复建议），让「配置了不存在的策略」在第一次运行时暴露。
+    注意默认值与 ``LIFECYCLE_ENFORCE`` 相反：回退是既有行为，开关只能用于
+    收紧而不能在默认路径上改变线上表现，否则升级即炸监控。
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "ALLOW_LEGACY_FALLBACK",
+    "MonitorEngineAdapter",
+    "PortfolioMonitorAdapter",
+]
+
+# 回退开关（默认 True：代码写全显式拒绝能力，但默认行为不变）
+ALLOW_LEGACY_FALLBACK = os.getenv("ALLOW_LEGACY_FALLBACK", "true").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+)
+
+_FALLBACK_CODE = "vol_scaled_budget"
+
+# 调仓所需的最小价格历史行数（改造前为 compute_weights 内硬编码 30）。
+# 缺省值保持 30，未声明该键的存量策略行为与改造前逐位一致。
+_DEFAULT_MIN_HISTORY_ROWS = 30
 
 
 # ---------------------------------------------------------------------------
@@ -30,6 +59,37 @@ def _resolve_allocator_class(template_code: str):
     """
     from app.allocation.strategy_manifest import resolve_class
     return resolve_class(template_code)
+
+
+def _record_resolution_failure(
+    template_code: str,
+    call_site: str,
+    fallback_to: Optional[str] = _FALLBACK_CODE,
+) -> None:
+    """记录解析失败事件（影子观测，不改变回退行为）.
+
+    ``fallback_to=None`` 表示本次**没有回退**（ALLOW_LEGACY_FALLBACK=False 抛错前
+    记录），事件里留空串而不是伪造一个实际未发生的回退目标。
+
+    包 try/except：观测面自身故障绝不得影响监控主流程。
+    """
+    try:
+        from app.services.strategy_resolution_service import record
+
+        record(template_code, call_site=call_site, fallback_to=fallback_to)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"记录策略解析失败事件出错（忽略）: {exc}")
+
+
+def _unresolvable_message(template_code: str, call_site: str) -> str:
+    """构建关闭回退后的报错文本（前缀便于日志检索与前端识别）."""
+    return (
+        f"[monitor_engine_adapter] 无法解析策略 {template_code!r}"
+        f"（调用点 {call_site}），且 ALLOW_LEGACY_FALLBACK=False，已停止回退 "
+        f"{_FALLBACK_CODE}。修复：确认 STRATEGY_MANIFEST 是否注册该 code"
+        f"（含 LEGACY_ALIASES 归一后的正式 code），或把模型的 "
+        f"composition.allocator / template_code 改成已注册策略。"
+    )
 
 
 def _build_strategy_params_from_rt(rt, template_code: str, composition: Dict) -> Dict[str, Any]:
@@ -139,8 +199,14 @@ class MonitorEngineAdapter:
         """
         # 截取 calc_date 及之前的数据（模拟回测中"只看历史"）
         history = prices_df.loc[:calc_date]
-        if history.empty or len(history) < 30:
-            logger.warning(f"历史数据不足（{len(history)}行），无法计算权重")
+        if history.empty:
+            logger.warning("价格矩阵在计算日及之前无数据，无法计算权重")
+            return {code: 0.0 for code in self._asset_codes}
+        min_rows = self._min_history_rows()
+        if min_rows > 0 and len(history) < min_rows:
+            logger.warning(
+                f"历史数据不足（{len(history)}行 < 门槛 {min_rows}行），无法计算权重"
+            )
             return {code: 0.0 for code in self._asset_codes}
 
         signal = self._pipeline.generate_target_weights(history, calc_date)
@@ -148,6 +214,28 @@ class MonitorEngineAdapter:
 
         # 确保所有资产池中的资产都有权重值
         return {code: weights.get(code, 0.0) for code in self._asset_codes}
+
+    def _min_history_rows(self) -> int:
+        """调仓所需的最小价格历史行数（由 allocator 经 get_data_feed_options 声明）.
+
+        缺省 30 行，与改造前硬编码一致，未声明的存量策略行为不变。
+        声明 0 表示策略不依赖价格历史窗口（如面板驱动调仓、早期区间由
+        拼接指数补足），首个可用价格日即可建仓，不再被挡成空仓。
+        """
+        default = _DEFAULT_MIN_HISTORY_ROWS
+        try:
+            opts = self._pipeline.get_data_feed_options() or {}
+        except Exception as exc:  # noqa: BLE001 —— 声明读取失败按默认门槛
+            logger.warning(f"读取 allocator 数据源选项失败，按 {default} 行门槛：{exc}")
+            return default
+        raw = opts.get("min_history_rows", default)
+        try:
+            return max(0, int(raw))
+        except (TypeError, ValueError):
+            logger.warning(
+                f"allocator 声明的 min_history_rows={raw!r} 非法，按 {default} 行门槛"
+            )
+            return default
 
     def compute_monitoring_metrics(
         self,
@@ -199,14 +287,26 @@ class MonitorEngineAdapter:
         if strategy.weight_caps and "weight_caps" not in params:
             params["weight_caps"] = strategy.weight_caps
 
-        # 动态解析 allocator
-        allocator_name = composition.get("allocator") or "vol_scaled_budget"
+        # 动态解析 allocator（先归一名：别名在 get_class_paths() 里也能解析成功，
+        # 不归一就会出现「解析到 A、composition 记着别名」的口径分裂）
+        from app.allocation.strategy_manifest import canonical_code
+
+        allocator_name = composition.get("allocator") or _FALLBACK_CODE
+        allocator_name = canonical_code(allocator_name)
         try:
             allocator_cls = _resolve_allocator_class(allocator_name)
-        except ValueError:
-            logger.warning(f"无法解析 allocator {allocator_name!r}，回退到 vol_scaled_budget")
-            allocator_cls = _resolve_allocator_class("vol_scaled_budget")
-            allocator_name = "vol_scaled_budget"
+        except ValueError as exc:
+            if not ALLOW_LEGACY_FALLBACK:
+                _record_resolution_failure(
+                    allocator_name, "from_monitored_strategy", fallback_to=None
+                )
+                raise ValueError(
+                    _unresolvable_message(allocator_name, "from_monitored_strategy")
+                ) from exc
+            _record_resolution_failure(allocator_name, "from_monitored_strategy")
+            logger.warning(f"无法解析 allocator {allocator_name!r}，回退到 {_FALLBACK_CODE}")
+            allocator_cls = _resolve_allocator_class(_FALLBACK_CODE)
+            allocator_name = _FALLBACK_CODE
             composition["allocator"] = allocator_name
 
         allocator = allocator_cls()
@@ -230,7 +330,11 @@ class MonitorEngineAdapter:
         from app.allocation.builtin_templates import COMPOSITION_DEFAULTS
 
         asset_codes = list(rt.asset_list)
-        template_code = getattr(rt, "template_code", "") or "vol_scaled_budget"
+        from app.allocation.strategy_manifest import canonical_code
+
+        template_code = canonical_code(
+            getattr(rt, "template_code", "") or _FALLBACK_CODE
+        )
 
         # 1. 从 COMPOSITION_DEFAULTS 获取默认 composition（含 fallback）
         base_comp = COMPOSITION_DEFAULTS.get(template_code, {
@@ -240,11 +344,19 @@ class MonitorEngineAdapter:
         # 2. 动态加载 allocator
         try:
             allocator_cls = _resolve_allocator_class(template_code)
-        except ValueError:
-            logger.warning(f"无法解析 allocator {template_code!r}，回退到 vol_scaled_budget")
-            allocator_cls = _resolve_allocator_class("vol_scaled_budget")
-            template_code = "vol_scaled_budget"
-            base_comp = COMPOSITION_DEFAULTS.get("vol_scaled_budget")
+        except ValueError as exc:
+            if not ALLOW_LEGACY_FALLBACK:
+                _record_resolution_failure(
+                    template_code, "from_runtime_config", fallback_to=None
+                )
+                raise ValueError(
+                    _unresolvable_message(template_code, "from_runtime_config")
+                ) from exc
+            _record_resolution_failure(template_code, "from_runtime_config")
+            logger.warning(f"无法解析 allocator {template_code!r}，回退到 {_FALLBACK_CODE}")
+            allocator_cls = _resolve_allocator_class(_FALLBACK_CODE)
+            template_code = _FALLBACK_CODE
+            base_comp = COMPOSITION_DEFAULTS.get(_FALLBACK_CODE)
 
         allocator = allocator_cls()
 

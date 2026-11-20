@@ -13,10 +13,23 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 from loguru import logger
 
 from app.monitor import config
+
+
+def _resolve_windows(vol_windows: Optional[Sequence[int]]) -> List[int]:
+    """解析波动率窗口：调用方传值优先，非法/空回退全局配置（升序去重）.
+
+    调用方应传 signal_detector 判定时使用的同一组窗口（策略参数
+    ``vol_windows``）；缺省才回退 ``config.VOL_WINDOWS``。
+    """
+    try:
+        windows = sorted({int(w) for w in (vol_windows or []) if int(w) > 1})
+    except (TypeError, ValueError):
+        windows = []
+    return windows or list(config.VOL_WINDOWS)
 
 
 class VolatilityCalculator:
@@ -25,6 +38,28 @@ class VolatilityCalculator:
     def __init__(self):
         self.annualize_factor = np.sqrt(config.ANNUALIZE_FACTOR)  # √260
         self.threshold = config.VOL_TRIGGER_THRESHOLD * 100  # 百分比形式
+
+    @staticmethod
+    def _common_price_as_of(
+        prices_df: pd.DataFrame,
+        assets: Sequence[str],
+        until: pd.Timestamp,
+    ) -> Optional[pd.Timestamp]:
+        """所有给定资产都有有效行情的最后一个交易日（≤ until）。
+
+        停更资产若继续参与统计，``pct_change`` 会把它当成零收益，窗口内只剩
+        仍在更新的资产在动，波动率被系统性低估。任一资产在 ``until`` 之前
+        完全没有行情时返回 None——组合无法代表真实持仓，不产出数值。
+        """
+        last_dates = []
+        for asset in assets:
+            if asset not in prices_df.columns:
+                return None
+            series = prices_df[asset].loc[:until].dropna()
+            if series.empty:
+                return None
+            last_dates.append(series.index[-1])
+        return min(last_dates) if last_dates else None
     
     def calc_current_volatility(self, prices_df: pd.DataFrame,
                                  positions_local: Dict[str, float],
@@ -32,7 +67,9 @@ class VolatilityCalculator:
                                  nav: float,
                                  current_date: str,
                                  asset_list: Optional[List[str]] = None,
-                                 w_cny: Optional[Dict[str, float]] = None) -> Tuple[Optional[float], Dict[str, float]]:
+                                 w_cny: Optional[Dict[str, float]] = None,
+                                 vol_windows: Optional[Sequence[int]] = None,
+                                 annualize_factor: Optional[float] = None) -> Tuple[Optional[float], Dict[str, float], Optional[str]]:
         """计算当前实时波动率（使用当前权重 + 资产价格，与 signal_detector 一致）
         
         Args:
@@ -46,17 +83,31 @@ class VolatilityCalculator:
                    传入时优先使用，跳过内部权重计算。
                    推荐使用 signal_detector 公式：
                    w = (positions_cny_base + apl_local × fx_today) / nav
+            vol_windows: 波动率窗口（交易日）。调用方应传 signal_detector 判定
+                   时使用的同一组窗口（策略参数 ``vol_windows``），缺省回退
+                   ``config.VOL_WINDOWS``。展示与触发必须同源，否则信号页
+                   显示的波动率会和实际判定用的窗口不同。
+            annualize_factor: 年化因子，缺省用 ``sqrt(config.ANNUALIZE_FACTOR)``。
+                   与 vol_windows 同源传入（signal_detector._vol_params 的返回值）。
         
         Returns:
-            (current_volatility, vol_windows)
+            (current_volatility, vol_window_values, price_as_of)
             current_volatility: 百分比形式的最大窗口波动率，如 5.50
-            vol_windows: {'22天': x, '65天': x, '130天': x}
+            vol_window_values: {'22天': x, '65天': x, '130天': x}（键随窗口参数变化）
+            price_as_of: 本次计算实际用到的最后行情日（YYYY-MM-DD）；
+                   持仓资产行情不完整时为 None（此时不产出数值）
         """
-        vol_windows = {}
+        vol_window_values = {}
         current_volatility = None
+        windows = _resolve_windows(vol_windows)
+        annualize = (
+            float(annualize_factor)
+            if annualize_factor is not None and float(annualize_factor) > 0
+            else self.annualize_factor
+        )
         
         if prices_df is None or prices_df.empty or nav <= 0:
-            return current_volatility, vol_windows
+            return current_volatility, vol_window_values, None
         
         try:
             assets = asset_list if asset_list is not None else list(config.ASSET_LIST)
@@ -72,28 +123,42 @@ class VolatilityCalculator:
             assets_with_position = [a for a in assets if w_cny.get(a, 0.0) > 1e-8]
             
             if not assets_with_position:
-                return current_volatility, vol_windows
+                return current_volatility, vol_window_values, None
             
             use_cols = [a for a in assets if a in prices_df.columns]
             if not use_cols:
-                return current_volatility, vol_windows
-            # 计算日收益率
-            daily_ret_df = prices_df[use_cols].pct_change(fill_method=None).fillna(0)
+                return current_volatility, vol_window_values, None
+
+            # 窗口截止日 = 所有持仓资产都有行情的最后一天。
+            # 停更资产若按 pct_change().fillna(0) 参与统计，会被当成「日收益恒为 0」，
+            # 窗口越短、仍在更新的资产权重越小，波动率被压得越低（22 天窗口尤其明显）。
             current_date_ts = pd.Timestamp(current_date)
-            ytd_ret = daily_ret_df.loc[:current_date_ts, assets_with_position]
+            as_of = self._common_price_as_of(prices_df, assets_with_position, current_date_ts)
+            if as_of is None:
+                logger.warning(
+                    "当前波动率跳过：持仓资产行情不完整，无法定位共同截止日: %s",
+                    ",".join(assets_with_position),
+                )
+                return current_volatility, vol_window_values, None
+
+            # 先按交易日历前向填充再算收益：跨市场休市日收益为 0 是正确的，
+            # 但填充到共同截止日就停，不会把「停更」伪装成「零收益」。
+            window_prices = prices_df[use_cols].loc[:as_of].ffill()
+            daily_ret_df = window_prices.pct_change(fill_method=None).fillna(0)
+            ytd_ret = daily_ret_df[assets_with_position]
             
-            if len(ytd_ret) < config.VOL_WINDOWS[0]:
-                return current_volatility, vol_windows
+            if len(ytd_ret) < min(windows):
+                return current_volatility, vol_window_values, as_of.strftime('%Y-%m-%d')
             
             w_series = pd.Series({a: w_cny.get(a, 0.0) for a in assets_with_position})
             weighted_returns = (ytd_ret * w_series).sum(axis=1)
             
             vol_values = []
-            for window in config.VOL_WINDOWS:
+            for window in windows:
                 if len(weighted_returns) >= window:
                     ret_window = weighted_returns.iloc[-window:]
-                    vol = float(ret_window.std() * self.annualize_factor) * 100
-                    vol_windows[f'{window}天'] = round(vol, 2)
+                    vol = float(ret_window.std() * annualize) * 100
+                    vol_window_values[f'{window}天'] = round(vol, 2)
                     if not np.isnan(vol):
                         vol_values.append(vol)
             
@@ -102,14 +167,19 @@ class VolatilityCalculator:
         
         except Exception as e:
             logger.warning(f"计算当前波动率失败: {e}")
+            return current_volatility, vol_window_values, None
         
-        return current_volatility, vol_windows
+        return current_volatility, vol_window_values, as_of.strftime('%Y-%m-%d')
     
     def calc_volatility_history(self, prices_df: pd.DataFrame,
                                  event_log: List[dict],
                                  current_date: str,
                                  lookback_days: int = None,
-                                 asset_list: Optional[List[str]] = None) -> List[dict]:
+                                 asset_list: Optional[List[str]] = None,
+                                 vol_windows: Optional[Sequence[int]] = None,
+                                 annualize_factor: Optional[float] = None,
+                                 as_of: Optional[str] = None,
+                                 current_weights: Optional[Dict[str, float]] = None) -> List[dict]:
         """计算波动率历史趋势（每个日期使用该日期实际生效的权重）
         
         核心逻辑：
@@ -122,6 +192,15 @@ class VolatilityCalculator:
             event_log: 事件日志列表
             current_date: 当前日期
             lookback_days: 回望天数，默认 VOL_LOOKBACK_DAYS
+            asset_list: 资产列表
+            vol_windows: 波动率窗口，应与当前值/触发判定同源；缺省回退
+                   ``config.VOL_WINDOWS``（趋势图与顶部数值必须同窗口）
+            annualize_factor: 年化因子，与当前值同源传入；缺省用
+                   ``sqrt(config.ANNUALIZE_FACTOR)``
+            as_of: 与当前值同源的行情截止日（YYYY-MM-DD）。传入时趋势终点
+                   与当前值对齐；缺省由全部资产共同行情日推导
+            current_weights: 当前持仓权重。趋势最后一个点用它计算，
+                   保证图表最右点与卡片「当前组合波动率」完全一致
             
         Returns:
             [{'date': 'YYYY-MM-DD', 'volatility': float}, ...]
@@ -130,6 +209,12 @@ class VolatilityCalculator:
             return []
         
         lookback = lookback_days or config.VOL_LOOKBACK_DAYS
+        windows = _resolve_windows(vol_windows)
+        annualize = (
+            float(annualize_factor)
+            if annualize_factor is not None and float(annualize_factor) > 0
+            else self.annualize_factor
+        )
         
         try:
             # 1. 重建权重变化历史
@@ -142,18 +227,31 @@ class VolatilityCalculator:
             use_cols = [a for a in assets if a in prices_df.columns]
             if not use_cols:
                 return []
-            # 2. 计算日收益率
-            daily_ret_df = prices_df[use_cols].pct_change(fill_method=None).fillna(0)
+
+            # 2. 计算日收益率：与当前值同口径——截止到「所有持仓资产都有行情的
+            #    最后一天」，先前向填充再算收益（跨市场休市日收益为 0）。
+            #    停更资产不会被填充到未来，避免「缺价」被当成「零收益」。
             current_date_ts = pd.Timestamp(current_date)
+            as_of_ts = (
+                pd.Timestamp(as_of)
+                if as_of
+                else self._common_price_as_of(prices_df, use_cols, current_date_ts)
+            )
+            if as_of_ts is None:
+                return []
+            daily_ret_df = (
+                prices_df[use_cols]
+                .loc[:min(as_of_ts, current_date_ts)]
+                .ffill()
+                .pct_change(fill_method=None)
+                .fillna(0)
+            )
             
-            # 只取到当前日期的数据
-            daily_ret_df = daily_ret_df.loc[:current_date_ts]
-            
-            if len(daily_ret_df) < max(config.VOL_WINDOWS):
+            if len(daily_ret_df) < max(windows):
                 return []
             
             # 3. 确定趋势展示的日期范围（最近 lookback 个交易日）
-            max_window = max(config.VOL_WINDOWS)  # 130
+            max_window = max(windows)
             # 需要 max_window + lookback 的数据来计算 lookback 个点
             all_dates = daily_ret_df.index
             
@@ -167,12 +265,21 @@ class VolatilityCalculator:
             
             # 4. 对每个趋势日期计算波动率
             volatility_history = []
+            last_date_str = trend_dates[-1].strftime('%Y-%m-%d') if len(trend_dates) else ''
             
             for date_ts in trend_dates:
                 date_str = date_ts.strftime('%Y-%m-%d')
                 
-                # 找到该日期生效的权重
-                effective_weights = self._get_effective_weights(weight_timeline, date_str)
+                # 找到该日期生效的权重；最后一个点代表「当前组合在最新完整
+                # 行情上的波动率」，直接用当前持仓权重（event_log 的生效权重
+                # 可能停在最后一次调仓前，与卡片主指标不同源会差一个调仓）
+                if date_str == last_date_str and current_weights:
+                    effective_weights = {
+                        k: float(v) for k, v in current_weights.items()
+                        if float(v or 0.0) > 1e-8
+                    }
+                else:
+                    effective_weights = self._get_effective_weights(weight_timeline, date_str)
                 
                 if not effective_weights:
                     continue
@@ -184,10 +291,14 @@ class VolatilityCalculator:
                 if not assets_with_weight:
                     continue
                 
-                # 获取截止到该日期的收益率
-                ret_up_to_date = daily_ret_df.loc[:date_ts, assets_with_weight]
+                # 获取截止到该日期的收益率；窗口截止到「该日权重下所有资产
+                # 都有行情」的最后一天，避免个别资产停更后被前向填充成零收益。
+                day_as_of = self._common_price_as_of(prices_df, assets_with_weight, date_ts)
+                if day_as_of is None:
+                    continue
+                ret_up_to_date = daily_ret_df.loc[:day_as_of, assets_with_weight]
                 
-                if len(ret_up_to_date) < config.VOL_WINDOWS[0]:
+                if len(ret_up_to_date) < min(windows):
                     continue
                 
                 # 构建权重 Series
@@ -198,10 +309,10 @@ class VolatilityCalculator:
                 
                 # 计算各窗口波动率，取最大值
                 vol_values = []
-                for window in config.VOL_WINDOWS:
+                for window in windows:
                     if len(weighted_returns) >= window:
                         window_ret = weighted_returns.iloc[-window:]
-                        vol = float(window_ret.std() * self.annualize_factor) * 100
+                        vol = float(window_ret.std() * annualize) * 100
                         if not np.isnan(vol):
                             vol_values.append(vol)
                 

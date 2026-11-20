@@ -52,7 +52,8 @@ export default {
       logLines: [],
       percent: -1,
       currentPhase: '',
-      progressStatus: ''
+      // 进行中为 null：el-progress 的 status 不接受空串（会触发 prop 校验告警）
+      progressStatus: null
     };
   },
   methods: {
@@ -78,7 +79,7 @@ export default {
       this.logLines = [];
       this.percent = 0;
       this.currentPhase = '连接中…';
-      this.progressStatus = '';
+      this.progressStatus = null;
     },
     appendLog(text) {
       if (text == null || String(text).trim() === '') return;

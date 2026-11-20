@@ -10,6 +10,26 @@
           </el-checkbox>
         </p>
       </div>
+      <!-- 批次口径：每次运行产出一份版本化快照，此处选定要展示哪一份 -->
+      <div v-if="activeMonitorId" class="header-right batch-bar">
+        <span class="batch-bar__label">当前批次</span>
+        <el-select
+          :value="currentBatchId || ''"
+          size="small"
+          class="batch-bar__select"
+          placeholder="最新完成批次"
+          :loading="batchesLoading"
+          :disabled="isTaskActive"
+          @change="handleBatchChange">
+          <el-option label="最新完成批次（自动跟随）" value="" />
+          <el-option
+            v-for="b in batchList"
+            :key="b.batch_id"
+            :label="batchOptionLabel(b)"
+            :value="b.batch_id" />
+        </el-select>
+        <span v-if="currentBatchHint" class="batch-bar__hint">{{ currentBatchHint }}</span>
+      </div>
     </div>
 
 
@@ -17,33 +37,47 @@
 
 
 
-    <!-- 初始化对话框 -->
+    <!-- 运行任务对话框（后台任务：提交后可关闭，进度在页面横幅与弹窗内均可查看） -->
     <el-dialog
-      title="初始化监控"
+      :title="taskDialogTitle"
       :visible.sync="initDialogVisible"
-      width="450px"
-      :close-on-click-modal="false">
-      <el-alert
-        title="从指定日期开始逐日推演到最新数据日期，此操作耗时较长"
-        type="warning"
-        :closable="false"
-        show-icon
-        style="margin-bottom: 20px;">
-      </el-alert>
-      <el-form label-width="100px">
-        <el-form-item label="启动日期">
-          <el-date-picker
-            v-model="initStartDate"
-            type="date"
-            value-format="yyyy-MM-dd"
-            placeholder="选择启动日期"
-            style="width: 100%;">
-          </el-date-picker>
-        </el-form-item>
-      </el-form>
+      width="480px"
+      :close-on-click-modal="false"
+      @closed="handleInitDialogClosed">
+      <task-progress-panel v-if="runTask" :task="runTask">
+        <div
+          v-if="runTask.status === 'completed' && runTask.result"
+          slot="result"
+          class="init-task-result">
+          <div>最终日期：{{ runTask.result.date || '—' }}</div>
+          <div>净值：{{ runTask.result.nav != null ? Number(runTask.result.nav).toFixed(2) : '—' }}</div>
+          <div>交易日数：{{ runTask.result.day_count != null ? runTask.result.day_count : '—' }}</div>
+        </div>
+      </task-progress-panel>
+      <template v-else>
+        <el-alert
+          title="初始化在后台运行，可关闭弹窗或切换页面；完成后本页自动刷新"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 20px;" />
+        <el-form label-width="100px">
+          <el-form-item label="启动日期">
+            <el-date-picker
+              v-model="initStartDate"
+              type="date"
+              value-format="yyyy-MM-dd"
+              placeholder="选择启动日期"
+              style="width: 100%;">
+            </el-date-picker>
+          </el-form-item>
+        </el-form>
+      </template>
       <span slot="footer" class="dialog-footer">
-        <el-button @click="initDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmInit" :loading="initializing">确认初始化</el-button>
+        <el-button v-if="!runTask" @click="initDialogVisible = false">取消</el-button>
+        <el-button v-if="!runTask" type="primary" @click="confirmInit" :loading="initializing">确认初始化</el-button>
+        <el-button v-else-if="isTaskActive" type="primary" plain @click="initDialogVisible = false">后台运行</el-button>
+        <el-button v-else type="primary" @click="closeInitDialogAndRefresh">关闭</el-button>
       </span>
     </el-dialog>
 
@@ -268,13 +302,18 @@
       </span>
     </el-dialog>
 
-    <!-- 区域0：监控策略管理（可折叠） -->
+    <!-- 区域0：监控策略管理（可折叠，常驻页面顶部） -->
     <el-card shadow="never" class="monitor-section monitor-section--full">
       <div slot="header" class="section-header section-header--toggle" @click="strategyListCollapsed = !strategyListCollapsed">
         <span>监控策略管理</span>
         <i :class="strategyListCollapsed ? 'el-icon-arrow-down' : 'el-icon-arrow-up'" style="color:#909399;margin-left:8px;" />
       </div>
       <div v-show="!strategyListCollapsed">
+        <div v-if="isTaskActive" class="init-running-banner">
+          <i class="el-icon-loading" />
+          <span>{{ taskMonitorName }} {{ taskKindLabel }}进行中：{{ taskBannerProgressText }}（{{ runTask.current_date || taskPhaseLabel }}）</span>
+          <el-button type="text" @click="initDialogVisible = true">查看进度</el-button>
+        </div>
         <MonitoredStrategyList
           ref="strategyList"
           :selected-id="activeMonitorId || ''"
@@ -286,106 +325,259 @@
       </div>
     </el-card>
 
-    <template v-if="activeMonitorId">
-      <!-- 区域1：监控总览 -->
-      <el-card shadow="never" class="monitor-section monitor-section--full">
-        <div slot="header" class="section-header">
-          <span>监控总览</span>
-          <el-select
-            v-if="monitoredStrategyOptions.length > 1"
-            :value="activeMonitorId"
-            size="small"
-            style="width: 200px; margin-left: 16px;"
-            @change="handleStrategySwitch"
-          >
-            <el-option
-              v-for="s in monitoredStrategyOptions"
-              :key="s._id"
-              :label="s.display_name"
-              :value="s._id"
-            />
-          </el-select>
+    <!-- 点开策略「查看」后：页签承载 总览 / 操作 / 绩效 / 风控 -->
+    <el-tabs v-if="activeMonitorId" v-model="activeTab" type="border-card" class="monitor-tabs">
+      <!-- 页签1：总览 -->
+      <el-tab-pane name="overview">
+        <span slot="label">总览</span>
+        <div class="tab-body">
+          <!-- 区域1：监控总览 -->
+          <el-card shadow="never" class="monitor-section monitor-section--full monitor-section--last">
+            <div slot="header" class="section-header">
+              <span>监控总览</span>
+              <el-select
+                v-if="monitoredStrategyOptions.length > 1"
+                :value="activeMonitorId"
+                size="small"
+                style="width: 200px; margin-left: 16px;"
+                @change="handleStrategySwitch"
+              >
+                <el-option
+                  v-for="s in monitoredStrategyOptions"
+                  :key="s._id"
+                  :label="s.display_name"
+                  :value="s._id"
+                />
+              </el-select>
+            </div>
+            <MonitorDashboard ref="dashboard" :strategy-context="currentStrategy" />
+          </el-card>
         </div>
-        <MonitorDashboard ref="dashboard" :strategy-context="currentStrategy" />
-      </el-card>
+      </el-tab-pane>
 
-      <div class="monitor-grid">
-        <!-- 区域2：净值走势（跨 2 列全宽） -->
-        <el-card shadow="never" class="monitor-section monitor-section--span2">
-          <div slot="header" class="section-header">
-            <span>净值走势</span>
-          </div>
-          <NavHistory ref="navHistory" />
-        </el-card>
+      <!-- 页签2：操作 = 操作指令 + 主观调仓 -->
+      <el-tab-pane name="operation" lazy>
+        <span slot="label">
+          操作
+          <el-tag v-if="pendingSubjectiveCount > 0" type="warning" size="mini" class="tab-badge">
+            {{ pendingSubjectiveCount }}
+          </el-tag>
+        </span>
+        <div class="tab-body">
+          <el-card shadow="never" class="monitor-section monitor-section--full monitor-section--last">
+            <div slot="header" class="section-header">
+              <span>操作指令</span>
+            </div>
+            <OperationPanel
+              ref="operationPanel"
+              :strategy-context="currentStrategy"
+              @override-added="handleOverrideAdded"
+            />
+            <div class="op-subjective-divider"></div>
+            <div class="section-subtitle section-subtitle--toggle" @click="subjectiveCollapsed = !subjectiveCollapsed">
+              <span>主观调仓</span>
+              <el-tag v-if="pendingSubjectiveCount > 0" type="warning" size="mini" class="subjective-pending-tag">
+                {{ pendingSubjectiveCount }} 条待执行
+              </el-tag>
+              <i :class="subjectiveCollapsed ? 'el-icon-arrow-down' : 'el-icon-arrow-up'" style="color:#909399;margin-left:8px;" />
+            </div>
+            <div v-show="!subjectiveCollapsed">
+              <SubjectiveOverride ref="subjective" :strategy-context="currentStrategy" />
+            </div>
+          </el-card>
+        </div>
+      </el-tab-pane>
 
-        <!-- 区域3：持仓明细 -->
-        <el-card shadow="never" class="monitor-section">
-          <div slot="header" class="section-header">
-            <span>持仓明细</span>
+      <!-- 页签3：绩效 = 统一周期 + 净值走势 + 持仓 / 每日收益 / 归因 / 底层资产风险 -->
+      <el-tab-pane name="performance" lazy>
+        <span slot="label">绩效</span>
+        <div class="tab-body" v-loading="performanceLoading">
+          <!-- 页面级统一周期：本页所有数据均按此周期展示 -->
+          <div class="period-bar">
+            <span class="period-label">选择周期</span>
+            <el-date-picker
+              v-model="performanceStart"
+              type="date"
+              value-format="yyyy-MM-dd"
+              placeholder="开始日期"
+              size="small"
+              :picker-options="startPickerOptions"
+              style="width: 150px;"
+              @change="handlePerformanceRangeChange" />
+            <span class="period-separator">至</span>
+            <el-date-picker
+              v-model="performanceEnd"
+              type="date"
+              value-format="yyyy-MM-dd"
+              placeholder="结束日期"
+              size="small"
+              :picker-options="endPickerOptions"
+              style="width: 150px;"
+              @change="handlePerformanceRangeChange" />
+            <el-button-group class="period-quick">
+              <el-button size="mini" :type="performanceQuick === '1m' ? 'primary' : ''" @click="applyQuickRange('1m')">近1月</el-button>
+              <el-button size="mini" :type="performanceQuick === '3m' ? 'primary' : ''" @click="applyQuickRange('3m')">近3月</el-button>
+              <el-button size="mini" :type="performanceQuick === '1y' ? 'primary' : ''" @click="applyQuickRange('1y')">近1年</el-button>
+              <el-button size="mini" :type="performanceQuick === 'all' ? 'primary' : ''" @click="applyQuickRange('all')">全部</el-button>
+            </el-button-group>
+            <span v-if="performanceRangeHint" class="period-hint">{{ performanceRangeHint }}</span>
           </div>
-          <Positions ref="positions" />
-        </el-card>
+          <!-- 首次进入/缓存重建期间只显示加载态，避免子组件把加载中误渲染成「暂无数据」 -->
+          <div v-if="!performancePanel" class="performance-state">
+            <i v-if="performanceLoading" class="el-icon-loading"></i>
+            <span>{{ performanceLoading ? '正在加载绩效数据…' : '暂无可展示的绩效数据；若尚未初始化，请先运行监控初始化或日常运行' }}</span>
+          </div>
+          <template v-else>
+          <!-- 净值走势（实际口径实线 + 模型口径虚线） -->
+          <el-card shadow="never" class="monitor-section monitor-section--full">
+            <div slot="header" class="section-header">
+              <span>净值走势</span>
+              <span v-if="performancePanel && performancePanel.has_model_track" class="section-header__hint">
+                模型口径为灰色虚线
+              </span>
+            </div>
+            <NavHistory ref="navHistory" :strategy-context="currentStrategy" />
+          </el-card>
 
-        <!-- 区域4：信号监控 -->
-        <el-card shadow="never" class="monitor-section">
-          <div slot="header" class="section-header">
-            <span>信号监控</span>
-          </div>
-          <Signals ref="signals" :subjective-vol-only="shouldHideVolMonitoring" />
-        </el-card>
+          <div class="monitor-grid monitor-grid--performance">
+            <!-- 行1左：持仓明细 -->
+            <el-card shadow="never" class="monitor-section performance-card--row1">
+              <div slot="header" class="section-header">
+                <span>持仓明细</span>
+                <span class="section-header__hint">{{ positionsSnapshotHint }}</span>
+              </div>
+              <Positions ref="positions" />
+            </el-card>
 
-        <!-- 区域5：主观调仓 -->
-        <el-card shadow="never" class="monitor-section">
-          <div slot="header" class="section-header">
-            <span>主观调仓</span>
-          </div>
-          <SubjectiveOverride ref="subjective" :strategy-context="currentStrategy" />
-        </el-card>
+            <!-- 行1右：每日收益统计 -->
+            <el-card shadow="never" class="monitor-section performance-card--row1">
+              <div slot="header" class="section-header">
+                <span>每日收益统计</span>
+                <span class="section-header__hint">
+                  共 {{ performanceTradingDays }} 个交易日 · 最新在前 · 每页 20 条
+                </span>
+              </div>
+              <ReturnsTable ref="returnsTable" />
+            </el-card>
 
-        <!-- 区域6：事件日志 -->
-        <el-card shadow="never" class="monitor-section">
-          <div slot="header" class="section-header">
-            <span>事件日志</span>
-          </div>
-          <EventLog ref="eventLog" />
-        </el-card>
+            <!-- 行2：收益归因（所选周期累计） -->
+            <el-card shadow="never" class="monitor-section monitor-section--span2">
+              <div slot="header" class="section-header">
+                <span>收益归因</span>
+                <span class="section-header__hint">{{ attributionHeaderHint }}</span>
+              </div>
+              <AttributionPanel ref="attributionPanel" />
+            </el-card>
 
-        <!-- 区域7：实盘发布记录（研究员策略无实盘发布，不渲染以避免用 monitor_id 请求策略模型） -->
-        <el-card
-          v-if="currentStrategy && activeMonitorId && activeMonitorId !== 'default' && !isResearcherMonitor"
-          shadow="never"
-          class="monitor-section">
-          <div slot="header" class="section-header">
-            <span>实盘发布记录</span>
+            <!-- 行3：底层资产风险（相关性 + 波动率） -->
+            <el-card shadow="never" class="monitor-section monitor-section--span2">
+              <div slot="header" class="section-header">
+                <span>底层资产风险</span>
+                <span class="section-header__hint">{{ assetRiskHeaderHint }}</span>
+              </div>
+              <AssetAnalysis ref="assetAnalysis" />
+            </el-card>
           </div>
-          <LivePublishRecords ref="publishLog" :model-id="activeMonitorId" />
-        </el-card>
-      </div>
-    </template>
+
+          <!-- 策略自定义插槽：绩效页专属组件（如因子暴露、希腊字母），未声明时不渲染 -->
+          <DynamicSlots v-if="performanceSlots.length" :slots="performanceSlots" class="performance-dynamic-slots" />
+          </template>
+        </div>
+      </el-tab-pane>
+
+      <!-- 页签4：风控 = 信号监控 + 事件日志 + 实盘发布记录 -->
+      <el-tab-pane name="signals" lazy>
+        <span slot="label">风控</span>
+        <div class="tab-body">
+          <!-- 信号监控 -->
+          <el-card shadow="never" class="monitor-section monitor-section--full">
+            <div slot="header" class="section-header">
+              <span>信号监控</span>
+            </div>
+            <Signals ref="signals" :strategy-context="currentStrategy" />
+          </el-card>
+
+          <!-- 风险预警：波动率对比 / 相关性反转 / 停更跳过（策略与组合共用） -->
+          <el-card shadow="never" class="monitor-section monitor-section--full">
+            <div slot="header" class="section-header">
+              <span>风险预警</span>
+              <span class="section-header__hint">波动率异常、相关性反转与行情停更提示</span>
+            </div>
+            <RiskAlerts ref="riskAlerts" :monitor-id="activeMonitorId || ''" :batch-id="currentBatchId || ''" />
+          </el-card>
+
+          <div class="monitor-grid">
+            <!-- 事件日志：无实盘发布记录时占满整行 -->
+            <el-card
+              shadow="never"
+              class="monitor-section"
+              :class="{ 'monitor-section--span2': !showPublishRecords }">
+              <div slot="header" class="section-header">
+                <span>事件日志</span>
+              </div>
+              <EventLog ref="eventLog" />
+            </el-card>
+
+            <!-- 实盘发布记录（研究员策略无实盘发布，不渲染以避免用 monitor_id 请求策略模型） -->
+            <el-card v-if="showPublishRecords" shadow="never" class="monitor-section">
+              <div slot="header" class="section-header">
+                <span>实盘发布记录</span>
+              </div>
+              <LivePublishRecords ref="publishLog" :model-id="activeMonitorId" />
+            </el-card>
+          </div>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script>
 import { mapActions, mapGetters, mapState } from 'vuex';
 import dayjs from 'dayjs';
-import {
-  getLiveEligibleForMonitor,
-  getStrategyModel,
-  updateStrategyModel,
-  livePublishModel
-} from '@/api/strategy';
+import { getLiveEligibleForMonitor, getStrategyModel } from '@/api/strategy';
 import { getAssetOptions } from '@/api/asset';
 import MonitorDashboard from './Index.vue';
 import NavHistory from './NavHistory.vue';
 import Positions from './Positions.vue';
+import ReturnsTable from './ReturnsTable.vue';
+import AttributionPanel from './AttributionPanel.vue';
 import Signals from './Signals.vue';
+import RiskAlerts from './RiskAlerts.vue';
 import SubjectiveOverride from './SubjectiveOverride.vue';
+import OperationPanel from './OperationPanel.vue';
+import AssetAnalysis from './AssetAnalysis.vue';
 import EventLog from './EventLog.vue';
 import LivePublishRecords from './LivePublishRecords.vue';
 import SubjectiveManualWeightsSnapshot from './SubjectiveManualWeightsSnapshot.vue';
 import MonitoredStrategyList from './MonitoredStrategyList.vue';
+import DynamicSlots from '@/components/monitor/DynamicSlots.vue';
+import TaskProgressPanel from '@/components/TaskProgressPanel.vue';
+import { resolveCustomComponents } from '@/config/monitor';
 import { normalizeWeightsToTwoDecimalSumOne, formatWeightSliderTooltip } from '@/utils/subjectiveWeights';
 import { isRiskBudgetTargetVolTemplateCode } from '@/utils/strategyTemplateFlags';
+import {
+  taskKindLabel as resolveTaskKindLabel,
+  taskPhaseLabel as resolveTaskPhaseLabel,
+  taskBannerProgressText as resolveTaskBannerProgressText
+} from '@/utils/taskProgress';
+
+/** 批次触发方式（与后端 BatchRunMode 同值） */
+const RUN_MODE_LABEL = {
+  init: '初始化',
+  daily: '日常推进',
+  range: '区间推演'
+};
+
+/** 批次状态（与后端 BatchStatus 同值） */
+const BATCH_STATUS_LABEL = {
+  pending: '等待执行',
+  running: '运行中',
+  paused: '已暂停',
+  completed: '已完成',
+  failed: '失败',
+  interrupted: '已中断'
+};
 
 export default {
   name: 'MonitorCenter',
@@ -393,12 +585,19 @@ export default {
     MonitorDashboard,
     NavHistory,
     Positions,
+    ReturnsTable,
+    AttributionPanel,
     Signals,
+    RiskAlerts,
     SubjectiveOverride,
+    OperationPanel,
+    AssetAnalysis,
     EventLog,
     LivePublishRecords,
     SubjectiveManualWeightsSnapshot,
-    MonitoredStrategyList
+    MonitoredStrategyList,
+    DynamicSlots,
+    TaskProgressPanel
   },
   data() {
     return {
@@ -445,12 +644,92 @@ export default {
       manualPresetRows: [],
       manualPresetCodes: [],
       selectedMonitoredStrategy: null,
-      strategyListCollapsed: false
+      /** 当前页签：总览 / 操作 / 绩效 / 信号与记录 */
+      activeTab: 'overview',
+      /** 绩效页快捷周期标记：1m / 3m / 1y / all / custom */
+      performanceQuick: 'all',
+      performanceLoading: false,
+      strategyListCollapsed: false,
+      /** 主观调仓区默认折叠，无操作时直接看到绩效；存在待执行指令时自动展开一次 */
+      subjectiveCollapsed: true,
+      subjectiveAutoExpanded: false
     };
   },
   computed: {
-    ...mapGetters('monitor', ['activeMonitorId']),
-    ...mapState('monitor', ['monitorState']),
+    ...mapGetters('monitor', [
+      'activeMonitorId', 'currentBatchId', 'batchList',
+      'runTask', 'isTaskActive', 'lastFinishedTask'
+    ]),
+    ...mapState('monitor', [
+      'monitorState', 'subjectiveOverrides', 'performancePanel', 'performanceRange',
+      'batchesLoading', 'taskFinishedAt'
+    ]),
+    /** 统一周期：开始/结束日期存 store，切换策略时自动清空 */
+    performanceStart: {
+      get() {
+        return this.performanceRange.start;
+      },
+      set(val) {
+        this.$store.commit('monitor/SET_PERFORMANCE_RANGE', {
+          start: val || null,
+          end: this.performanceRange.end
+        });
+      }
+    },
+    performanceEnd: {
+      get() {
+        return this.performanceRange.end;
+      },
+      set(val) {
+        this.$store.commit('monitor/SET_PERFORMANCE_RANGE', {
+          start: this.performanceRange.start,
+          end: val || null
+        });
+      }
+    },
+    /** 开始日期不得晚于结束日期 */
+    startPickerOptions() {
+      const end = this.performanceRange.end;
+      return end ? { disabledDate: d => dayjs(d).format('YYYY-MM-DD') > end } : {};
+    },
+    /** 结束日期不得早于开始日期 */
+    endPickerOptions() {
+      const start = this.performanceRange.start;
+      return start ? { disabledDate: d => dayjs(d).format('YYYY-MM-DD') < start } : {};
+    },
+    performanceRangeHint() {
+      const r = this.performancePanel && this.performancePanel.range;
+      if (!r || !r.start) return '';
+      const clamp = r.clamped ? '（已裁剪至可用数据范围）' : '';
+      return `当前展示 ${r.start} 至 ${r.end}${clamp}`;
+    },
+    /** 持仓卡头部：区间末快照日 + 净值 */
+    positionsSnapshotHint() {
+      const p = (this.performancePanel && this.performancePanel.positions) || {};
+      if (!p.date) return '暂无持仓快照';
+      const nav = p.nav === null || p.nav === undefined ? '—' : Number(p.nav).toFixed(4);
+      return `快照 ${p.date} · 净值 ${nav}`;
+    },
+    performanceTradingDays() {
+      const m = (this.performancePanel && this.performancePanel.metrics) || {};
+      return m.trading_days || 0;
+    },
+    /** 收益归因卡头部：区间 + 交易日数 + 组合区间收益率 */
+    attributionHeaderHint() {
+      const attr = (this.performancePanel && this.performancePanel.attribution) || {};
+      if (!attr.start_date) return '';
+      const total = attr.total_return === null || attr.total_return === undefined
+        ? ''
+        : ` · 合计 ${attr.total_return >= 0 ? '+' : ''}${Number(attr.total_return).toFixed(2)}%`;
+      return `${attr.start_date} 至 ${attr.end_date} · ${attr.trading_days} 个交易日${total}`;
+    },
+    /** 底层资产风险卡头部：区间 + 样本交易日 + 资产数 */
+    assetRiskHeaderHint() {
+      const analysis = (this.performancePanel && this.performancePanel.asset_analysis) || {};
+      if (!analysis.start_date) return '';
+      const info = (analysis.correlation && analysis.correlation.asset_info) || [];
+      return `${analysis.start_date} 至 ${analysis.end_date} · 样本 ${analysis.trading_days} 个交易日 · 资产 ${info.length} 项`;
+    },
     hasEligibleStrategies() {
       return this.eligibleStrategies.length > 0;
     },
@@ -474,6 +753,10 @@ export default {
       return this.eligibleStrategies.find(s => s.id === this.activeMonitorId)
         || this.selectedMonitoredStrategy
         || null;
+    },
+    /** 绩效页策略自定义插槽：由策略元数据 custom_components 声明，未声明时为空数组 */
+    performanceSlots() {
+      return resolveCustomComponents('performance', this.currentStrategy);
     },
     /** 研究员策略（hybrid_12 / sharpe_18）：完全独立自主，无策略模型与实盘发布，不触发任何 strategy-models 请求 */
     isResearcherMonitor() {
@@ -530,12 +813,8 @@ export default {
       const p = this.liveEffectiveParams;
       return !!(p && p.is_manual_allocation);
     },
-    /** 是否隐藏波动率监控：manual_allocation / etf_cycle_rotation / risk_parity 均隐藏 */
-    shouldHideVolMonitoring() {
-      if (this.isManualAllocationMonitor) return true;
-      const s = this.currentStrategy;
-      return !!(s && ['etf_cycle_rotation', 'risk_parity'].includes(s.template_code));
-    },
+    /** 波动率监控区的显隐由 Signals 内部按后端返回的 vol_reset.enabled 决定，
+        不再在此按 template_code 维护白名单（新增模板不会再漏配） */
     /** 服务端落库的步进暂停标记：有则显示「继续执行」 */
     manualPresetStepPaused() {
       const ms = this.monitorState;
@@ -561,13 +840,107 @@ export default {
     },
     manualInitSumClass() {
       return this.manualInitSumRatio > 1.00001 ? 'subjective-sum--warn' : '';
+    },
+    pendingSubjectiveCount() {
+      const list = this.subjectiveOverrides || [];
+      return list.filter(o => o.status === 'pending').length;
+    },
+    /** 实盘发布记录卡片是否展示：研究员策略无实盘发布，不渲染以避免用 monitor_id 请求策略模型 */
+    showPublishRecords() {
+      return !!(
+        this.currentStrategy &&
+        this.activeMonitorId &&
+        this.activeMonitorId !== 'default' &&
+        !this.isResearcherMonitor
+      );
+    },
+    /** 后台任务类型文案：init / run / run-range 共用同一套进度展示 */
+    taskKindLabel() {
+      return resolveTaskKindLabel(this.runTask);
+    },
+    /** 弹窗标题：无任务时是初始化表单，有任务时是进度详情（可能是日常运行） */
+    taskDialogTitle() {
+      return this.runTask ? `${this.taskKindLabel}进度` : '初始化监控';
+    },
+    /** 页面横幅进度文案：引擎类路径无总量时不给百分比，避免长期停在 0% */
+    taskBannerProgressText() {
+      return resolveTaskBannerProgressText(this.runTask);
+    },
+    taskPhaseLabel() {
+      return resolveTaskPhaseLabel(this.runTask);
+    },
+    taskMonitorName() {
+      const s = this.selectedMonitoredStrategy;
+      return (s && (s.name || s.id)) || '当前策略';
+    },
+    /** 当前展示批次的摘要（批次切换器右侧提示用） */
+    currentBatchSummary() {
+      const id = this.currentBatchId;
+      if (!id) return null;
+      return (this.batchList || []).find(b => b.batch_id === id) || null;
+    },
+    currentBatchHint() {
+      const b = this.currentBatchSummary;
+      if (!b) {
+        // 未锁定到具体批次时，展示端点读的是后端解析出的最新 completed 批次
+        return this.currentBatchId ? '' : '跟随最新完成批次';
+      }
+      const parts = [
+        RUN_MODE_LABEL[b.run_mode] || b.run_mode,
+        (b.start_date && b.end_date) ? `${b.start_date} ~ ${b.end_date}` : (b.data_date || ''),
+        BATCH_STATUS_LABEL[b.status] || b.status,
+        b.duration_ms != null ? `耗时 ${Math.max(1, Math.round(Number(b.duration_ms) / 1000))} 秒` : ''
+      ];
+      return parts.filter(Boolean).join(' · ');
+    }
+  },
+  watch: {
+    /** 首次加载后若存在待执行主观指令则自动展开（仅一次，之后尊重手动折叠） */
+    pendingSubjectiveCount: {
+      immediate: true,
+      handler(n) {
+        if (!this.subjectiveAutoExpanded && n > 0) {
+          this.subjectiveCollapsed = false;
+          this.subjectiveAutoExpanded = true;
+        }
+      }
+    },
+    /** 切页签后重算图表尺寸：隐藏页签内 ECharts 容器宽度为 0，需按可见宽度重绘 */
+    activeTab(tab) {
+      this.$nextTick(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+      if (tab === 'performance') {
+        this.loadPerformancePanel();
+      }
+    },
+    /** 切换监控策略时 store 会清空统一周期，快捷项同步回到「全部」 */
+    activeMonitorId() {
+      this.performanceQuick = 'all';
+    },
+    /**
+     * 后台任务到达终态：store 已先一步把展示批次切到新批次并刷新了批次列表，
+     * 此处只负责重载各展示区并给出结果反馈。时间戳而非 status 作为触发源，
+     * 连续两次 completed 也能触发。
+     */
+    taskFinishedAt(seq) {
+      if (!seq) return;
+      this.onTaskFinished();
     }
   },
   async created() {
     await this.loadEligibleContext();
   },
+  beforeDestroy() {
+    // 任务在服务端继续跑，离开页面只停本地轮询；回来时由 resumeActiveTaskAction 接上
+    this.stopTaskPolling();
+  },
   methods: {
-    ...mapActions('monitor', ['initMonitorAction', 'runMonitorAction', 'setActiveMonitorContext']),
+    ...mapActions('monitor', [
+      'initMonitorAction', 'runMonitorAction', 'setActiveMonitorContext',
+      'fetchPerformancePanel', 'fetchBatches', 'setCurrentBatchId',
+      'resumeActiveTaskAction', 'stopTaskPolling'
+    ]),
     formatStrategyOption(s) {
       if (s.live_effective_params && s.live_effective_params.is_manual_allocation) {
         return `${s.name || s.id}（${s.template_code || ''} · 主观配置）`;
@@ -677,6 +1050,12 @@ export default {
       const i = this.assetsEditCodes.findIndex(x => String(x).trim() === c);
       if (i >= 0) this.assetsEditCodes.splice(i, 1);
     },
+    /** 发布即冻结的统一阻断提示：配置变更必须回到策略模型页完成 */
+    blockLiveConfigEdit() {
+      this.$message.warning(
+        '策略已发布，配置已冻结：请到「策略模型」页取消发布，修改后重新发布并实盘发布，日常监控才会运行新逻辑'
+      );
+    },
     async openAssetsEdit() {
       if (!this.canClickLiveParams || !this.activeMonitorId) return;
       this.assetsEditVisible = true;
@@ -706,30 +1085,8 @@ export default {
       }
     },
     async submitAssetsEdit() {
-      if (!this.activeMonitorId) return;
-      if (!this.assetsEditCodes.length) {
-        this.$message.warning('请至少保留一个底层资产');
-        return;
-      }
-      this.assetsEditSaving = true;
-      try {
-        const op = this.liveOperator();
-        await updateStrategyModel(
-          this.activeMonitorId,
-          { asset_codes: [...this.assetsEditCodes] },
-          { params: { source: 'live_monitoring', operator: op } }
-        );
-        await livePublishModel(this.activeMonitorId, { source: 'live_monitoring', operator: op });
-        this.$message.success('已保存底层资产并提交实盘发布（次交易日生效）');
-        this.assetsEditVisible = false;
-        await this.loadEligibleContext();
-        this.refreshAllComponents();
-      } catch (e) {
-        const msg = (e.response && e.response.data && e.response.data.message) || e.message;
-        this.$message.error('保存或实盘发布失败: ' + msg);
-      } finally {
-        this.assetsEditSaving = false;
-      }
+      // 发布即冻结：底层资产属于发布快照内容，监控页不再直接改写
+      this.blockLiveConfigEdit();
     },
     formatWeightSliderTooltip,
     subjectiveEditorLabel(code) {
@@ -806,35 +1163,8 @@ export default {
       }
     },
     async submitManualInitEditor() {
-      if (!this.activeMonitorId || !this.manualInitEditorModel) return;
-      if (this.manualInitSumRatio > 1.00001) {
-        this.$message.warning('权重合计超过 100%，请先调低或使用「归一化到 100%」');
-        return;
-      }
-      const manual_weights = {};
-      this.manualInitRows.forEach(r => {
-        manual_weights[r.code] = Number(r.weight) || 0;
-      });
-      this.manualInitEditorSaving = true;
-      try {
-        const op = this.liveOperator();
-        const base = this.manualInitEditorModel.parameters || {};
-        await updateStrategyModel(
-          this.activeMonitorId,
-          { parameters: this.patchParameters(base, { manual_weights }) },
-          { params: { source: 'live_monitoring', operator: op } }
-        );
-        await livePublishModel(this.activeMonitorId, { source: 'live_monitoring', operator: op });
-        this.$message.success('已保存初始化权重并提交实盘发布（次交易日生效）');
-        this.manualInitEditorVisible = false;
-        await this.loadEligibleContext();
-        this.refreshAllComponents();
-      } catch (e) {
-        const msg = (e.response && e.response.data && e.response.data.message) || e.message;
-        this.$message.error('保存或实盘发布失败: ' + msg);
-      } finally {
-        this.manualInitEditorSaving = false;
-      }
+      // 发布即冻结：初始化权重属于发布快照内容，监控页不再直接改写
+      this.blockLiveConfigEdit();
     },
     mergePresetWeights(src, codes) {
       const w = {};
@@ -961,57 +1291,8 @@ export default {
       }
     },
     async submitManualPresetsEditor() {
-      if (!this.activeMonitorId || !this.manualPresetsEditorModel) return;
-      const out = [];
-      for (let i = 0; i < this.manualPresetRows.length; i++) {
-        const row = this.manualPresetRows[i];
-        const d = this.presetPickerToYmd(row.date);
-        if (!d) continue;
-        const weights = {};
-        this.manualPresetCodes.forEach(c => {
-          weights[c] = Number(row.weights[c]) || 0;
-        });
-        let t = this.manualPresetCodes.reduce((s, c) => s + weights[c], 0);
-        if (row.auto_normalize && t > 0) {
-          const out = this.normalizeWeightsToTwoDecimalSumOne(weights, this.manualPresetCodes);
-          this.manualPresetCodes.forEach(c => {
-            weights[c] = out[c];
-          });
-          t = 1;
-        } else if (t > 1.00001) {
-          this.$message.warning(`第 ${i + 1} 条权重合计超过 100%，请调低或开启「保存时归一化」`);
-          return;
-        }
-        out.push({
-          date: d,
-          auto_normalize: !!row.auto_normalize,
-          weights
-        });
-      }
-      if (!out.length) {
-        this.$message.warning('请至少填写一条调仓日');
-        return;
-      }
-      this.manualPresetsEditorSaving = true;
-      try {
-        const op = this.liveOperator();
-        const base = this.manualPresetsEditorModel.parameters || {};
-        await updateStrategyModel(
-          this.activeMonitorId,
-          { parameters: this.patchParameters(base, { manual_weight_adjustments: out }) },
-          { params: { source: 'live_monitoring', operator: op } }
-        );
-        await livePublishModel(this.activeMonitorId, { source: 'live_monitoring', operator: op });
-        this.$message.success('已保存预设调仓并提交实盘发布（次交易日生效）');
-        this.manualPresetsEditorVisible = false;
-        await this.loadEligibleContext();
-        this.refreshAllComponents();
-      } catch (e) {
-        const msg = (e.response && e.response.data && e.response.data.message) || e.message;
-        this.$message.error('保存或实盘发布失败: ' + msg);
-      } finally {
-        this.manualPresetsEditorSaving = false;
-      }
+      // 发布即冻结：预设调仓属于发布快照内容，监控页不再直接改写
+      this.blockLiveConfigEdit();
     },
     async openQuickEdit(rawKey) {
       if (!this.canClickLiveParams || !this.activeMonitorId) return;
@@ -1167,71 +1448,16 @@ export default {
       return map[key] || null;
     },
     async submitQuickEdit() {
-      const meta = this.quickEditMeta(this.quickEditKey);
-      if (!meta || !this.quickEditSourceModel || !this.activeMonitorId) {
-        this.quickEditVisible = false;
-        return;
-      }
-      let built;
-      try {
-        if (meta.inputType === 'text') {
-          const s = (this.quickEditValue || '').trim();
-          if (!s) {
-            this.$message.warning('请输入有效内容');
-            return;
-          }
-          try {
-            built = meta.build(s);
-          } catch (err) {
-            this.$message.error('格式无效：' + (err && err.message ? err.message : '请检查 JSON'));
-            return;
-          }
-        } else {
-          const n = this.quickEditNum;
-          if (n === null || n === undefined || Number.isNaN(Number(n))) {
-            this.$message.warning('请输入有效数字');
-            return;
-          }
-          built = meta.build(n);
-        }
-      } catch (e) {
-        this.$message.error('参数无效');
-        return;
-      }
-      const payload = {};
-      if (built.parametersPatch) {
-        payload.parameters = this.patchParameters(
-          this.quickEditSourceModel.parameters,
-          built.parametersPatch
-        );
-      }
-      if (built.topPatch) {
-        Object.assign(payload, built.topPatch);
-      }
-      if (!Object.keys(payload).length) {
-        this.$message.warning('没有可提交的修改');
-        return;
-      }
-      this.quickEditSaving = true;
-      try {
-        const op = this.liveOperator();
-        await updateStrategyModel(this.activeMonitorId, payload, {
-          params: { source: 'live_monitoring', operator: op }
-        });
-        await livePublishModel(this.activeMonitorId, { source: 'live_monitoring', operator: op });
-        this.$message.success('已保存并提交实盘发布（次交易日生效）');
-        this.quickEditVisible = false;
-        await this.loadEligibleContext();
-        this.refreshAllComponents();
-      } catch (e) {
-        const msg = (e.response && e.response.data && e.response.data.message) || e.message;
-        this.$message.error('保存或实盘发布失败: ' + msg);
-      } finally {
-        this.quickEditSaving = false;
-      }
+      // 发布即冻结：参数属于发布快照内容，监控页不再直接改写
+      this.blockLiveConfigEdit();
     },
-    showInitDialog() {
+    async showInitDialog() {
+      // 已有进行中的任务时不清空：弹窗直接展示它的进度
+      if (!this.isTaskActive) {
+        this.$store.commit('monitor/SET_RUN_TASK', null);
+      }
       this.initDialogVisible = true;
+      await this.resumeActiveTask();
     },
     async confirmInit() {
       this.initializing = true;
@@ -1240,8 +1466,14 @@ export default {
           start_date: this.initStartDate,
           manual_preset_step: this.isManualAllocationMonitor && this.manualPresetStepOptIn
         });
+        if (res && res.task_id) {
+          // 后台任务：store 已记下句柄并开始轮询，完成后自动切批次并刷新本页
+          this.$message.success('初始化任务已提交，后台运行中');
+          return;
+        }
+        // 同步兜底（后端 async_mode=false，仅脚本/调试使用）
         this.initDialogVisible = false;
-        this.refreshAllComponents();
+        await this.refreshAfterRun();
         if (res && res.paused) {
           this.notifyManualPresetStepPause(res);
         } else {
@@ -1249,10 +1481,54 @@ export default {
         }
       } catch (e) {
         const msg = (e.response && e.response.data && e.response.data.message) || e.message;
-        this.$message.error('初始化失败: ' + msg);
+        this.$message.error('初始化任务提交失败: ' + msg);
       } finally {
         this.initializing = false;
       }
+    },
+    /**
+     * 任务到达终态（由 store 的 taskFinishedAt 触发）：重载各展示区并按状态反馈。
+     * 展示批次已由 store 切到新批次，此处不需再管批次口径。
+     */
+    onTaskFinished() {
+      const task = this.lastFinishedTask || {};
+      this.refreshAllComponents();
+      const label = this.taskKindLabel;
+      if (task.status === 'completed') {
+        const batch = task.batch_id ? `，批次 ${String(task.batch_id).slice(0, 8)}` : '';
+        this.$message.success(`${label}完成${batch}`);
+      } else if (task.status === 'paused') {
+        this.notifyManualPresetStepPause(task.result || {});
+      } else if (task.status === 'interrupted') {
+        this.$message.warning(`${label}被服务重启中断，请重新发起`);
+      } else {
+        const msg = (task.error && task.error.message) || task.message || '未知错误';
+        this.$message.error(`${label}失败: ${msg}`);
+      }
+    },
+    closeInitDialogAndRefresh() {
+      this.initDialogVisible = false;
+      this.$store.commit('monitor/SET_RUN_TASK', null);
+      this.refreshAllComponents();
+    },
+    handleInitDialogClosed() {
+      // 任务结束后关闭弹窗即清空任务槽；进行中则保留，便于横幅继续展示进度
+      if (this.runTask && !this.isTaskActive) {
+        this.$store.commit('monitor/SET_RUN_TASK', null);
+      }
+    },
+    /** 页面刷新/切换策略后恢复进行中的任务（store 内部续接轮询） */
+    async resumeActiveTask() {
+      const id = this.activeMonitorId;
+      if (!id) return;
+      await this.resumeActiveTaskAction(id);
+    },
+    /** 同步兜底路径的刷新：先对齐批次列表，再重载展示区 */
+    async refreshAfterRun() {
+      if (this.activeMonitorId) {
+        await this.fetchBatches({ monitor_id: this.activeMonitorId });
+      }
+      this.refreshAllComponents();
     },
     notifyManualPresetStepPause(res) {
       const perf = (res && res.performance) || {};
@@ -1281,18 +1557,21 @@ export default {
       ).then(async () => {
         this.continuingStep = true;
         try {
-          const res = await this.runMonitorAction({
-            manual_preset_step: true
-          });
-          this.refreshAllComponents();
-          if (res && res.paused) {
-            this.notifyManualPresetStepPause(res);
+          const res = await this.runMonitorAction({ manual_preset_step: true });
+          if (res && res.task_id) {
+            this.$message.success('步进续跑任务已提交，后台运行中');
           } else {
-            this.$message.success('步进续跑完成（已推进至数据最新或本轮未再暂停）');
+            // 同步兜底：直接拿到运行结果
+            await this.refreshAfterRun();
+            if (res && res.paused) {
+              this.notifyManualPresetStepPause(res);
+            } else {
+              this.$message.success('步进续跑完成（已推进至数据最新或本轮未再暂停）');
+            }
           }
         } catch (e) {
           const msg = (e.response && e.response.data && e.response.data.message) || e.message;
-          this.$message.error('续跑失败: ' + msg);
+          this.$message.error('续跑任务提交失败: ' + msg);
         } finally {
           this.continuingStep = false;
         }
@@ -1302,11 +1581,14 @@ export default {
     async handleStrategyView(strategy) {
       this.selectedMonitoredStrategy = strategy;
       await this.setActiveMonitorContext({ monitorId: strategy._id });
+      await this.resumeActiveTask();
+      this.activeTab = 'overview';
       this.$nextTick(() => this.refreshAllComponents());
     },
     async handleStrategyInit(strategy) {
       this.selectedMonitoredStrategy = strategy;
       await this.setActiveMonitorContext({ monitorId: strategy._id });
+      this.activeTab = 'overview';
       this.showInitDialog();
     },
     async handleStrategyRun(strategy) {
@@ -1322,18 +1604,50 @@ export default {
       const strategy = (list ? list.strategies : []).find(s => s._id === monitorId);
       this.selectedMonitoredStrategy = strategy || null;
       await this.setActiveMonitorContext({ monitorId });
+      await this.resumeActiveTask();
+      this.activeTab = 'overview';
       this.$nextTick(() => this.refreshAllComponents());
     },
     /** 归档后：若归档的是当前活动策略，清除监控上下文并刷新 eligible */
     async handleStrategyArchive(archivedId) {
       if (this.activeMonitorId === archivedId) {
         this.selectedMonitoredStrategy = null;
+        // setActiveMonitorContext 内部已停轮询并清空任务与批次上下文
         await this.setActiveMonitorContext({ monitorId: null });
+        this.activeTab = 'overview';
       }
       await this.loadEligibleContext();
     },
 
+    // ── 批次切换 ──
+    batchOptionLabel(b) {
+      const id = b.batch_id === 'legacy'
+        ? 'legacy'
+        : String(b.batch_id || '').slice(0, 8);
+      const parts = [
+        id,
+        RUN_MODE_LABEL[b.run_mode] || b.run_mode,
+        BATCH_STATUS_LABEL[b.status] || b.status,
+        b.created_at ? dayjs(b.created_at).format('MM-DD HH:mm') : ''
+      ];
+      return parts.filter(Boolean).join(' · ');
+    },
+    /** 切批次：先写回 store（所有展示请求随之带上 batch_id），再重载已渲染的展示区 */
+    async handleBatchChange(batchId) {
+      const next = batchId || null;
+      if (next === this.currentBatchId) return;
+      this.setCurrentBatchId(next);
+      await this.$nextTick();
+      this.refreshAllComponents();
+      const label = next ? `批次 ${String(next).slice(0, 8)}` : '最新完成批次';
+      this.$message.success(`已切换到${label}的快照数据`);
+    },
+
     async handleRunMonitor() {
+      if (this.isTaskActive) {
+        this.$message.warning(`当前策略${this.taskKindLabel}任务进行中，请等待任务完成`);
+        return;
+      }
       const stepHint =
         this.isManualAllocationMonitor && this.manualPresetStepOptIn
           ? '已开启预设调仓日步进：每完成一档调仓日当日推演后将暂停，便于查看绩效。'
@@ -1348,35 +1662,110 @@ export default {
           const res = await this.runMonitorAction({
             manual_preset_step: this.isManualAllocationMonitor && this.manualPresetStepOptIn
           });
-          this.refreshAllComponents();
-          if (res && res.paused) {
-            this.notifyManualPresetStepPause(res);
+          if (res && res.task_id) {
+            // 任务已交给后台：完成后 store 会切到新批次并由 taskFinishedAt 触发刷新
+            this.$message.success('日常运行任务已提交，后台运行中');
           } else {
-            this.$message.success('监控运行完成');
+            await this.refreshAfterRun();
+            if (res && res.paused) {
+              this.notifyManualPresetStepPause(res);
+            } else {
+              this.$message.success('监控运行完成');
+            }
           }
         } catch (e) {
           const msg = (e.response && e.response.data && e.response.data.message) || e.message;
-          this.$message.error('运行失败: ' + msg);
+          this.$message.error('运行任务提交失败: ' + msg);
         } finally {
           this.running = false;
         }
       }).catch(() => {});
     },
+    /** 主观调仓提交后：净值与持仓变化，重新拉取统一绩效面板 */
+    handleOverrideAdded() {
+      this.loadPerformancePanel();
+    },
     refreshAllComponents() {
-      // 刷新所有子组件的数据
-      const refs = ['dashboard', 'navHistory', 'positions', 'signals', 'subjective', 'eventLog', 'publishLog'];
+      // 刷新所有子组件的数据（绩效页子组件统一订阅 performancePanel）
+      const refs = ['dashboard', 'signals', 'subjective', 'eventLog', 'publishLog', 'operationPanel'];
       refs.forEach(refName => {
         const component = this.$refs[refName];
         if (component && typeof component.loadData === 'function') {
           component.loadData();
         }
       });
+      if (this.activeTab === 'performance') {
+        this.loadPerformancePanel();
+      }
+    },
+    /** 拉取绩效页统一面板：本页所有数据都按 performanceRange 展示 */
+    async loadPerformancePanel() {
+      if (!this.activeMonitorId) return;
+      this.performanceLoading = true;
+      try {
+        await this.fetchPerformancePanel({
+          monitor_id: this.activeMonitorId,
+          start: this.performanceRange.start || undefined,
+          end: this.performanceRange.end || undefined
+        });
+      } finally {
+        this.performanceLoading = false;
+      }
+    },
+    handlePerformanceRangeChange() {
+      this.performanceQuick = 'custom';
+      this.loadPerformancePanel();
+    },
+    applyQuickRange(key) {
+      if (key === 'all') {
+        this.$store.commit('monitor/SET_PERFORMANCE_RANGE', { start: null, end: null });
+        this.performanceQuick = 'all';
+        this.loadPerformancePanel();
+        return;
+      }
+      const fullEnd = (this.performancePanel && this.performancePanel.range && this.performancePanel.range.full_end)
+        || (this.monitorState && this.monitorState.date)
+        || null;
+      if (!fullEnd) {
+        this.$message.warning('暂无监控数据，无法选择周期');
+        return;
+      }
+      const config = { '1m': [1, 'month'], '3m': [3, 'month'], '1y': [1, 'year'] }[key];
+      if (!config) return;
+      const start = dayjs(fullEnd).subtract(config[0], config[1]).format('YYYY-MM-DD');
+      this.$store.commit('monitor/SET_PERFORMANCE_RANGE', { start, end: fullEnd });
+      this.performanceQuick = key;
+      this.loadPerformancePanel();
     }
   }
 };
 </script>
 
 <style scoped>
+.init-running-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border: 1px solid #b3d8ff;
+  border-radius: 4px;
+  background: #ecf5ff;
+  color: #409eff;
+  font-size: 13px;
+}
+
+.init-running-banner .el-button {
+  margin-left: auto;
+}
+
+.init-task-result {
+  margin-top: 12px;
+  color: #303133;
+  font-size: 13px;
+  line-height: 24px;
+}
+
 .page-container {
   padding: 16px;
 }
@@ -1399,6 +1788,43 @@ export default {
 .header-actions {
   display: flex;
   gap: 10px;
+}
+
+/* 批次口径栏：当前展示批次号 + 切换器 + 该批次的运行摘要 */
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.batch-bar__label {
+  font-size: 13px;
+  color: #909399;
+}
+
+.batch-bar__select {
+  width: 250px;
+}
+
+.batch-bar__hint {
+  max-width: 320px;
+  font-size: 12px;
+  color: #909399;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 窄屏优先保住标题与切换器，摘要提示先隐 */
+@media (max-width: 1280px) {
+  .batch-bar__hint {
+    display: none;
+  }
+
+  .batch-bar__select {
+    width: 190px;
+  }
 }
 
 .page-title {
@@ -1432,6 +1858,120 @@ export default {
 
 .monitor-section--full {
   margin-bottom: 12px;
+}
+
+/* 绩效页：统一周期栏 */
+.period-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+}
+
+.period-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #606266;
+}
+
+.period-separator {
+  font-size: 13px;
+  color: #909399;
+}
+
+.period-quick {
+  margin-left: 4px;
+}
+
+.period-hint {
+  margin-left: auto;
+  font-size: 12px;
+  color: #909399;
+}
+
+/* 绩效页：首次加载占位（不渲染子组件的空态文案） */
+.performance-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 240px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  color: #909399;
+  font-size: 14px;
+}
+
+/* 绩效页：行内卡片等高，内容区撑满不留底部空白 */
+.monitor-grid--performance {
+  align-items: stretch;
+}
+
+.monitor-grid--performance > .monitor-section {
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* 行1：持仓明细 / 每日收益统计 等高 */
+.monitor-grid--performance > .performance-card--row1 {
+  height: 580px;
+}
+
+/* 页签内最后一张卡片不留底部间距 */
+.monitor-section--last {
+  margin-bottom: 0;
+}
+
+/* 页签容器：与数据接入、汇率页面一致的 border-card 风格 */
+.monitor-tabs {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.monitor-tabs >>> .el-tabs__content {
+  padding: 14px;
+  background: #f0f2f5;
+}
+
+.monitor-tabs >>> .el-tabs__item.is-active {
+  font-weight: 600;
+}
+
+.tab-badge {
+  margin-left: 6px;
+}
+
+.op-subjective-divider {
+  border-top: 1px dashed #dcdfe6;
+  margin: 16px 0 8px 0;
+}
+
+.section-subtitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 10px;
+}
+
+.section-subtitle--toggle {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.section-subtitle--toggle:hover {
+  color: #409eff;
+}
+
+.subjective-pending-tag {
+  margin-left: 8px;
 }
 
 
@@ -1611,6 +2151,12 @@ export default {
   color: #409eff;
 }
 
+.section-header__hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: #909399;
+}
+
 
 .init-dialog-strategy {
   font-size: 13px;
@@ -1636,6 +2182,7 @@ export default {
 
 .monitor-grid .monitor-section >>> .el-card__body {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }

@@ -60,6 +60,8 @@
  * 仿 AssetMiniChart 的 el-popover + slot 模式，展示堆叠面积图反映权重演变。
  */
 
+import { createDateAxisLabelFormatter } from '@/utils/dateAxis'
+
 // 调色板：最多 10 种资产配色
 const WEIGHT_COLORS = [
   '#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399',
@@ -177,13 +179,8 @@ export default {
         }
         const assetCodes = Array.from(assetSet)
 
-        // 日期轴（简化显示）
-        const dates = snaps.map(s => {
-          const d = s.date || ''
-          // 取 MM-DD 部分
-          const m = d.match(/(\d{2})-(\d{2})$/)
-          return m ? m[1] + '-' + m[2] : d.slice(-5)
-        })
+        // 日期轴（保留完整日期，轴标签按跨度自适应显示年份）
+        const dates = snaps.map(s => s.date || '')
 
         // 构建 series
         const series = assetCodes.map((code, idx) => ({
@@ -211,7 +208,7 @@ export default {
             type: 'category',
             data: dates,
             boundaryGap: false,
-            axisLabel: { fontSize: 9, color: '#999', interval: 'auto' },
+            axisLabel: { fontSize: 9, color: '#999', interval: 'auto', formatter: createDateAxisLabelFormatter(dates) },
             axisLine: { show: false },
             axisTick: { show: false }
           },

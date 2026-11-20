@@ -223,11 +223,14 @@ export default {
       const rA = this.backtestA ? this.backtestA.result : null;
       const rB = this.backtestB ? this.backtestB.result : null;
       const metrics = [
-        { key: 'annual_return', label: '年化收益', fmt: v => v != null ? (v * 100).toFixed(2) + '%' : '-', higherBetter: true },
-        { key: 'sharpe_ratio', label: '夏普比率', fmt: v => v != null ? v.toFixed(3) : '-', higherBetter: true },
+        { key: 'annual_return', label: '年化收益（260日）', fmt: v => v != null ? (v * 100).toFixed(2) + '%' : '-', higherBetter: true },
+        { key: 'annual_return_365', label: '年化收益（365日）', fmt: v => v != null ? (v * 100).toFixed(2) + '%' : '-', higherBetter: true },
+        { key: 'sharpe_ratio', label: '夏普比率（260日）', fmt: v => v != null ? v.toFixed(3) : '-', higherBetter: true },
+        { key: 'sharpe_ratio_365', label: '夏普比率（365日）', fmt: v => v != null ? v.toFixed(3) : '-', higherBetter: true },
         { key: 'max_drawdown', label: '最大回撤', fmt: v => v != null ? (v * 100).toFixed(2) + '%' : '-', higherBetter: false },
         { key: 'total_return', label: '总收益', fmt: v => v != null ? (v * 100).toFixed(2) + '%' : '-', higherBetter: true },
-        { key: 'annual_volatility', label: '年化波动', fmt: v => v != null ? (v * 100).toFixed(2) + '%' : '-', higherBetter: false },
+        { key: 'annual_volatility', label: '年化波动（260日）', fmt: v => v != null ? (v * 100).toFixed(2) + '%' : '-', higherBetter: false },
+        { key: 'annual_volatility_365', label: '年化波动（365日）', fmt: v => v != null ? (v * 100).toFixed(2) + '%' : '-', higherBetter: false },
       ];
       return metrics.map(m => {
         const rawA = rA ? rA[m.key] : null;
@@ -239,7 +242,7 @@ export default {
           const isBetter = m.higherBetter ? diff > 0 : diff < 0;
           const isWorse = m.higherBetter ? diff < 0 : diff > 0;
           betterClass = isBetter ? 'perf-better' : (isWorse ? 'perf-worse' : '');
-          if (m.key === 'annual_return' || m.key === 'total_return' || m.key === 'annual_volatility' || m.key === 'max_drawdown') {
+          if (m.key === 'annual_return' || m.key === 'annual_return_365' || m.key === 'total_return' || m.key === 'annual_volatility' || m.key === 'annual_volatility_365' || m.key === 'max_drawdown') {
             delta = (diff >= 0 ? '+' : '') + (diff * 100).toFixed(2) + '%';
           } else {
             delta = (diff >= 0 ? '+' : '') + diff.toFixed(3);

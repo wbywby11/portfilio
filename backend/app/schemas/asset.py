@@ -80,6 +80,9 @@ class AssetCreate(BaseModel):
     asset_class: AssetClass = Field(..., description="资产大类：权益/固收/商品/货币/另类")
     security_type: Optional[SecurityType] = Field(None, description="证券细分（可选）")
 
+    # 业务标签：策略预设按标签选资产池，前缀约定 pool:/class:/market:
+    tags: List[str] = Field(default_factory=list, description="业务标签，如 pool:nous_no_us、class:gold")
+
     # [已废弃] 旧字段兼容，前端不再发送，后端不再强制
     asset_type: Optional[str] = Field(None, description="[已废弃] 旧版混存字段")
 
@@ -111,6 +114,9 @@ class AssetUpdate(BaseModel):
     instrument_type: Optional[InstrumentType] = Field(None, description="工具形态：指数型/现货型/期货型")
     asset_class: Optional[AssetClass] = Field(None, description="资产大类：权益/固收/商品/货币/另类")
     security_type: Optional[SecurityType] = Field(None, description="证券细分（可选）")
+
+    # 业务标签：传空列表表示清空全部标签，不传表示不修改
+    tags: Optional[List[str]] = Field(None, description="业务标签，如 pool:nous_no_us、class:gold")
 
     # [已废弃] 旧字段兼容
     asset_type: Optional[str] = Field(None, description="[已废弃] 旧版混存字段")
@@ -145,6 +151,9 @@ class AssetOut(BaseModel):
     instrument_type: Optional[str] = Field(None, description="工具形态：指数型/现货型/期货型")
     asset_class: Optional[str] = Field(None, description="资产大类：权益/固收/商品/货币/另类")
     security_type: Optional[str] = Field(None, description="证券细分")
+
+    # 业务标签：策略预设按标签选资产池
+    tags: List[str] = Field(default_factory=list, description="业务标签")
 
     # [已废弃] 旧字段兼容（迁移完成后可移除）
     asset_type: Optional[str] = Field(None, description="[已废弃] 旧版混存字段")
@@ -456,7 +465,7 @@ class PriceImportResponse(BaseModel):
     skipped_count: int = Field(..., description="跳过数据条数")
     skipped_non_trade_days: int = Field(
         0,
-        description="因日期不在系统交易日历内而跳过的行数（Mongo trade_dates 或 data/trade_dates.xlsx）",
+        description="保留字段（向后兼容）：价格导入已取消按交易日历过滤，所有自然日价格均落库，本字段恒为 0",
     )
     error_count: int = Field(..., description="错误数据条数")
     errors: List[str] = Field(default_factory=list, description="错误信息列表")
@@ -469,7 +478,7 @@ class PriceCoverageResponse(BaseModel):
     end_date: str
     calendar_mode: str = Field(
         ...,
-        description="trade_calendar：data/trade_dates.xlsx；business_days：无日历时用工作日近似",
+        description="asset_calendar：资产行情日期并集；business_days：无资产日历时用工作日近似",
     )
     expected_trade_days: int
     existing_days: int

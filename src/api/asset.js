@@ -19,9 +19,21 @@ export function getAssetList(params) {
       is_active: params.is_active !== undefined ? params.is_active : true,
       code: params.code || undefined,
       name: params.name || undefined,
+      // 业务标签过滤：多个逗号分隔，后端取交集（标签命名不含逗号）
+      tag: Array.isArray(params.tags) && params.tags.length
+        ? params.tags.join(',')
+        : (params.tag || undefined),
       skip: params.skip || 0,
       limit: params.limit || 100
     }
+  });
+}
+
+// 获取全部已用资产标签及使用次数
+export function getAssetTags() {
+  return request({
+    url: '/api/v1/assets/tags',
+    method: 'get'
   });
 }
 

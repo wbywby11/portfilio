@@ -243,11 +243,11 @@
             :limit="1"
             :on-change="handleFileChange"
             :on-exceed="handleFileExceed"
-            accept=".pdf,.docx,.txt"
+            accept=".pdf,.docx,.txt,.md,.markdown"
           >
             <i class="el-icon-upload"></i>
             <div class="el-upload__text">拖拽文件到此处，或 <em>点击选择</em></div>
-            <div class="el-upload__tip" slot="tip">支持 PDF / Word(.docx) / TXT，单个文件≤50MB</div>
+            <div class="el-upload__tip" slot="tip">支持 PDF / Word(.docx) / TXT / Markdown(.md)，单个文件≤50MB</div>
           </el-upload>
         </el-form-item>
       </el-form>

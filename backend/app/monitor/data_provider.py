@@ -21,19 +21,6 @@ from app.monitor.mongo_asset_codes import canonical_price_code, stored_price_cod
 from app.monitor.time_norm import normalize_calendar_timestamp, normalize_datetime_index
 
 
-def _trade_dates_list_from_excel() -> List[pd.Timestamp]:
-    """Mongo 无文档时从 data/trade_dates.xlsx 或 app/data/trade_dates.xlsx 加载。"""
-    try:
-        from app.data.trade_dates import load_trade_dates as load_td_excel
-    except ImportError:
-        return []
-    loaded = load_td_excel()
-    if not loaded:
-        return []
-    lst, _ = loaded
-    return sorted({normalize_calendar_timestamp(d) for d in lst})
-
-
 def _prepare_prices_for_pivot(df_raw: pd.DataFrame) -> pd.DataFrame:
     """
     pivot 要求 (date, asset_code) 唯一；Mongo 中若存在重复文档会触发
@@ -222,7 +209,10 @@ class MongoDataProvider:
             return pd.DataFrame(columns=cols)
         query['asset_code'] = {'$in': asset_codes}
         
-        cursor = collection.find(query).sort('date', 1)
+        # 只取 pivot 需要的三列：全历史矩阵下省略 _id/open/high/low/volume 等字段可显著减小传输量
+        cursor = collection.find(
+            query, {'_id': 0, 'asset_code': 1, 'date': 1, 'close': 1}
+        ).sort('date', 1)
         records = await cursor.to_list(length=None)
         return _prices_pivot_from_records(records, pivot_columns)
     
@@ -314,36 +304,52 @@ class MongoDataProvider:
     
     async def load_trade_dates(self) -> List[pd.Timestamp]:
         """
-        加载交易日历
-        
-        优先 MongoDB `trade_dates` 集合；若为空则从项目 data/trade_dates.xlsx
-        或 app/data/trade_dates.xlsx 读取（与 import 脚本、app.data.trade_dates 一致）。
-        
+        加载交易日历（MongoDB trade_dates 集合，唯一来源）
+
         Returns
         -------
         List[pd.Timestamp]
-            排序后的交易日列表
+            排序后的交易日列表；集合为空时返回空列表
         """
         db = self._get_db()
         collection = db[config.MONGO_COLLECTIONS['trade_dates']]
-        
-        # 查询所有交易日
+
         cursor = collection.find({}).sort('date', 1)
         records = await cursor.to_list(length=None)
-        
+
         if not records:
-            file_dates = _trade_dates_list_from_excel()
-            if file_dates:
-                logger.info(
-                    "Mongo trade_dates 集合为空，已从本地 trade_dates.xlsx 加载 {} 个交易日",
-                    len(file_dates),
-                )
-            return file_dates
-        
+            logger.warning("Mongo trade_dates 集合为空，交易日历不可用")
+            return []
+
         # 提取日期并统一为日历日
         dates = [normalize_calendar_timestamp(r['date']) for r in records]
-        
+
         return sorted(set(dates))
+
+    async def load_asset_price_dates(self) -> List[str]:
+        """
+        加载资产行情日历（asset_prices 全资产日期并集，YYYY-MM-DD 升序去重）
+
+        系统级日历参考（前瞻型工具、数据QA），不依赖 Mongo trade_dates 集合
+        （该集合仅研究员策略 sharpe_18/hybrid_12 使用）。无行情数据时返回空列表。
+
+        Returns
+        -------
+        List[str]
+            YYYY-MM-DD 字符串列表（升序去重）
+        """
+        db = self._get_db()
+        collection = db[config.MONGO_COLLECTIONS['prices']]
+        raw = await collection.distinct('date')
+        out: set = set()
+        for dt in raw or []:
+            if dt is None:
+                continue
+            try:
+                out.add(normalize_calendar_timestamp(dt).strftime('%Y-%m-%d'))
+            except (ValueError, TypeError):
+                continue
+        return sorted(out)
     
     # =========================================================================
     # 辅助方法
@@ -567,32 +573,24 @@ class SyncDataProvider:
     
     def load_trade_dates(self) -> List[pd.Timestamp]:
         """
-        加载交易日历（同步版本）
-        
-        Mongo 为空时回退到本地 trade_dates.xlsx（见 async 版说明）。
-        
+        加载交易日历（同步版本，MongoDB trade_dates 集合，唯一来源）
+
         Returns
         -------
         List[pd.Timestamp]
-            排序后的交易日列表
+            排序后的交易日列表；集合为空时返回空列表
         """
         db = self._get_db()
         collection = db[config.MONGO_COLLECTIONS['trade_dates']]
-        
-        # 查询所有交易日
+
         records = list(collection.find({}).sort('date', 1))
-        
+
         if not records:
-            file_dates = _trade_dates_list_from_excel()
-            if file_dates:
-                logger.info(
-                    "Mongo trade_dates 集合为空，已从本地 trade_dates.xlsx 加载 {} 个交易日",
-                    len(file_dates),
-                )
-            return file_dates
-        
+            logger.warning("Mongo trade_dates 集合为空，交易日历不可用")
+            return []
+
         dates = [normalize_calendar_timestamp(r['date']) for r in records]
-        
+
         return sorted(set(dates))
     
     def get_latest_date(self) -> pd.Timestamp:

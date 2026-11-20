@@ -2,7 +2,29 @@
   <el-card shadow="never" class="form-card" v-if="currentTemplate">
     <div slot="header" class="card-header">
       <span>{{ isSharpeRiskBudget ? '权重参数' : '模型参数' }}</span>
-      <el-button type="text" size="small" @click="$emit('reset-params')">重置为默认值</el-button>
+      <el-dropdown trigger="click" size="small" @command="handlePresetCommand">
+        <el-button type="text" size="small" :loading="presetLoading">
+          重置为默认值<i class="el-icon-arrow-down el-icon--right"></i>
+        </el-button>
+        <el-dropdown-menu slot="dropdown">
+          <el-dropdown-item command="__template_default__" icon="el-icon-refresh-left">
+            模板默认值
+          </el-dropdown-item>
+          <template v-for="group in presetGroups">
+            <el-dropdown-item
+              :key="'h_' + group.tag"
+              divided
+              disabled
+              class="preset-group-title"
+            >{{ group.tag }} 版本</el-dropdown-item>
+            <el-dropdown-item
+              v-for="item in group.items"
+              :key="item.code"
+              :command="item.code"
+            >{{ item.name }}</el-dropdown-item>
+          </template>
+        </el-dropdown-menu>
+      </el-dropdown>
     </div>
 
     <!-- 核心参数 -->
@@ -54,7 +76,10 @@ export default {
     assetOptions: { type: Array, default: () => [] },
     isManualAllocation: { type: Boolean, default: false },
     isSharpeRiskBudget: { type: Boolean, default: false },
-    isRiskBudgetTargetVol: { type: Boolean, default: false }
+    isRiskBudgetTargetVol: { type: Boolean, default: false },
+    // 当前模板可用的原型预设（摘要），按 version_tag 分组展示
+    presets: { type: Array, default: () => [] },
+    presetLoading: { type: Boolean, default: false }
   },
   data() {
     return {
@@ -75,9 +100,30 @@ export default {
     },
     visibleAdvancedParams() {
       return this.advancedParams.filter(p => this.isParamShown(p));
+    },
+    presetGroups() {
+      // 按 version_tag 串组，保持预设声明顺序（后端已按版本排好）
+      const groups = [];
+      const index = {};
+      (this.presets || []).forEach(item => {
+        const tag = item.version_tag || '其他';
+        if (index[tag] === undefined) {
+          index[tag] = groups.length;
+          groups.push({ tag, items: [] });
+        }
+        groups[index[tag]].items.push(item);
+      });
+      return groups;
     }
   },
   methods: {
+    handlePresetCommand(command) {
+      if (command === '__template_default__') {
+        this.$emit('reset-params');
+        return;
+      }
+      this.$emit('apply-preset', command);
+    },
     isParamShown(param) {
       if (param.hidden) return false;
       // condition 可见性
@@ -130,5 +176,10 @@ export default {
 }
 .advanced-params-collapse >>> .el-collapse-item__content {
   padding-bottom: 8px;
+}
+.preset-group-title {
+  font-size: 12px;
+  color: #909399;
+  cursor: default;
 }
 </style>

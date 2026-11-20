@@ -1,0 +1,161 @@
+{
+ "data_version": {
+  "asset_prices_count": 1405539,
+  "asset_prices_last_date": "2026-11-02"
+ },
+ "git": {
+  "branch": "DZ_v0.01.01",
+  "dirty_paths": 45,
+  "head": "a14fa13c71b9d5e31d7d7740a865b69b643563aa",
+  "head_short": "a14fa13"
+ },
+ "layers": {
+  "engine": {
+   "file": "tests/execution_baseline/engine_parity.json",
+   "sha256": "5c4a4054e2553153a1194c4cde95a7bdcc388de20611f6b895a6a662b945fa10",
+   "tolerance": "abs=0"
+  },
+  "model": {
+   "dir": "tests/execution_baseline/model_golden",
+   "models": {
+    "allocation_multi_asset": {
+     "data": {
+      "close_sha256": "25fb9f741f7fe3beb38a045e82aeca4b9309c410fa37fc26e4fa46795177d39c",
+      "first_date": "2022-01-04",
+      "last_date": "2025-12-31",
+      "n_rows": 15088
+     },
+     "file": "tests/execution_baseline/model_golden/allocation_multi_asset.json",
+     "kind": "single",
+     "model_id": "6a7194f3df5c07bf2cd2dd05",
+     "n_snapshots": 1042,
+     "n_trades": 519,
+     "window": [
+      "20220104",
+      "20251231"
+     ]
+    },
+    "portfolio_quadrant": {
+     "data": {
+      "close_sha256": "e64e54ef2c416de7d4caa113cb24678e7d9bfd3d2619678791cad3abcff3dfe0",
+      "first_date": "2025-01-02",
+      "last_date": "2025-12-31",
+      "n_rows": 5062
+     },
+     "file": "tests/execution_baseline/model_golden/portfolio_quadrant.json",
+     "kind": "portfolio",
+     "model_id": "6a719daf2351b925eb1adacc",
+     "n_snapshots": 213,
+     "n_trades": null,
+     "window": [
+      "20250102",
+      "20251231"
+     ]
+    },
+    "standalone_dividend_garp": {
+     "data": {
+      "close_sha256": "8ba75970f7e6c00959d68f223a45aef97b4ec49316c05fae9d9f1fad8d60af37",
+      "first_date": "2022-01-04",
+      "last_date": "2025-12-31",
+      "n_rows": 3876
+     },
+     "file": "tests/execution_baseline/model_golden/standalone_dividend_garp.json",
+     "kind": "single",
+     "model_id": "6ae80410e6d7a479f90bbb5b",
+     "n_snapshots": 969,
+     "n_trades": 188,
+     "window": [
+      "20220104",
+      "20251231"
+     ]
+    },
+    "standalone_nous_low_vol": {
+     "data": {
+      "close_sha256": "f8f9bda3c3ebd24b7fa722ea4549cd71eeeaf7e6977cf272af1b787270d4c311",
+      "first_date": "2022-01-04",
+      "last_date": "2025-12-31",
+      "n_rows": 15557
+     },
+     "file": "tests/execution_baseline/model_golden/standalone_nous_low_vol.json",
+     "kind": "single",
+     "model_id": "6ad9820464d47ae3b5003103",
+     "n_snapshots": 1042,
+     "n_trades": 642,
+     "window": [
+      "20220104",
+      "20251231"
+     ]
+    }
+   },
+   "tolerance": "rel<=1e-9 (abs<=1e-12 floor)"
+  },
+  "regression": {
+   "file": "tests/execution_baseline/regression_snapshot.json",
+   "regression_golden_sha256": "92280bd5a28fc3a2abfbd8227a3cdd0b80869e7fff2f06a8df6b13b731386e83",
+   "tolerance": "no-new-diffs",
+   "total_diffs": 12944
+  }
+ },
+ "params": {
+  "engine": {
+   "initial_cash": 10000000.0,
+   "n_assets": 5,
+   "n_days": 300,
+   "price_seed": 20261106,
+   "start_date": "2022-01-03",
+   "warmup": 60
+  },
+  "model": {
+   "atol": 1e-12,
+   "end_date": "20251231",
+   "initial_cash": 10000000.0,
+   "initial_nav": 1000.0,
+   "models": [
+    {
+     "kind": "single",
+     "label": "allocation_multi_asset",
+     "model_id": "6a7194f3df5c07bf2cd2dd05",
+     "why": "单策略：allocation 模型 + momentum_reversal 选择器，覆盖 CompositionPipeline 三层编排",
+     "window": [
+      "20220104",
+      "20251231"
+     ]
+    },
+    {
+     "kind": "single",
+     "label": "standalone_dividend_garp",
+     "model_id": "6ae80410e6d7a479f90bbb5b",
+     "why": "分资产费率：standalone get_trading_costs → commission_by_code 净额配平分支",
+     "window": [
+      "20220104",
+      "20251231"
+     ]
+    },
+    {
+     "kind": "single",
+     "label": "standalone_nous_low_vol",
+     "model_id": "6ad9820464d47ae3b5003103",
+     "why": "standalone 单策略：独立打包策略、月末调仓、无分资产费率",
+     "window": [
+      "20220104",
+      "20251231"
+     ]
+    },
+    {
+     "kind": "portfolio",
+     "label": "portfolio_quadrant",
+     "model_id": "6a719daf2351b925eb1adacc",
+     "why": "组合：is_portfolio + 四象限权重模型，覆盖 composite_runner 两段引擎",
+     "window": [
+      "20250102",
+      "20251231"
+     ]
+    }
+   ],
+   "rtol": 1e-09,
+   "start_date": "20220104"
+  }
+ },
+ "rebuilt_at": "2026-11-07T18:27:49",
+ "schema": 1
+}

@@ -17,6 +17,7 @@ import pandas as pd
 from typing import Dict, List, Optional, Union, TYPE_CHECKING
 
 from app.monitor import config
+from app.backtesting.schedule import resolve_vol_reset_policy
 
 if TYPE_CHECKING:
     from app.monitor.monitor_runtime import MonitorRuntimeConfig
@@ -54,8 +55,55 @@ class SignalDetector:
     """信号检测器 - 检测调仓信号并生成交易指令"""
     
     def __init__(self):
-        """初始化信号检测器"""
-        self._annualize_factor = np.sqrt(config.ANNUALIZE_FACTOR)
+        """初始化信号检测器.
+
+        年化因子不再在构造时固化：改为每次检测按策略参数
+        ``annualization_factor`` 取，缺省回退 ``config.ANNUALIZE_FACTOR``。
+        """
+
+    @staticmethod
+    def _vol_params(rt) -> tuple:
+        """波动率窗口与年化因子：策略参数优先，缺省/非法回退全局配置.
+
+        回测侧 ``_realized_vol`` 读的是策略参数 ``vol_windows`` /
+        ``annualization_factor``；监控侧必须同口径，否则同一策略两条通道
+        会因窗口或年化因子不同而算出不同波动率、在不同日期触发。
+        参数非法时只用全局默认并记一条警告，不静默改成局部值。
+        """
+        sp = dict(getattr(rt, "strategy_params", None) or {}) if rt is not None else {}
+        raw_windows = sp.get("vol_windows")
+        windows: tuple = tuple(config.VOL_WINDOWS)
+        if raw_windows is not None:
+            try:
+                parsed = tuple(
+                    int(float(x)) for x in str(raw_windows).replace("[", "").replace("]", "").split(",")
+                    if str(x).strip()
+                )
+                parsed = tuple(w for w in parsed if w > 1)
+                if parsed:
+                    windows = parsed
+                else:
+                    raise ValueError("窗口全为非正数")
+            except (TypeError, ValueError) as exc:
+                logging.getLogger(__name__).warning(
+                    "[波动率重置] 策略参数 vol_windows=%r 无法解析（%s），回退全局 %s",
+                    raw_windows, exc, list(config.VOL_WINDOWS),
+                )
+        annualize = np.sqrt(config.ANNUALIZE_FACTOR)
+        raw_ann = sp.get("annualization_factor")
+        if raw_ann is not None:
+            try:
+                value = float(raw_ann)
+                if value > 0:
+                    annualize = value
+                else:
+                    raise ValueError("非正数")
+            except (TypeError, ValueError) as exc:
+                logging.getLogger(__name__).warning(
+                    "[波动率重置] 策略参数 annualization_factor=%r 无法解析（%s），回退全局 %.6f",
+                    raw_ann, exc, annualize,
+                )
+        return windows, annualize
     
     # =========================================================================
     # 月度调仓检测
@@ -264,11 +312,28 @@ class SignalDetector:
         vol_trigger_threshold = (
             float(rt.vol_trigger_threshold) if rt else float(config.VOL_TRIGGER_THRESHOLD)
         )
+        # 波动率风控未启用时不触发：开关由 monitor_runtime.resolve_vol_control 单点判定，
+        # 覆盖 enable_daily_vol_control / enable_vol_reset / target_vol<=0 / 未配置四种情形。
+        # 旧版只看后两个开关，未配置的模型会按全局默认 0.06 被静默重置（回测侧不会）。
+        if rt is not None and not getattr(rt, "vol_control_enabled", True):
+            return None
+        # 策略显式关闭日度波动率风控时不触发（打包策略参数 enable_daily_vol_control）：
+        # 回测侧由策略包的 check_volatility_trigger 闸门，监控侧必须同口径。
+        if rt is not None and rt.strategy_params:
+            if rt.strategy_params.get("enable_daily_vol_control") is False:
+                return None
+        # 目标波动率 ≤ 0 表示不做降仓缩放：此时 scale_factor 恒为 0，
+        # 触发会把全部仓位清零（等于强制清仓），必须直接跳过。
+        if target_vol <= 0:
+            return None
         # 波动率监控起始日：优先使用策略参数，回退全局配置
         monitor_start_days = (
             int(rt.strategy_params.get("monitor_start_days", config.MONITOR_START_DAYS))
             if rt and rt.strategy_params else config.MONITOR_START_DAYS
         )
+        # 日度波控裁决规则：与回测引擎同一套判定键（月度优先/信号日/区间冲突）
+        policy = resolve_vol_reset_policy(getattr(rt, "vol_reset_policy", None))
+        windows, annualize = self._vol_params(rt)
         
         # 前提条件1：trade_day_count > monitor_start_days（与原型 trade_day_idx 对齐）
         # 原型使用 trade_day_idx（仅计数交易日），而非总处理日计数
@@ -283,8 +348,8 @@ class SignalDetector:
         if state.pending_rebalance is not None:
             return None
         
-        # 前提条件2：当天没有月度调仓
-        if monthly_rebalance_dates and date_ts in monthly_rebalance_dates:
+        # 前提条件2：当天没有月度调仓（月度调仓优先）
+        if policy["monthly_priority"] and monthly_rebalance_dates and date_ts in monthly_rebalance_dates:
             return None
         
         # 1. 计算当前实际权重 w_cny（与原型完全一致：使用当日汇率）
@@ -351,7 +416,7 @@ class SignalDetector:
         if not use_cols:
             return None
         # 仅取最长波动窗口所需价格子集再 pct_change，避免每日对全历史 O(行×列) 重算
-        max_w = max(config.VOL_WINDOWS)
+        max_w = max(windows)
         need_rows = max_w + 2  # 130 日波动需约 131 个价位得到 130 个收益
         loc = prices_df.index.get_loc(date_ts)
         if isinstance(loc, slice):
@@ -369,20 +434,19 @@ class SignalDetector:
         # 与原型一致：使用全部 use_cols 资产（而非仅有持仓的资产）
         ytd_ret = daily_ret_df[use_cols]
         
-        if len(ytd_ret) < config.VOL_WINDOWS[0]:  # 至少需要22天数据
+        if len(ytd_ret) < min(windows):  # 至少需要最短窗口的收益样本
             return None
         
         # 3. 计算加权组合波动率（与原型 calc_realized_vol 完全一致）
         vol_values = []
         # 包含所有资产（权重为 0 的资产不影响加权收益）
         w_series = pd.Series({a: w_cny.get(a, 0.0) for a in use_cols})
-        windows = config.VOL_WINDOWS  # [22, 65, 130]
-        
+
         for n in windows:
             if len(ytd_ret) >= n:
                 ret_window = ytd_ret.iloc[-n:]
                 weighted_ret = (ret_window * w_series).sum(axis=1)
-                vol = weighted_ret.std() * self._annualize_factor
+                vol = weighted_ret.std() * annualize
                 if not np.isnan(vol):
                     vol_values.append(vol)
         
@@ -406,8 +470,10 @@ class SignalDetector:
             return None
         
         # 8. 冲突检查：检查 [t, T+1, T+2] 区间（同时检查月度调仓日和波动率重置执行日）
-        if self._has_conflict(date_ts, execute_date, trade_dates, 
-                              monthly_rebalance_dates, vol_reset_execute_dates):
+        if policy["skip_interval_conflict"] and self._has_conflict(
+            date_ts, execute_date, trade_dates,
+            monthly_rebalance_dates, vol_reset_execute_dates,
+        ):
             return None
         
         return VolResetSignal(
@@ -418,6 +484,8 @@ class SignalDetector:
             scale_factor=scale_factor,
             current_weights=w_cny.copy(),
             new_weights=vw_weights,
+            vol_trigger_threshold=float(vol_trigger_threshold),
+            vol_windows=[int(w) for w in windows],
         )
     
     def _has_conflict(self, signal_date, execute_date: str, 

@@ -8,6 +8,7 @@ import {
   getStrategyModel,
   runBacktest,
   publishModel,
+  unpublishModel as unpublishModelApi,
   livePublishModel as livePublishModelApi,
   liveUnpublishModel as liveUnpublishModelApi,
   updateLiveConfig as updateLiveConfigApi,
@@ -173,9 +174,10 @@ const actions = {
   },
 
   // 运行回测（返回完整响应 { code, data, message }，便于组件统一从 result.data 取 payload 含 record_id）
-  async runBacktest({ commit }, { modelId, data }) {
+  // progressKey：可选进度任务号，由页面生成并用于并行轮询任务进度
+  async runBacktest({ commit }, { modelId, data, progressKey }) {
     try {
-      const res = await runBacktest(modelId, data);
+      const res = await runBacktest(modelId, data, progressKey);
       return res;
     } catch (error) {
       console.error('运行回测失败:', error);
@@ -274,6 +276,32 @@ const actions = {
       return result;
     } catch (error) {
       console.error('取消实盘发布失败:', error);
+      throw error;
+    }
+  },
+
+  // 取消发布（回到草稿；已实盘发布的模型后端会先自动取消实盘）
+async unpublishModel({ commit, state }, { modelId, params }) {
+    try {
+      const res = await unpublishModelApi(modelId, params || {});
+      if (res && res.code !== undefined && res.code !== 200) {
+        throw new Error(res.message || '取消发布失败');
+      }
+      const result = res.data !== undefined ? res.data : res;
+      if (result === false) {
+        throw new Error('取消发布未生效：数据库未更新');
+      }
+      const model = state.strategyModelList.find(m => m.id === modelId);
+      if (model) {
+        commit('UPDATE_STRATEGY_MODEL', {
+          ...model,
+          status: '草稿',
+          live_publish_enabled: false
+        });
+      }
+      return result;
+    } catch (error) {
+      console.error('取消发布失败:', error);
       throw error;
     }
   },

@@ -30,6 +30,7 @@ from app.schemas.response import Response
 from app.portfolio.portfolio_service import PortfolioService
 from app.services.asset_service import AssetService
 from app.portfolio.models import Portfolio, PortfolioSource, PortfolioStatus, Position, RebalanceRecord
+from app.models.strategy_model import ModelStatus
 
 
 router = APIRouter()
@@ -259,11 +260,23 @@ def _portfolio_live_status(p: Portfolio, live_status_map: dict) -> bool:
     """
     direct = p.portfolio_model_id or p.model_id
     if direct:
-        return live_status_map.get(str(direct), False)
+        return bool((live_status_map.get(str(direct)) or {}).get("live_publish_enabled"))
     for s in (p.sub_strategies or []):
-        if s.model_id and live_status_map.get(str(s.model_id), False):
+        if s.model_id and (live_status_map.get(str(s.model_id)) or {}).get("live_publish_enabled"):
             return True
     return False
+
+
+def _portfolio_model_meta(p: Portfolio, live_status_map: dict) -> dict:
+    """取组合自身关联模型的发布元信息（无直接模型时回退第一个已实盘子策略）。"""
+    direct = p.portfolio_model_id or p.model_id
+    if direct:
+        return live_status_map.get(str(direct)) or {}
+    for s in (p.sub_strategies or []):
+        meta = live_status_map.get(str(s.model_id)) if s.model_id else None
+        if meta and meta.get("live_publish_enabled"):
+            return meta
+    return {}
 
 @router.get("/", response_model=Response[List[PortfolioOut]], summary="组合列表")
 async def list_portfolios(service: PortfolioService = Depends(get_portfolio_service)):
@@ -296,10 +309,20 @@ async def list_portfolios(service: PortfolioService = Depends(get_portfolio_serv
         valid_ids = [ObjectId(mid) for mid in linked_ids if ObjectId.is_valid(mid)]
         cursor = db.strategy_models.find(
             {"_id": {"$in": valid_ids}},
-            {"live_publish_enabled": 1},
+            {
+                "live_publish_enabled": 1,
+                "status": 1,
+                "published_version": 1,
+                "live_published_version": 1,
+            },
         )
         async for doc in cursor:
-            live_status_map[str(doc["_id"])] = bool(doc.get("live_publish_enabled", False))
+            live_status_map[str(doc["_id"])] = {
+                "live_publish_enabled": bool(doc.get("live_publish_enabled", False)),
+                "status": doc.get("status"),
+                "published_version": doc.get("published_version"),
+                "live_published_version": doc.get("live_published_version"),
+            }
 
     data = []
     for p in portfolios:
@@ -320,15 +343,21 @@ async def list_portfolios(service: PortfolioService = Depends(get_portfolio_serv
         total_return = None
         annual_return = None
         annual_volatility = None
+        annual_return_365 = None
+        annual_volatility_365 = None
         max_drawdown = None
         sharpe_ratio = None
+        sharpe_ratio_365 = None
         latest_unit_value = None
         if p.performance:
             total_return = p.performance.total_return
             annual_return = p.performance.annual_return
             annual_volatility = getattr(p.performance, 'annual_volatility', None)
+            annual_return_365 = getattr(p.performance, 'annual_return_365', None)
+            annual_volatility_365 = getattr(p.performance, 'annual_volatility_365', None)
             max_drawdown = p.performance.max_drawdown
             sharpe_ratio = p.performance.sharpe_ratio
+            sharpe_ratio_365 = getattr(p.performance, 'sharpe_ratio_365', None)
             latest_unit_value = p.performance.latest_unit_value
         else:
             # 回退到 latest_backtest_summary（回测后写入）
@@ -337,8 +366,11 @@ async def list_portfolios(service: PortfolioService = Depends(get_portfolio_serv
                 total_return = _bs.get('total_return')
                 annual_return = _bs.get('annual_return')
                 annual_volatility = _bs.get('annual_vol')
+                annual_return_365 = _bs.get('annual_return_365')
+                annual_volatility_365 = _bs.get('annual_vol_365')
                 max_drawdown = _bs.get('max_drawdown')
                 sharpe_ratio = _bs.get('sharpe')
+                sharpe_ratio_365 = _bs.get('sharpe_365')
 
         data.append(PortfolioOut(
             id=str(p.id),
@@ -363,11 +395,17 @@ async def list_portfolios(service: PortfolioService = Depends(get_portfolio_serv
             total_return=total_return,
             annual_return=annual_return,
             annual_volatility=annual_volatility,
+            annual_return_365=annual_return_365,
+            annual_volatility_365=annual_volatility_365,
             max_drawdown=max_drawdown,
             sharpe_ratio=sharpe_ratio,
+            sharpe_ratio_365=sharpe_ratio_365,
             latest_unit_value=latest_unit_value,
             latest_backtest_summary=getattr(p, 'latest_backtest_summary', None),
             live_publish_enabled=_portfolio_live_status(p, live_status_map),
+            portfolio_model_status=_portfolio_model_meta(p, live_status_map).get("status"),
+            published_version=_portfolio_model_meta(p, live_status_map).get("published_version"),
+            live_published_version=_portfolio_model_meta(p, live_status_map).get("live_published_version"),
             inception_date=p.inception_date,
             created_at=p.created_at,
             updated_at=p.updated_at,
@@ -395,15 +433,28 @@ async def get_portfolio(
         except Exception:
             pass
 
-    # 查询关联模型实盘状态
+    # 查询关联模型实盘/发布状态
     _live_enabled = False
+    _model_status = None
+    _published_version = None
+    _live_published_version = None
     _pmid = portfolio.portfolio_model_id or portfolio.model_id
     if _pmid and ObjectId.is_valid(str(_pmid)):
         from app.config.database import Database as _Db
         _doc = await _Db.get_database().strategy_models.find_one(
-            {"_id": ObjectId(str(_pmid))}, {"live_publish_enabled": 1}
+            {"_id": ObjectId(str(_pmid))},
+            {
+                "live_publish_enabled": 1,
+                "status": 1,
+                "published_version": 1,
+                "live_published_version": 1,
+            },
         )
-        _live_enabled = bool(_doc and _doc.get("live_publish_enabled", False))
+        if _doc:
+            _live_enabled = bool(_doc.get("live_publish_enabled", False))
+            _model_status = _doc.get("status")
+            _published_version = _doc.get("published_version")
+            _live_published_version = _doc.get("live_published_version")
 
     sub_strats = [
         SubStrategyOut(
@@ -420,6 +471,9 @@ async def get_portfolio(
     total_return = None
     annual_return = None
     annual_volatility = None
+    annual_return_365 = None
+    annual_volatility_365 = None
+    sharpe_ratio_365 = None
     max_drawdown = None
     sharpe_ratio = None
     latest_unit_value = None
@@ -427,6 +481,9 @@ async def get_portfolio(
         total_return = portfolio.performance.total_return
         annual_return = portfolio.performance.annual_return
         annual_volatility = getattr(portfolio.performance, 'annual_volatility', None)
+        annual_return_365 = getattr(portfolio.performance, 'annual_return_365', None)
+        annual_volatility_365 = getattr(portfolio.performance, 'annual_volatility_365', None)
+        sharpe_ratio_365 = getattr(portfolio.performance, 'sharpe_ratio_365', None)
         max_drawdown = portfolio.performance.max_drawdown
         sharpe_ratio = portfolio.performance.sharpe_ratio
         latest_unit_value = portfolio.performance.latest_unit_value
@@ -436,6 +493,9 @@ async def get_portfolio(
             total_return = _bs.get('total_return')
             annual_return = _bs.get('annual_return')
             annual_volatility = _bs.get('annual_vol')
+            annual_return_365 = _bs.get('annual_return_365')
+            annual_volatility_365 = _bs.get('annual_vol_365')
+            sharpe_ratio_365 = _bs.get('sharpe_365')
             max_drawdown = _bs.get('max_drawdown')
             sharpe_ratio = _bs.get('sharpe')
 
@@ -463,11 +523,17 @@ async def get_portfolio(
         total_return=total_return,
         annual_return=annual_return,
         annual_volatility=annual_volatility,
+        annual_return_365=annual_return_365,
+        annual_volatility_365=annual_volatility_365,
         max_drawdown=max_drawdown,
         sharpe_ratio=sharpe_ratio,
+        sharpe_ratio_365=sharpe_ratio_365,
         latest_unit_value=latest_unit_value,
         latest_backtest_summary=getattr(portfolio, 'latest_backtest_summary', None),
         live_publish_enabled=_live_enabled,
+        portfolio_model_status=_model_status,
+        published_version=_published_version,
+        live_published_version=_live_published_version,
         inception_date=portfolio.inception_date,
         created_at=portfolio.created_at,
         updated_at=portfolio.updated_at,
@@ -646,6 +712,16 @@ async def edit_portfolio(
     if not portfolio:
         raise HTTPException(status_code=404, detail=f"组合不存在: {portfolio_id}")
 
+    linked_model_id = getattr(portfolio, "portfolio_model_id", None) or getattr(portfolio, "model_id", None)
+    linked_model = None
+    if linked_model_id and ObjectId.is_valid(str(linked_model_id)):
+        linked_model = await service.strategy_model_service.get_model(str(linked_model_id))
+    if linked_model and linked_model.live_publish_enabled:
+        raise HTTPException(
+            status_code=409,
+            detail="组合已实盘，配置已冻结；请先取消实盘后再编辑",
+        )
+
     update_data: dict = {}
 
     # 基础字段
@@ -710,6 +786,57 @@ async def edit_portfolio(
         return Response.success(data=True, message="无变更")
 
     success = await service.update_portfolio(portfolio_id, update_data)
+
+    # 草稿态：把组合配置同步到组合模型，保证发布时冻结的是最新配置
+    if success and linked_model:
+        model_update: dict = {}
+        if "name" in update_data:
+            model_update["name"] = update_data["name"]
+        if "rebalance_frequency" in update_data:
+            model_update["rebalance_frequency"] = update_data["rebalance_frequency"]
+        if "weight_model_params" in update_data:
+            model_update["weight_model_params"] = update_data["weight_model_params"]
+        if body.weight_method is not None:
+            model_update["weight_model_type"] = (
+                "quadrant" if body.weight_method == "quadrant" else None
+            )
+        if "sub_strategies" in update_data:
+            model_update["sub_strategies"] = update_data["sub_strategies"]
+            all_codes: set = set()
+            for sub in update_data["sub_strategies"]:
+                sub_model = await service.strategy_model_service.get_model(
+                    str(sub.get("model_id") or "")
+                )
+                if sub_model:
+                    all_codes.update(sub_model.asset_codes or [])
+            model_update["asset_codes"] = sorted(all_codes)
+        if model_update:
+            model_update["updated_at"] = datetime.now()
+            await service.strategy_model_service.collection.update_one(
+                {"_id": ObjectId(str(linked_model_id))}, {"$set": model_update}
+            )
+            # 已发布组合：编辑会改变发布快照内容，立即刷新快照，
+            # 保证下次实盘发布使用最新配置（组合管理不暴露发布动作）
+            frozen_fields = {
+                "sub_strategies",
+                "rebalance_frequency",
+                "weight_model_params",
+                "weight_model_type",
+            }
+            if linked_model.status == ModelStatus.PUBLISHED and frozen_fields & set(model_update):
+                from app.services.live_publish_service import LivePublishService
+                try:
+                    await LivePublishService(service.strategy_model_service).republish_model(
+                        str(linked_model_id), source="portfolio_edit"
+                    )
+                except ValueError as refresh_err:
+                    logger.warning(
+                        "[组合编辑] 刷新发布快照失败 model=%s: %s", linked_model_id, refresh_err
+                    )
+                    return Response.success(
+                        data=success, message="组合已保存，但发布快照刷新失败，请稍后重试"
+                    )
+
     return Response.success(data=success, message="组合信息已更新")
 
 
@@ -762,15 +889,22 @@ async def list_portfolio_backtests(
     skip: int = 0,
     limit: int = 50,
 ):
-    """查询组合的回测历史记录（复用 backtests 集合，model_id=portfolio_id）"""
+    """查询组合的回测历史记录（复用 backtests 集合，model_id=portfolio_id）。
+
+    列表只返回指标摘要：净值曲线/收益曲线/持仓/权重变化等明细体量大，
+    由详情接口 GET /api/v1/backtests/{record_id} 按需加载。
+    """
     if not ObjectId.is_valid(portfolio_id):
         raise HTTPException(status_code=400, detail=f"无效的ID格式: {portfolio_id}")
     from app.services.backtest_service import BacktestService
     svc = BacktestService()
     records = await svc.list_backtest_records(model_id=portfolio_id, skip=skip, limit=limit)
+    heavy_fields = ("equity_curve", "return_curve", "positions", "weight_changes")
     out = []
     for r in records:
         result_dict = r.result.dict() if hasattr(r.result, 'dict') else {}
+        for field in heavy_fields:
+            result_dict.pop(field, None)
         out.append({
             "id": str(r.id) if r.id else None,
             "model_id": r.model_id,
@@ -861,6 +995,9 @@ async def _compute_sub_strategy_analysis(
                 annual_vol=round(metrics.annual_volatility, 6),
                 sharpe=round(metrics.sharpe_ratio, 4),
                 max_drawdown=round(metrics.max_drawdown, 6),
+                annual_return_365=round(metrics.annual_return_365, 6),
+                annual_vol_365=round(metrics.annual_volatility_365, 6),
+                sharpe_365=round(metrics.sharpe_ratio_365, 4),
                 contribution=round(contribution, 6),
                 contribution_pct=None,
                 equity_curve=equity_curve,

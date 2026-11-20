@@ -181,6 +181,18 @@ const routes = [
         meta: { title: '数据资产管理', icon: 'el-icon-folder-opened' }
       },
       {
+        path: 'analysis/factor-panel',
+        name: 'FactorPanelImport',
+        component: () => import('@/views/analysis/FactorPanelImport.vue'),
+        meta: { title: '因子截面数据', icon: 'el-icon-s-grid' }
+      },
+      {
+        path: 'analysis/macro-series',
+        name: 'MacroSeriesImport',
+        component: () => import('@/views/analysis/MacroImport.vue'),
+        meta: { title: '宏观与估值序列', icon: 'el-icon-odometer' }
+      },
+      {
         path: 'analysis/subject-risk',
         redirect: { name: 'DataHubCenter', query: { connector: 'subject_opinion_risk' } }
       },

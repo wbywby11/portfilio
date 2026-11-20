@@ -23,6 +23,19 @@
 - 最大回撤基于净值本身：`(nav - nav.cummax()) / nav.cummax()`，取值 ≤ 0。
 - 胜率 = 相邻两个调仓日之间净值上涨的周期占比（调仓周期胜率），不依赖交易方向，
   适配所有策略类型；未提供调仓日时为 0。
+- 双口径：同一套输入同时给出 260（交易日）与 365（自然日）两个年化基准。原字段
+  （`annual_return` / `annual_volatility` / `sharpe_ratio` / `calmar_ratio`）固定为
+  260 口径，365 口径统一加 `_365` 后缀；累计收益、最大回撤、胜率不依赖年化因子，
+  只给一份。
+- 365 口径的分母是**日历天数** `n_calendar_days`（首末净值日期之差），不是交易日
+  区间数 `n_periods`：
+  年化收益 `(1 + total_return) ** (365 / n_calendar_days) - 1`；
+  年化波动 `daily_std * sqrt(365 * n_periods / n_calendar_days)`，即把交易日收益
+  视作均布在日历日上，换算成每日历日波动率后再按 365 天年化。
+  若区间内交易日密度恰为 260/365，两项与 260 口径完全相等；实际差异只反映区间内
+  交易日分布与「260 交易日/年」假设的偏差（通常在 0.0x 个百分点量级）。
+  把 365 口径的分母仍写成 `n_periods` 等于把交易日日均当作日历日日均，年化值会
+  被放大 365/260 倍（约 1.40 倍），波动率被放大 sqrt(365/260) 倍。
 """
 
 from __future__ import annotations
@@ -40,6 +53,10 @@ import pandas as pd
 
 #: 年化因子（交易日/年）。全系统统一口径 = 260（与监控/波动控制链路一致）。
 PERIODS_PER_YEAR = 260
+
+#: 次级年化因子（自然日/年）。与 260 口径并存，仅用于 `_365` 后缀字段；
+#: 主字段语义不变，接入方按需读取。分母是日历天数，见 `calendar_span_days`。
+PERIODS_PER_YEAR_365 = 365
 
 #: 默认无风险利率（年化）。调用方可覆盖；集中在此避免各处硬编码 0.02。
 DEFAULT_RISK_FREE_RATE = 0.02
@@ -74,16 +91,45 @@ class PerformanceMetrics:
     calmar_ratio: float = 0.0
     return_drawdown_ratio: float = 0.0
 
+    # 365 口径（自然日/年）：同一份 total_return / 日收益标准差只换年化因子；
+    # 累计收益、最大回撤、胜率不依赖年化因子，不在此复制
+    annual_return_365: float = 0.0
+    annual_volatility_365: float = 0.0
+    sharpe_ratio_365: float = 0.0
+    calmar_ratio_365: float = 0.0
+
     # 交易统计
     win_rate: float = 0.0
 
     # 计算元信息
     n_periods: int = 0                 # 参与年化的区间数（= len(nav) - 1）
+    n_calendar_days: int = 0           # 365 口径的分母：首末净值日期的日历天数差
     periods_per_year: int = PERIODS_PER_YEAR
     risk_free_rate: float = DEFAULT_RISK_FREE_RATE
 
     # 数据质量告警
     warnings: List[str] = field(default_factory=list)
+
+
+def calendar_span_days(index: pd.Index) -> Optional[int]:
+    """首末日期之间的日历天数 — 365 自然日口径的分母.
+
+    交易日频率的序列不能用交易日区间数做自然日年化的分母：那等于把「交易日
+    日均」当成「日历日日均」，年化值被放大 365/260 倍（约 1.40 倍）。
+
+    索引不是 DatetimeIndex 时抛 TypeError（调用方用错了入口，退回去会产出
+    一个看起来正常的错误年化值）；首末未跨日属数据异常，返回 None 由调用方
+    记入 warnings。
+    """
+    if not isinstance(index, pd.DatetimeIndex):
+        raise TypeError(
+            f"自然日口径要求 DatetimeIndex，实际为 {type(index).__name__}；"
+            "无法从非日期索引换算日历天数"
+        )
+    if len(index) < 2:
+        return None
+    span = int((index.max() - index.min()).days)
+    return span if span > 0 else None
 
 
 def _to_float(value, default: float = 0.0) -> float:
@@ -282,6 +328,40 @@ def compute_performance(
         metrics.calmar_ratio = _to_float(metrics.annual_return / abs_dd)
         metrics.return_drawdown_ratio = _to_float(metrics.total_return / abs_dd)
 
+    # --- 365 口径（自然日/年）---
+    # 分母是首末净值日期之间的日历天数，不是交易日区间数 n_periods：沿用
+    # n_periods 等于把交易日日均当成日历日日均，年化值被放大 365/260 倍。
+    # 日波动率按「交易日收益均布在日历日上」换算，即先换成每日历日波动率再乘 √365；
+    # 当 n_calendar_days = n_periods × 365/260 时退化为 σ_d × √260，与主口径相同。
+    span = calendar_span_days(series.index)
+    if span is None:
+        metrics.warnings.append(
+            f"净值首末日期未跨日（{series.index.min()} → {series.index.max()}），"
+            "无法计算自然日年化，365 口径字段保持 0"
+        )
+    else:
+        metrics.n_calendar_days = span
+        if metrics.total_return > -1.0:
+            metrics.annual_return_365 = _to_float(
+                (1.0 + metrics.total_return)
+                ** (PERIODS_PER_YEAR_365 / span)
+                - 1.0
+            )
+        else:
+            metrics.annual_return_365 = -1.0
+        metrics.annual_volatility_365 = _to_float(
+            metrics.volatility
+            * math.sqrt(PERIODS_PER_YEAR_365 * metrics.n_periods / span)
+        )
+    if metrics.annual_volatility_365 > 1e-12:
+        metrics.sharpe_ratio_365 = _to_float(
+            (metrics.annual_return_365 - risk_free_rate) / metrics.annual_volatility_365
+        )
+    if metrics.max_drawdown < -1e-12:
+        metrics.calmar_ratio_365 = _to_float(
+            metrics.annual_return_365 / abs(metrics.max_drawdown)
+        )
+
     # --- 胜率 ---
     metrics.win_rate = _win_rate_from_rebalance(series, rebalance_dates)
 
@@ -290,7 +370,12 @@ def compute_performance(
 
 def annualize_return(total_return: float, n_periods: int,
                      periods_per_year: int = PERIODS_PER_YEAR) -> float:
-    """CAGR 年化 — 供只有区间收益、没有完整净值序列的场景复用。"""
+    """CAGR 年化 — 供只有区间收益、没有完整净值序列的场景复用.
+
+    `periods_per_year` 与 `n_periods` 必须是同一时间尺度：交易日序列传 260，
+    日历日序列传 365。交易日序列配 365 会把年化值放大 365/260 倍，
+    自然日年化请先用 `calendar_span_days` 取日历天数再传进来。
+    """
     if n_periods <= 0 or total_return <= -1.0:
         return 0.0
     return _to_float((1.0 + total_return) ** (periods_per_year / n_periods) - 1.0)
@@ -298,7 +383,12 @@ def annualize_return(total_return: float, n_periods: int,
 
 def annualize_volatility(returns: pd.Series,
                          periods_per_year: int = PERIODS_PER_YEAR) -> float:
-    """日收益序列 → 年化波动率。"""
+    """日收益序列 → 年化波动率.
+
+    `periods_per_year` 是「每年的收益观测数」。收益观测是交易日时只有 260
+    这一个正确值；自然日口径要把收益换算到日历日尺度（σ × √(n_td / n_cal)）
+    再按 365 天年化，不能直接传 365。
+    """
     if returns is None or len(returns) < 2:
         return 0.0
     return _to_float(float(returns.std()) * math.sqrt(periods_per_year))

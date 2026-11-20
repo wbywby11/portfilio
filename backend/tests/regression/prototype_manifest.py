@@ -1,7 +1,7 @@
 """原型验收清单（manifest）解析 —— 回归测试侧资产（非系统架构组件）.
 
-清单文件位于 ``tests/regression/manifests/<name>.yaml``，结构见 gmsi2.yaml。
-原型模型（GMAP/GCMI/母组合）是前端策略建模产出的配置实例，清单只按
+清单文件位于 ``tests/regression/manifests/<name>.yaml``，一个原型一份。
+原型模型（子策略 / 母组合）是前端策略建模产出的配置实例，清单只按
 名称引用库内模型做数值验收，不参与模型创建与运行时链路。
 """
 from __future__ import annotations

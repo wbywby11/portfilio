@@ -9,6 +9,7 @@ import pandas as pd
 
 if TYPE_CHECKING:
     from app.allocation.models.param_schema import StrategyParamSchema
+    from app.backtesting.data_contract import DataContract
 
 
 def _default_portfolio_vol(
@@ -178,6 +179,80 @@ class BaseStrategyModel(ABC):
             - selection_start_date: str — 资产选择起始日
         """
         return None
+
+    @classmethod
+    def get_extra_panels(cls) -> list:
+        """声明本策略需要的非价格截面面板名（默认无）.
+
+        数据加载层（DataFeed）据此从对应集合加载面板，经引擎 set_panels
+        注入 CompositionPipeline，最终由 _build_allocation_params 以
+        ``params["_panel_<名>"]`` 传给 allocate。声明为类方法，使面板
+        加载能在策略实例构建前（DataFeed 构建期）按 strategy_type 静态解析。
+
+        Returns:
+            面板名列表，如 ["factor_panel"]；默认空列表（不加载任何面板）。
+        """
+        return []
+
+    @classmethod
+    def get_panel_datasets(cls) -> dict:
+        """声明各面板读哪个数据集（面板名 → dataset，默认无）.
+
+        factor_panel 这类集合被多个数据集共用（受控清单见
+        ``field_mappings.FACTOR_DATASETS``），加载层据此按 dataset 过滤。
+        声明了 ``get_extra_panels`` 却没给对应 dataset 的面板，加载层直接报错，
+        不退化成全表加载：全表会把其他数据集同一期日的行并进本策略的截面
+        （名次打分的分母 N 被污染），且覆盖导入按期日整片删除时会跨数据集误删。
+
+        与 ``get_extra_panels`` 同为类方法，使数据集能在策略实例构建前
+        （DataFeed 构建期）按 strategy_type 静态解析。
+
+        Returns:
+            {面板名: dataset}，如 {"factor_panel": "bond_phoenix50"}；默认空 dict。
+        """
+        return {}
+
+    def has_native_vol_control(self) -> bool:
+        """声明本策略在包内自带日度波动率风控（不依赖 composition.controller）.
+
+        打包形态的独立策略 composition 三层全为 None，而
+        ``CompositionPipeline.check_volatility_trigger`` /
+        ``compute_volatility_reset_weights`` 在 controller 为空时会短路返回、
+        不代理到 allocator。返回 True 即放行代理，使策略包内重写的风控生效。
+
+        默认 False，保证三层组合形态的策略（controller 由模板/模型声明）行为不变。
+        """
+        return False
+
+    @classmethod
+    def get_data_contract(cls) -> "DataContract":
+        """声明本策略的数据契约（运行前门禁据此校验，不满足即拒绝运行）.
+
+        默认返回空契约 = 不做额外校验，存量策略行为完全不变。
+        独立策略应重写此方法，声明资产池规模、分组划分、最小历史、
+        日历口径、价格异常阈值等要求；契约结构与校验实现见
+        :mod:`app.backtesting.data_contract`，门禁挂载点见
+        :mod:`app.backtesting.runner` 与 ``services/strategy_data_contract_service.py``。
+        """
+        from app.backtesting.data_contract import DataContract
+
+        return DataContract()
+
+    def get_trading_costs(self, params: dict) -> dict:
+        """声明本策略的分资产交易费率（代码→单次费率，可选）.
+
+        回测引擎在构建时回填 ``BacktestConfig.commission_by_code``，由
+        ``ExecutionEngine`` 在成交时按 code 扣费，与监控侧「调仓前净值 × 换手」的
+        口径一致；未列出的 code 仍走引擎统一的
+        ``commission_rate``。默认返回空 dict（不声明），存量策略行为完全不变。
+
+        Args:
+            params: 已组装好的策略参数（与 ``allocate`` 看到的一致）
+
+        Returns:
+            {asset_code: 单次调仓费率}，空 dict 表示不声明。
+        """
+        return {}
 
     def on_daily_settle(self, time, position, total_value, bar_extra=None):
         """每日结算钩子（可选）.

@@ -19,11 +19,7 @@ import pandas as pd
 from typing import Dict, Optional, Tuple, TYPE_CHECKING
 
 from app.monitor import config
-from app.monitor.monitor_runtime import (
-    resolve_asset_currency_for_monitor,
-    resolve_replication_cost_for_asset,
-    resolve_trading_cost_for_asset,
-)
+from app.monitor.monitor_runtime import resolve_asset_currency_for_monitor
 
 if TYPE_CHECKING:
     from app.monitor.monitor_runtime import MonitorRuntimeConfig
@@ -39,8 +35,13 @@ class PortfolioTracker:
         self.base_value = config.BASE_VALUE
         self.asset_list = config.ASSET_LIST
         self.asset_currency = config.ASSET_CURRENCY
-        self.trading_cost = config.TRADING_COST
-        self.replication_cost = config.REPLICATION_COST
+        # 通用监控净值口径：gross NAV（不计交易成本与复制成本）。
+        # 资产级实盘费率体系尚未建立，config.TRADING_COST / REPLICATION_COST
+        # 不再参与通用监控计算。研究员策略（sharpe_18 / hybrid_12）由各自
+        # engine 内置费率独立计费，不经过本类。
+        # 两个字典留作将来按资产配置费率的入口。
+        self.trading_cost: Dict[str, float] = {}
+        self.replication_cost: Dict[str, float] = {}
         # 传统持仓模型开关（任务#11）。
         # 启用后 update_daily_pnl/execute_rebalance 走与回测 engine.py 完全一致的
         # NAV = cash + Σ(qty × close) 路径；主观/手动配置策略专用。
@@ -55,8 +56,8 @@ class PortfolioTracker:
         if rt is None:
             self.asset_list = list(config.ASSET_LIST)
             self.asset_currency = dict(config.ASSET_CURRENCY)
-            self.trading_cost = dict(config.TRADING_COST)
-            self.replication_cost = dict(config.REPLICATION_COST)
+            self.trading_cost = {}
+            self.replication_cost = {}
             self.traditional_mode = False
             return
         self.asset_list = list(rt.asset_list)
@@ -64,12 +65,9 @@ class PortfolioTracker:
         self.asset_currency = {
             a: resolve_asset_currency_for_monitor(a, asset_names=an) for a in self.asset_list
         }
-        self.trading_cost = {
-            a: resolve_trading_cost_for_asset(a, asset_names=an) for a in self.asset_list
-        }
-        self.replication_cost = {
-            a: resolve_replication_cost_for_asset(a, asset_names=an) for a in self.asset_list
-        }
+        # 费率留空：通用监控按 gross NAV 计算，不再回退到 config 兜底表。
+        self.trading_cost = {}
+        self.replication_cost = {}
         # 主观/手动配置策略 → 启用与回测 engine.py 一致的传统持仓模型。
         self.traditional_mode = bool(getattr(rt, "manual_allocation_mode", False))
 
@@ -84,14 +82,16 @@ class PortfolioTracker:
         return resolve_asset_currency_for_monitor(asset)
 
     def _resolve_replication_cost(self, asset: str) -> float:
-        if asset in self.replication_cost:
-            return float(self.replication_cost.get(asset, 0.005))
-        return float(resolve_replication_cost_for_asset(asset))
+        """通用监控复制费率：未配置时恒为 0（gross NAV 口径）。
+
+        self.replication_cost 留作将来按资产配置实盘费率的入口；
+        研究员策略自带费率，由各自 engine 计算，不经过本方法。
+        """
+        return float(self.replication_cost.get(asset, 0.0))
 
     def _resolve_trading_cost(self, asset: str) -> float:
-        if asset in self.trading_cost:
-            return float(self.trading_cost.get(asset, 0.001))
-        return float(resolve_trading_cost_for_asset(asset))
+        """通用监控交易费率：未配置时恒为 0（gross NAV 口径）。"""
+        return float(self.trading_cost.get(asset, 0.0))
 
     def _active_assets(self, state: PortfolioState) -> list:
         """
@@ -133,34 +133,6 @@ class PortfolioTracker:
     # =========================================================================
     # 传统持仓模型辅助（任务#11：与回测 engine.py 一致的 NAV = cash + Σ(qty×close)）
     # =========================================================================
-
-    def _active_assets_traditional(self, state: PortfolioState) -> list:
-        """传统模型下的资产并集：asset_list ∪ {state.quantities 中非零资产}。
-
-        意义：在调仓时，即使 asset_list 发生变化，亦能把遗留持仓一并清算，
-        避免调仓后资金与净值对不上。
-        """
-        seen = set()
-        out: list = []
-        for a in self.asset_list:
-            sa = str(a)
-            if sa not in seen:
-                seen.add(sa)
-                out.append(sa)
-        if state.quantities:
-            for k, v in list(state.quantities.items()):
-                if k is None:
-                    continue
-                sk = str(k)
-                if sk in seen:
-                    continue
-                try:
-                    if abs(float(v)) > 1e-12:
-                        seen.add(sk)
-                        out.append(sk)
-                except (TypeError, ValueError):
-                    continue
-        return out
 
     def _initialize_positions_traditional(
         self,
@@ -355,22 +327,33 @@ class PortfolioTracker:
         prices_today: Dict[str, float],
         prev_nav: Optional[float] = None,
     ) -> float:
-        """传统持仓模型调仓（对齐回测 _execute_rebalance_traditional + ExecutionEngine）。
+        """传统持仓模型调仓（与回测共用同一执行驱动 + ``RebalanceFill``）。
 
-        步骤：
+        执行语义（监控口径，与回测的增量成交不同）：
             current_nav = cash + Σ(qty × close_today)
-            对所有 active_asset 计算 Δvalue=|target-current|，累计 trade_cost = Σ(Δ×tc_rate)
+            trade_cost = Σ |target_value - current_value| × tc_rate
             nav_after_cost = current_nav - trade_cost
-            以 nav_after_cost 重建持仓数量：qty[a] = nav_after_cost * w[a] / close[a]
+            qty[a] = nav_after_cost × w[a] / close[a]；遗留资产清零
             cash = nav_after_cost - Σ(qty × close)
-        调仓后 nav = cash + Σ(qty × close) = nav_after_cost。
+
+        成交与重建算术在 ``app.backtesting.fills.RebalanceFill``，记账原语在
+        ``app.backtesting.state``；本方法只负责三件事：把 ``PortfolioState``
+        投影成执行状态、把当日价格折成「NaN→0」的普通 dict、调完后的字段同步
+        （``positions_cny`` 等与 ``nav_history`` 末条，与原实现逐位一致）。
         """
-        # 调仓基准净值（含当日市场收益，未扣本次调仓费用）
-        current_nav = float(state.cash or 0.0)
-        active_assets = self._active_assets_traditional(state)
-        # 当前持仓价值缓存（为了交易费与重建费计算使用同一个 price）
+        from app.backtesting.config import BacktestConfig
+        from app.backtesting.execution import ExecutionEngine
+        from app.backtesting.fills import (
+            RebalanceFill,
+            active_asset_keys,
+            resolve_cost_of,
+        )
+        from app.backtesting.state import to_exec_state
+
+        active_assets = active_asset_keys(self.asset_list, state.quantities or {})
+
+        # 取价：NaN 折成 0.0（内核只做算术，不再二次判断 nan）
         prices_use: Dict[str, float] = {}
-        current_values: Dict[str, float] = {}
         for asset in active_assets:
             price_raw = prices_today.get(asset)
             try:
@@ -380,45 +363,37 @@ class PortfolioTracker:
             if np.isnan(p):
                 p = 0.0
             prices_use[asset] = p
-            try:
-                q = float(state.quantities.get(asset, 0.0) or 0.0)
-            except (TypeError, ValueError):
-                q = 0.0
-            cv = q * p
-            current_values[asset] = cv
-            current_nav += cv
 
-        # 1) 交易费（按资产 tc_rate）
-        trade_cost = 0.0
-        for asset in active_assets:
-            target_value = current_nav * float(new_weights.get(asset, 0.0) or 0.0)
-            trade_amount = abs(target_value - current_values.get(asset, 0.0))
-            tc = self._resolve_trading_cost(asset)
-            trade_cost += trade_amount * tc
+        driver = ExecutionEngine(
+            BacktestConfig(
+                name="monitor_traditional_rebalance",
+                thscodes=list(active_assets),
+                start_date="",
+                end_date="",
+            ),
+            fill_model=RebalanceFill(),
+        )
+        batch = driver.execute(
+            target_weights=new_weights,
+            state=to_exec_state(state.quantities or {}, state.cash),
+            prices=prices_use,
+            keys=active_assets,
+            cost_of=resolve_cost_of(self.trading_cost),
+        )
 
-        # 2) 扣费后净值
-        nav_after_cost = current_nav - trade_cost
+        trade_cost = batch.trading_cost
+        nav_after_cost = batch.nav
+        if nav_after_cost is None:
+            raise RuntimeError("RebalanceFill 未返回调仓后净值")
+        new_quantities = batch.position.quantity
 
-        # 3) 重建 quantities & cash
-        new_quantities: Dict[str, float] = {}
-        holdings_total = 0.0
-        for asset in active_assets:
-            weight = float(new_weights.get(asset, 0.0) or 0.0)
-            price = prices_use.get(asset, 0.0)
-            if weight != 0.0 and price > 0:
-                target_value = nav_after_cost * weight
-                qty = target_value / price
-                new_quantities[asset] = qty
-                holdings_total += qty * price
-            else:
-                # 遗留资产 / 无价资产一律清仓
-                new_quantities[asset] = 0.0
+        # 1) 重建持仓与现金
         state.quantities = new_quantities
-        state.cash = nav_after_cost - holdings_total
+        state.cash = batch.position.cash
         state.nav = nav_after_cost  # = cash + Σ(qty×price)
         state.nav_base = state.nav
 
-        # 4) 同步兼容字段：净值口径 positions_cny/positions_local 设为 target_value，apl 重置为 0
+        # 2) 同步兼容字段：净值口径 positions_cny/positions_local 设为 target_value，apl 重置为 0
         for asset in active_assets:
             qty = new_quantities.get(asset, 0.0)
             price = prices_use.get(asset, 0.0)
@@ -428,7 +403,7 @@ class PortfolioTracker:
             state.positions_local[asset] = mv  # 传统模型不变币种，两者一致
             state.apl_local[asset] = 0.0
 
-        # 5) 同步调仓日 nav_history 末条（与回测调仓日快照对齐：记录扣费后 NAV）
+        # 3) 同步调仓日 nav_history 末条（与回测调仓日快照对齐：记录扣费后 NAV）
         if state.nav_history and state.nav_history[-1].get('date') == state.date:
             last_entry = state.nav_history[-1]
             last_entry['nav'] = state.nav
@@ -646,6 +621,7 @@ class PortfolioTracker:
                 state, prices_today, days_between
             )
 
+        # 通用监控为 gross NAV：复制费率未配置时恒为 0，下列累计值保持为 0。
         daily_replication_cost = 0.0
 
         # 使用完整资产并集：asset_list ∪ state 中非零资产，避免遗留持仓丢失
@@ -754,7 +730,8 @@ class PortfolioTracker:
         # - nav_base = state.nav（扣费后的当日净值）
         # prev_nav 由调用方（_process_single_day）传入，即上一处理日结束后的 state.nav
         rebalance_base_nav = prev_nav if (prev_nav is not None and prev_nav > 0) else state.nav
-        
+
+        # 通用监控为 gross NAV：交易费率未配置时恒为 0，调仓不扣成本。
         trade_cost = 0.0
         
         # 资产并集：当前 asset_list ∪ state 中遗留非零持仓。

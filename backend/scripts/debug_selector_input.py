@@ -49,7 +49,8 @@ async def main() -> None:
         start_date="20181201", end_date="20191231",
         rebalance_freq="monthly", initial_cash=10_000_000,
     )
-    feed = await DataFeed.from_market_service(ms, config, lookback_days=500)
+    # 纯价格对照通道：不涉及策略面板
+    feed = await DataFeed.from_prices_only(ms, config, lookback_days=500)
     eng_prices = feed.prices[feed.prices.index <= SIGNAL]
     print(f"引擎价格矩阵: {eng_prices.shape}, {eng_prices.index[0].date()} ~ {eng_prices.index[-1].date()}")
     print(f"引擎矩阵 NaN 数(截断后): {int(eng_prices.isna().sum().sum())}")

@@ -15,7 +15,7 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 # =============================================================================
@@ -51,6 +51,18 @@ class PortfolioState:
     # 节假日/停牌价格回退：保存每个资产上一次出现的有效收盘价，
     # 当 prices_today 缺失时用于估值，避免 NAV 在非交易日归零（任务#12）。
     last_prices: Dict[str, float] = field(default_factory=dict)
+    # 策略自定义监控指标：每日调用分配器的 compute_monitoring_metrics 得到，
+    # 供前端监控页指标区展示（未实现该接口的策略为空字典）
+    custom_metrics: Dict[str, Any] = field(default_factory=dict)
+    # ---- 分段运行的 fold 状态 ----
+    # run_daily / run_range 按 processing_dates 分段推进，段与段之间只能靠落库状态
+    # 续接。波动率重置的「触发日到执行日之间存在其他信号则跳过执行」规则依赖历史
+    # 信号日集合，若每次运行都从空集起步，跨段的这条规则就会静默失效（段内跑完
+    # 整个区间的 run_init 不受影响，因此该缺陷只在增量运行时暴露）。
+    # 两个集合以 YYYY-MM-DD 字符串落库，运行时转 Timestamp 参与比较。
+    state_version: int = 1                                       # 落库状态结构版本
+    vol_signal_dates: List[str] = field(default_factory=list)     # 已触发的波动率信号日
+    vol_execute_dates: List[str] = field(default_factory=list)    # 已登记的波动率执行日
 
 
 # =============================================================================
@@ -112,6 +124,9 @@ class VolResetSignal:
     scale_factor: float           # 缩放因子 = TARGET_VOL / vol_trigger
     current_weights: Dict[str, float]  # 触发时实际权重(w_cny)
     new_weights: Dict[str, float]      # VW重置权重
+    # 触发时的判定口径（落库到 monitor_operations.suggestion，供事后核对）
+    vol_trigger_threshold: float = 0.0
+    vol_windows: List[int] = field(default_factory=list)
 
 
 # =============================================================================
@@ -193,3 +208,8 @@ class PerformanceMetrics:
     annual_vol: float             # 年化波动率 (%)
     max_drawdown: float           # 最大回撤 (%)
     sharpe_ratio: float           # 夏普比率
+    annual_return_365: float = 0.0   # 年化收益 (%)，365 自然日口径
+    annual_vol_365: float = 0.0      # 年化波动率 (%)，365 自然日口径
+    sharpe_365: float = 0.0         # 夏普比率，365 自然日口径
+    win_rate: float = 0.0         # 调仓周期胜率（相邻调仓日之间净值上涨的周期占比）
+    trading_days: int = 0         # 参与计算的净值点数

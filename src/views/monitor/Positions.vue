@@ -1,322 +1,133 @@
 <template>
-  <div class="page-container">
-    <div class="page-header">
-      <h2 class="page-title">持仓明细</h2>
-      <div>
-        <el-button @click="$router.back()">返回</el-button>
-        <el-button type="primary" icon="el-icon-refresh" @click="loadData" :loading="loading">刷新</el-button>
+  <div class="positions-panel" v-loading="loading">
+    <!-- 持仓汇总指标 -->
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="summary-label">总杠杆</div>
+        <div class="summary-value">{{ formatNumber(positions.total_leverage, 2) }}</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">持仓资产数</div>
+        <div class="summary-value">{{ positions.count || 0 }}</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">最大持仓</div>
+        <div class="summary-value">{{ formatPercent(summary.maxWeight) }}</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Top3 集中度</div>
+        <div class="summary-value" :style="{ color: summary.top3Concentration > 60 ? '#F56C6C' : '#303133' }">
+          {{ formatPercent(summary.top3Concentration) }}
+        </div>
       </div>
     </div>
 
-    <div class="page-content" v-loading="loading">
-      <!-- 持仓汇总指标 -->
-      <div class="summary-grid">
-        <div class="summary-card">
-          <div class="summary-label">总资产(CNH)</div>
-          <div class="summary-value">{{ formatCurrency(summary.totalValue) }}</div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-label">总杠杆</div>
-          <div class="summary-value">{{ formatNumber(summary.totalLeverage, 2) }}</div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-label">持仓资产数</div>
-          <div class="summary-value">{{ positions.length }}</div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-label">最大持仓</div>
-          <div class="summary-value">{{ formatPercent(summary.maxWeight) }}</div>
-        </div>
-        <div class="summary-card">
-          <div class="summary-label">Top3 集中度</div>
-          <div class="summary-value" :style="{ color: summary.top3Concentration > 60 ? '#F56C6C' : '#303133' }">
-            {{ formatPercent(summary.top3Concentration) }}
-          </div>
-        </div>
-      </div>
+    <!-- 类别权重小计 -->
+    <div class="category-bar" v-if="byClass.length > 0">
+      <span class="category-label">类别权重</span>
+      <span v-for="item in byClass" :key="item.category" class="category-item">
+        <el-tag :type="getAssetClassType(item.category)" size="mini">{{ item.category }}</el-tag>
+        <span class="category-weight">{{ formatPercent(item.weight) }}</span>
+      </span>
+    </div>
 
-      <!-- 类别权重小计 -->
-      <div class="category-bar" v-if="categoryWeights.length > 0">
-        <span class="category-label">类别权重</span>
-        <span 
-          v-for="item in categoryWeights" 
-          :key="item.category" 
-          class="category-item"
-        >
-          <el-tag :type="getAssetClassType(item.category)" size="mini">{{ item.category }}</el-tag>
-          <span class="category-weight">{{ formatPercent(item.weight) }}</span>
-        </span>
-      </div>
-
-      <!-- 持仓表格 -->
-      <el-card shadow="never" class="info-card">
-        <div slot="header" class="card-header">
-          <span>持仓明细</span>
-          <span style="color: #909399; font-size: 13px; font-weight: normal;">
-            {{ updateTime }}
-          </span>
-        </div>
-        <el-table
-          :data="sortedPositions"
-          border
-          stripe
-          style="width: 100%;"
-          :show-summary="false"
-          size="medium"
-        >
-          <el-table-column type="index" label="#" width="45" align="center"></el-table-column>
-          <el-table-column prop="name" label="资产名称" min-width="140">
-            <template slot-scope="scope">
-              <span class="asset-name-cell">{{ getAssetName(scope.row) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="asset_class" label="类别" width="90" align="center">
-            <template slot-scope="scope">
-              <el-tag 
-                :type="getAssetClassType(getAssetClass(scope.row))" 
-                size="mini"
-              >
-                {{ getAssetClass(scope.row) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="当前权重" width="180">
-            <template slot-scope="scope">
-              <div class="weight-bar-cell">
-                <span class="weight-num">{{ formatPercent(getCurrentWeight(scope.row)) }}</span>
-                <div class="weight-bar-bg">
-                  <div 
-                    class="weight-bar-fill" 
-                    :style="{ 
-                      width: Math.min(Math.abs(getCurrentWeight(scope.row)) / summary.maxWeight * 100, 100) + '%',
-                      backgroundColor: getCurrentWeight(scope.row) >= 0 ? '#409EFF' : '#E6A23C'
-                    }"
-                  ></div>
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="daily_change" label="当日涨跌" width="110" align="right">
-            <template slot-scope="scope">
-              <span :style="{ color: getDailyChangeColor(getDailyChange(scope.row)), fontWeight: 600 }">
-                {{ formatDailyChange(getDailyChange(scope.row)) }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="currency" label="货币" width="70" align="center">
-            <template slot-scope="scope">
-              <span style="color:#909399;font-size:12px;">{{ getCurrency(scope.row) }}</span>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-empty v-if="positions.length === 0" description="暂无持仓数据"></el-empty>
-      </el-card>
-
-      <!-- 底层资产分析 -->
-      <el-card shadow="never" class="info-card" style="margin-top: 12px;">
-        <div slot="header" class="card-header">
-          <span>底层资产分析</span>
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div class="window-selector">
-              <el-radio-group v-model="analysisWindow" size="mini" @change="handleWindowChange">
-                <el-radio-button :label="60">60天</el-radio-button>
-                <el-radio-button :label="120">120天</el-radio-button>
-                <el-radio-button :label="250">1年</el-radio-button>
-              </el-radio-group>
+    <!-- 持仓表格 -->
+    <el-table
+      v-if="items.length > 0"
+      :data="sortedItems"
+      border
+      stripe
+      style="width: 100%;"
+      size="small"
+      height="100%">
+      <el-table-column type="index" label="#" width="45" align="center"></el-table-column>
+      <el-table-column prop="name" label="资产名称" min-width="140" show-overflow-tooltip>
+        <template slot-scope="scope">
+          <span class="asset-name-cell" :title="scope.row.code">{{ scope.row.name }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="asset_class" label="类别" width="96" align="center">
+        <template slot-scope="scope">
+          <el-tag :type="getAssetClassType(scope.row.asset_class)" size="mini">
+            {{ scope.row.asset_class || '未分类' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="权重" width="170">
+        <template slot-scope="scope">
+          <div class="weight-bar-cell">
+            <span class="weight-num">{{ formatPercent(scope.row.current_weight) }}</span>
+            <div class="weight-bar-bg">
+              <div
+                class="weight-bar-fill"
+                :style="{
+                  width: barWidth(scope.row.current_weight),
+                  backgroundColor: scope.row.current_weight >= 0 ? '#409EFF' : '#E6A23C'
+                }"></div>
             </div>
           </div>
-        </div>
-        <div class="analysis-grid">
-          <!-- 资产相关性热力图 -->
-          <div class="analysis-section">
-            <div class="section-title">相关性矩阵</div>
-            <div v-if="correlationMatrix" ref="correlationChart" style="width: 100%; height: 360px;"></div>
-            <el-empty v-if="!correlationMatrix" description="暂无相关性数据" :image-size="60"></el-empty>
-          </div>
-          <!-- 波动率分析 -->
-          <div class="analysis-section">
-            <div class="section-title">年化波动率</div>
-            <div v-if="assetMetrics && assetMetrics.length > 0" ref="volatilityChart" style="width: 100%; height: 360px;"></div>
-            <el-empty v-if="!assetMetrics || assetMetrics.length === 0" description="暂无波动率数据" :image-size="60"></el-empty>
-          </div>
-        </div>
-      </el-card>
-    </div>
+        </template>
+      </el-table-column>
+      <el-table-column label="当日涨跌" width="104" align="right">
+        <template slot-scope="scope">
+          <span :class="returnClass(scope.row.daily_change)">
+            {{ formatSignedPercent(scope.row.daily_change) }}
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="currency" label="货币" width="70" align="center">
+        <template slot-scope="scope">
+          <span class="currency-cell">{{ scope.row.currency || '—' }}</span>
+        </template>
+      </el-table-column>
+    </el-table>
+    <el-empty
+      v-else
+      description="该周期内暂无持仓快照，请先运行监控初始化或日常运行"
+      :image-size="80" />
   </div>
 </template>
 
 <script>
-import dayjs from 'dayjs';
-import * as echarts from 'echarts';
-import { mapState, mapActions } from 'vuex';
+import { mapGetters, mapState } from 'vuex';
 
 export default {
   name: 'MonitorPositions',
-  data() {
-    return {
-      loading: false,
-      correlationChart: null,
-      volatilityChart: null,
-      analysisWindow: 120,
-      analysisLoading: false
-    };
-  },
   computed: {
-    ...mapState('monitor', ['positions', 'monitorState', 'assetMetrics', 'correlationMatrix', 'activeMonitorId']),
-    assetCodes() {
-      // 优先使用实际持仓的资产
-      if (this.positions && this.positions.length > 0) {
-        const codes = this.positions.map(p => p.code).filter(Boolean);
-        if (codes.length > 0) return codes;
-      }
-      // 回退到默认12类资产（持仓为空时）
-      return ['SH000300', 'SZ399006', 'ZZ000001', 'HSTECH', 'SPX', 'GDAXI', 'ZQGZ10', 'ZQGZ2', 'B00Y', 'GLD', 'IRON', 'YSJS'];
+    ...mapState('monitor', ['performancePanel']),
+    ...mapGetters('monitor', ['isLoading']),
+    loading() {
+      return this.isLoading && !this.performancePanel;
     },
-    updateTime() {
-      return (this.monitorState && this.monitorState.date) 
-        ? dayjs(this.monitorState.date).format('YYYY-MM-DD')
-        : '-';
+    positions() {
+      return (this.performancePanel && this.performancePanel.positions) || {};
+    },
+    items() {
+      return this.positions.items || [];
+    },
+    byClass() {
+      return this.positions.by_class || [];
+    },
+    sortedItems() {
+      return this.items.slice().sort((a, b) => (
+        Math.abs(Number(b.current_weight) || 0) - Math.abs(Number(a.current_weight) || 0)
+      ));
     },
     summary() {
-      if (this.positions.length === 0) {
-        return {
-          totalValue: 0,
-          totalLeverage: 0,
-          maxWeight: 0,
-          minWeight: 0
-        };
-      }
-
-      let totalValue = this.positions.reduce((sum, p) => sum + (p.value_cnh != null ? Number(p.value_cnh) : 0), 0);
-      if (totalValue <= 0 && this.monitorState && this.monitorState.nav) {
-        totalValue = Number(this.monitorState.nav);
-      }
-      const weights = this.positions.map(p => this.getCurrentWeight(p));
-      const totalLeverage = weights.reduce((sum, w) => sum + Math.abs(w), 0) / 100;
-      const maxWeight = Math.max(...weights);
-      const positiveWeights = weights.filter(w => w > 0);
-      const minWeight = positiveWeights.length > 0 ? Math.min(...positiveWeights) : 0;
-
+      const weights = this.items.map(p => Math.abs(Number(p.current_weight) || 0));
+      const maxWeight = weights.length ? Math.max(...weights) : 0;
+      const top3 = weights.slice().sort((a, b) => b - a).slice(0, 3);
       return {
-        totalValue,
-        totalLeverage,
         maxWeight,
-        minWeight,
-        top3Concentration: this.top3Concentration
+        top3Concentration: top3.reduce((sum, w) => sum + w, 0)
       };
-    },
-    /** 按权重降序排列的持仓 */
-    sortedPositions() {
-      if (!this.positions || this.positions.length === 0) return [];
-      return this.positions.slice().sort((a, b) => {
-        return Math.abs(this.getCurrentWeight(b)) - Math.abs(this.getCurrentWeight(a));
-      });
-    },
-    /** Top3 集中度 */
-    top3Concentration() {
-      if (!this.positions || this.positions.length === 0) return 0;
-      const weights = this.positions.map(p => Math.abs(this.getCurrentWeight(p)));
-      weights.sort((a, b) => b - a);
-      const top3 = weights.slice(0, 3);
-      return top3.reduce((s, w) => s + w, 0);
-    },
-    categoryWeights() {
-      if (this.positions.length === 0) {
-        return [];
-      }
-      
-      const categoryMap = {};
-      this.positions.forEach(p => {
-        const category = this.getAssetClass(p);
-        const weight = this.getCurrentWeight(p);
-        if (!categoryMap[category]) {
-          categoryMap[category] = 0;
-        }
-        categoryMap[category] += weight;
-      });
-      
-      return Object.keys(categoryMap).map(category => ({
-        category: category,
-        weight: categoryMap[category]
-      })).sort((a, b) => b.weight - a.weight);
     }
-  },
-  mounted() {
-    this.loadData();
-    window.addEventListener('resize', this.handleResize);
-  },
-  beforeDestroy() {
-    if (this.correlationChart) {
-      this.correlationChart.dispose();
-    }
-    if (this.volatilityChart) {
-      this.volatilityChart.dispose();
-    }
-    window.removeEventListener('resize', this.handleResize);
   },
   methods: {
-    ...mapActions('monitor', ['fetchPositions', 'fetchMonitorState']),
-    async loadData() {
-      this.loading = true;
-      try {
-        await Promise.all([
-          this.fetchPositions(this.activeMonitorId),
-          this.fetchMonitorState(this.activeMonitorId)
-        ]);
-        
-        // 在获取持仓数据后，获取资产分析数据
-        if (this.monitorState && this.monitorState.date) {
-          await this.loadAssetAnalysis();
-        }
-        
-        // 等待 Vue 重新渲染（v-if 条件变化后 DOM 需要一帧才能拿到尺寸）
-        await this.$nextTick();
-        await this.$nextTick();
-        
-        this.renderCorrelationHeatmap();
-        this.renderVolatilityChart();
-      } catch (error) {
-        // 404 等错误已由 store 统一处理，不重复弹提示
-        console.warn('Positions 加载数据失败:', error.message);
-      } finally {
-        this.loading = false;
-      }
-    },
-    handleResize() {
-      if (this.correlationChart) {
-        this.correlationChart.resize();
-      }
-      if (this.volatilityChart) {
-        this.volatilityChart.resize();
-      }
-    },
-    // 兼容新旧数据格式的辅助方法
-    getAssetName(item) {
-      return item.name || item.asset_name || item.asset_code || '-';
-    },
-    getAssetClass(item) {
-      return item.asset_class || '未分类';
-    },
-    getCurrentWeight(item) {
-      // 兼容旧格式：优先使用 current_weight，否则使用 actual_weight
-      if (item.current_weight !== undefined) {
-        return item.current_weight;
-      }
-      return item.actual_weight || 0;
-    },
-    getDailyChange(item) {
-      // 兼容旧格式：优先使用 daily_change，否则使用 daily_return
-      if (item.daily_change !== undefined) {
-        return item.daily_change;
-      }
-      // 旧格式 daily_return 是小数，需要转换为百分比
-      if (item.daily_return !== undefined && item.daily_return !== null) {
-        return item.daily_return * 100;
-      }
-      return null;
-    },
-    getCurrency(item) {
-      return item.currency || '-';
+    barWidth(weight) {
+      const maxWeight = this.summary.maxWeight;
+      if (!maxWeight) return '0%';
+      return `${Math.min(Math.abs(Number(weight) || 0) / maxWeight * 100, 100)}%`;
     },
     getAssetClassType(assetClass) {
       const typeMap = {
@@ -326,287 +137,53 @@ export default {
       };
       return typeMap[assetClass] || 'info';
     },
-    getDailyChangeColor(value) {
-      if (value === null || value === undefined) return '#909399';
-      if (value > 0) return '#F56C6C';  // 红涨
-      if (value < 0) return '#67C23A';  // 绿跌
-      return '#909399';
-    },
-    formatDailyChange(value) {
-      if (value === null || value === undefined) return '-';
-      const formatted = Math.abs(value).toFixed(2);
-      if (value > 0) return '+' + formatted + '%';
-      if (value < 0) return '-' + formatted + '%';
-      return formatted + '%';
-    },
     formatNumber(num, decimals = 2) {
-      if (num === null || num === undefined) return '-';
-      return num.toFixed(decimals);
+      if (num === null || num === undefined || Number.isNaN(Number(num))) return '—';
+      return Number(num).toFixed(decimals);
     },
     formatPercent(num) {
-      if (num === null || num === undefined) return '-';
-      return num.toFixed(2) + '%';
+      if (num === null || num === undefined || Number.isNaN(Number(num))) return '—';
+      return `${Number(num).toFixed(2)}%`;
     },
-    formatCurrency(num) {
-      if (num === null || num === undefined) return '-';
-      return new Intl.NumberFormat('zh-CN', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(num);
+    formatSignedPercent(num) {
+      if (num === null || num === undefined || Number.isNaN(Number(num))) return '—';
+      return `${Number(num) >= 0 ? '+' : ''}${Number(num).toFixed(2)}%`;
     },
-    getSummaries(param) {
-      const { columns, data } = param;
-      const sums = [];
-      columns.forEach((column, index) => {
-        if (index === 0) {
-          sums[index] = '合计';
-          return;
-        }
-        if (column.property === 'current_weight') {
-          const total = data.reduce((sum, item) => {
-            return sum + Math.abs(this.getCurrentWeight(item));
-          }, 0);
-          sums[index] = this.formatPercent(total);
-        } else {
-          sums[index] = '';
-        }
-      });
-      return sums;
-    },
-    async loadAssetAnalysis() {
-      try {
-        this.analysisLoading = true;
-        var endDate = this.monitorState.date; // 格式 YYYY-MM-DD
-        // 计算起始日期
-        var end = new Date(endDate);
-        var start = new Date(end);
-        start.setDate(start.getDate() - this.analysisWindow);
-        var startDate = start.toISOString().slice(0, 10); // YYYY-MM-DD
-        
-        await this.$store.dispatch('monitor/fetchAssetAnalysis', {
-          thscodes: this.assetCodes,
-          startDate: startDate,
-          endDate: endDate
-        });
-      } catch (error) {
-        console.warn('获取资产分析数据失败:', error);
-      } finally {
-        this.analysisLoading = false;
-      }
-    },
-    async handleWindowChange() {
-      if (this.monitorState && this.monitorState.date) {
-        await this.loadAssetAnalysis();
-        await this.$nextTick();
-        await this.$nextTick();
-        this.renderCorrelationHeatmap();
-        this.renderVolatilityChart();
-      }
-    },
-    initCorrelationChart() {
-      var el = this.$refs.correlationChart;
-      if (!el) return;
-      if (this.correlationChart) {
-        this.correlationChart.dispose();
-      }
-      if (el.clientWidth > 0 && el.clientHeight > 0) {
-        this.correlationChart = echarts.init(el);
-      }
-    },
-    initVolatilityChart() {
-      var el = this.$refs.volatilityChart;
-      if (!el) return;
-      if (this.volatilityChart) {
-        this.volatilityChart.dispose();
-      }
-      if (el.clientWidth > 0 && el.clientHeight > 0) {
-        this.volatilityChart = echarts.init(el);
-      }
-    },
-    renderCorrelationHeatmap() {
-      this.initCorrelationChart();
-      if (!this.correlationChart || !this.correlationMatrix) return;
-      
-      var corrData = this.correlationMatrix;
-      if (!corrData.matrix) return;
-      
-      var assets = corrData.asset_info || [];
-      var assetNames = assets.map(function(a) { return a.name; });
-      var matrix = corrData.matrix;
-      
-      var heatmapData = [];
-      for (var i = 0; i < assets.length; i++) {
-        var code1 = assets[i].thscode;
-        for (var j = 0; j < assets.length; j++) {
-          var code2 = assets[j].thscode;
-          var value = (matrix[code1] && matrix[code1][code2] !== undefined) ? parseFloat(matrix[code1][code2]) : 0;
-          heatmapData.push([j, i, value]);
-        }
-      }
-      
-      var option = {
-        tooltip: {
-          trigger: 'item',
-          formatter: function(params) {
-            var val = params.value[2];
-            return assetNames[params.value[0]] + ' - ' + assetNames[params.value[1]] + '<br/>相关系数: ' + val.toFixed(4);
-          }
-        },
-        grid: {
-          left: '20%',
-          right: '12%',
-          top: '5%',
-          bottom: '20%'
-        },
-        xAxis: {
-          type: 'category',
-          data: assetNames,
-          axisLabel: { rotate: 45, interval: 0, fontSize: 10 }
-        },
-        yAxis: {
-          type: 'category',
-          data: assetNames,
-          axisLabel: { fontSize: 10 }
-        },
-        visualMap: {
-          min: -1,
-          max: 1,
-          calculable: true,
-          orient: 'vertical',
-          right: 0,
-          top: 'center',
-          itemHeight: 200,
-          text: ['1.0', '-1.0'],
-          inRange: {
-            color: ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027', '#a50026']
-          }
-        },
-        series: [{
-          name: '相关系数',
-          type: 'heatmap',
-          data: heatmapData,
-          label: {
-            show: assets.length <= 8,
-            formatter: function(params) { return params.value[2].toFixed(2); },
-            fontSize: 9
-          },
-          emphasis: {
-            itemStyle: { borderColor: '#333', borderWidth: 1 }
-          }
-        }]
-      };
-      
-      this.correlationChart.setOption(option, true);
-    },
-    renderVolatilityChart() {
-      this.initVolatilityChart();
-      if (!this.volatilityChart || !this.assetMetrics || this.assetMetrics.length === 0) return;
-      
-      var metrics = this.assetMetrics;
-      var sortedMetrics = metrics.slice().sort(function(a, b) {
-        return (b.annual_volatility || 0) - (a.annual_volatility || 0);
-      });
-      
-      var names = sortedMetrics.map(function(m) { return m.name; });
-      var volatilities = sortedMetrics.map(function(m) { return ((m.annual_volatility || 0) * 100); });
-      
-      // 计算75分位阈值
-      var sorted = volatilities.slice().sort(function(a, b) { return a - b; });
-      var threshold = sorted[Math.floor(sorted.length * 0.75)] || 20;
-      
-      var option = {
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: { type: 'shadow' },
-          formatter: function(params) {
-            var data = params[0];
-            return data.name + '<br/>年化波动率: ' + data.value.toFixed(2) + '%';
-          }
-        },
-        grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '20%',
-          top: '10%',
-          containLabel: true
-        },
-        xAxis: {
-          type: 'category',
-          data: names,
-          axisLabel: {
-            rotate: 45,
-            interval: 0,
-            fontSize: 10
-          }
-        },
-        yAxis: {
-          type: 'value',
-          name: '年化波动率(%)',
-          axisLabel: { formatter: '{value}%' }
-        },
-        series: [{
-          name: '年化波动率',
-          type: 'bar',
-          data: volatilities,
-          itemStyle: {
-            color: function(params) {
-              return (params.value || 0) > threshold ? '#F56C6C' : '#409EFF';
-            }
-          },
-          markLine: {
-            silent: true,
-            symbol: 'none',
-            data: [{
-              yAxis: threshold,
-              lineStyle: { color: '#E6A23C', type: 'dashed' },
-              label: { show: true, formatter: '75分位: ' + threshold.toFixed(1) + '%' }
-            }]
-          }
-        }]
-      };
-      
-      this.volatilityChart.setOption(option, true);
+    returnClass(value) {
+      if (value === null || value === undefined || value === 0) return 'number-neutral';
+      return value > 0 ? 'number-positive' : 'number-negative';
     }
   }
 };
 </script>
 
 <style scoped>
-.page-container {
-  padding: 20px;
-}
-
-.page-header {
+.positions-panel {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
-.page-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 500;
+.positions-panel >>> .el-table {
+  flex: 1;
+  min-height: 0;
 }
 
-.page-content {
-  min-height: 400px;
-}
-
-.summary-row {
-  margin-bottom: 0;
+.positions-panel >>> .el-empty {
+  margin: auto;
 }
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin-bottom: 12px;
 }
 
 .summary-card {
   text-align: center;
-  padding: 12px 8px;
+  padding: 10px 8px;
   background: #fff;
   border: 1px solid #ebeef5;
   border-radius: 6px;
@@ -626,7 +203,6 @@ export default {
   white-space: nowrap;
 }
 
-/* 类别权重条 */
 .category-bar {
   display: flex;
   align-items: center;
@@ -645,23 +221,6 @@ export default {
   font-weight: 500;
 }
 
-.category-summary-card {
-  padding: 10px 15px;
-}
-
-.category-summary-content {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 15px;
-}
-
-.category-summary-label {
-  font-size: 13px;
-  color: #606266;
-  font-weight: 500;
-}
-
 .category-item {
   display: inline-flex;
   align-items: center;
@@ -669,34 +228,25 @@ export default {
 }
 
 .category-weight {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: #303133;
 }
 
-.info-card {
-  margin-bottom: 0;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 500;
-}
-
-/* 权重条形图列 */
 .weight-bar-cell {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+
 .weight-num {
   font-size: 13px;
   font-weight: 600;
   min-width: 52px;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
+
 .weight-bar-bg {
   flex: 1;
   height: 8px;
@@ -704,6 +254,7 @@ export default {
   border-radius: 4px;
   overflow: hidden;
 }
+
 .weight-bar-fill {
   height: 100%;
   border-radius: 4px;
@@ -714,49 +265,14 @@ export default {
   font-weight: 500;
 }
 
-/* 底层资产分析：上下布局，每项占满宽度 */
-.analysis-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-/* 资产分析区域样式 */
-.analysis-section {
-  padding: 10px;
-}
-
-.section-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: #303133;
-  margin-bottom: 15px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #ebeef5;
-}
-
-.empty-tips {
-  margin-top: 15px;
-  text-align: center;
-}
-
-.empty-tips p {
-  margin: 5px 0;
-  font-size: 12px;
+.currency-cell {
   color: #909399;
+  font-size: 12px;
 }
 
-.analysis-toolbar {
-  display: flex;
-  align-items: center;
-  padding: 10px 15px;
-  background: #f5f7fa;
-  border-radius: 4px;
-}
-
-.toolbar-label {
-  font-size: 13px;
-  color: #606266;
-  margin-right: 10px;
+@media (max-width: 1400px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 </style>

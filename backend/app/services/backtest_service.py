@@ -12,13 +12,75 @@ from bson import ObjectId
 import pandas as pd
 import numpy as np
 
-from app.models.strategy_model import StrategyModel, BacktestRecord
+from app.allocation.runtime_params import WEIGHT_CAPS_PARAM_NAMES, parse_mapping_param
+from app.models.strategy_model import StrategyModel, BacktestRecord, RunKind, normalize_run_kind
 from app.services.strategy_model_service import (
     StrategyModelService,
     resolve_full_params,
     build_backtest_params,
 )
 from app.services.param_version_service import ParamVersionService
+from app.services.strategy_fingerprint import (
+    param_hash,
+    pool_hash,
+    reproducibility_fingerprint,
+)
+from app.services.strategy_version_service import resolve_contract_hash
+from app.services.strategy_run_service import StrategyRunService, build_run_metrics
+from app.config.settings import settings
+
+
+# 参数版本匹配时忽略的易变键（与 strategy_fingerprint._VOLATILE_KEYS 同口径）
+_VOLATILE_KEYS = frozenset({"created_at", "updated_at", "frozen_at", "published_at"})
+
+# 需要归一为 dict 的参数：历史模型与前端表单可能把它们存成 JSON 字符串
+_MAPPING_PARAM_KEYS = frozenset(WEIGHT_CAPS_PARAM_NAMES) | {"_asset_tags"}
+
+
+def build_run_kind_filter(run_kind: Optional[str]) -> Dict[str, Any]:
+    """构造 ``backtest_records`` 的 run_kind 过滤片段.
+
+    存量文档没有 ``run_kind`` 字段，因此「只要回测」必须用 ``$ne`` 而不是
+    ``{"run_kind": "backtest"}`` —— 后者会把全部存量记录过滤掉。
+
+    Args:
+        run_kind: ``"backtest"``（默认）排除监控产物；``"monitor"`` 只取监控产物；
+            ``None`` 不过滤。
+    """
+    if run_kind is None:
+        return {}
+    if normalize_run_kind(run_kind) == RunKind.MONITOR.value:
+        return {"run_kind": RunKind.MONITOR.value}
+    return {"run_kind": {"$ne": RunKind.MONITOR.value}}
+
+
+def _param_version_matches(doc: Dict[str, Any], snapshot: Dict[str, Any]) -> bool:
+    """参数版本与本次参数快照是否一致（替代「永远取最新版本」的旧语义）。
+
+    ``param_snapshot`` 是 allocator + selector + controller **合并后**的扁平字典，
+    而 ``strategy_param_versions`` 文档按三块分开存，二者无法直接比整份 hash。
+    因此按「双方都有的键逐一相等」判定，并要求至少一个共同键：任一共同键不等
+    即视为不同版本；没有任何共同键（如空参数策略）不参与匹配，回退最新版本。
+    """
+    flat: Dict[str, Any] = {}
+    for part in ("allocator_params", "selector_params", "controller_params"):
+        value = doc.get(part)
+        if isinstance(value, dict):
+            flat.update(value)
+    for key in ("selector_type", "controller_code"):
+        if doc.get(key) is not None:
+            flat[key] = doc[key]
+    flat.pop("selector_parameters", None)
+    if not flat:
+        return False
+    common = 0
+    for key, value in flat.items():
+        if key in _VOLATILE_KEYS or key not in snapshot:
+            continue
+        common += 1
+        if snapshot.get(key) != value:
+            return False
+    return common > 0
 
 
 class BacktestService:
@@ -44,7 +106,8 @@ class BacktestService:
         self,
         model_id: str,
         skip: int = 0,
-        limit: int = 100
+        limit: int = 100,
+        run_kind: Optional[str] = RunKind.BACKTEST.value,
     ) -> List[BacktestRecord]:
         """
         查询模型的回测记录列表
@@ -53,11 +116,16 @@ class BacktestService:
             model_id: 模型ID
             skip: 跳过数量
             limit: 返回数量
+            run_kind: 运行类型过滤。默认 ``backtest`` —— 排除监控批次产物
+                （``run_kind=monitor``），保证策略详情的回测记录列表不被高频
+                监控跑批污染；传 ``"monitor"`` 只取监控批次；传 ``None`` 不过滤。
             
         Returns:
             回测记录列表
         """
-        cursor = self.backtest_collection.find({"model_id": model_id}).skip(skip).limit(limit).sort("created_at", -1)
+        query: Dict[str, Any] = {"model_id": model_id}
+        query.update(build_run_kind_filter(run_kind))
+        cursor = self.backtest_collection.find(query).skip(skip).limit(limit).sort("created_at", -1)
         records = []
         async for doc in cursor:
             doc['_id'] = str(doc['_id'])
@@ -167,6 +235,7 @@ class BacktestService:
         record: BacktestRecord,
         param_snapshot: Optional[Dict[str, Any]] = None,
         data_fingerprint: Optional[str] = None,
+        identity: Optional[Dict[str, Any]] = None,
     ) -> str:
         """保存回测记录，并自动将绩效快照写入策略模型的 latest_backtest_summary。
         
@@ -184,17 +253,31 @@ class BacktestService:
         - 用于检测相同参数但不同行情数据的情况
         
         同时自动关联当前最新的参数版本，建立版本-回测双向追溯。
+
+        身份注入（identity，S12）：
+        - 可选显式传入 ``{"strategy_id": ..., "config_version_id": ...}``，以传入值为准；
+        - 未传入时按 ``record.model_id`` 反查 ``strategy_registry``（走 template_code）
+          与最新 ``strategy_versions``，回填到记录字段；
+        - 草稿模型通常没有发布版本，``config_version_id`` 保持 None。
         """
+        # --- 读取模型一次：参数快照兜底、身份与指纹计算共用同一份数据 ---
+        model = None
+        try:
+            model = await self._models.get_model(record.model_id)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "回测读取策略模型失败 model_id=%s: %s", record.model_id, e
+            )
+
         # --- 自动生成参数快照（若未提供）---
-        if param_snapshot is None:
+        if param_snapshot is None and model is not None:
             try:
-                model = await self._models.get_model(record.model_id)
-                if model:
-                    param_snapshot = resolve_full_params(model)
-                    # 补充基础信息
-                    param_snapshot["template_code"] = model.template_code
-                    param_snapshot["asset_codes"] = list(model.asset_codes or [])
-                    param_snapshot["rebalance_frequency"] = model.rebalance_frequency
+                param_snapshot = resolve_full_params(model)
+                # 补充基础信息
+                param_snapshot["template_code"] = model.template_code
+                param_snapshot["asset_codes"] = list(model.asset_codes or [])
+                param_snapshot["rebalance_frequency"] = model.rebalance_frequency
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).warning(
@@ -221,24 +304,84 @@ class BacktestService:
         if data_fingerprint is not None:
             record.data_fingerprint = data_fingerprint
         
-        # --- 自动关联最新参数版本 ---
+        # --- 关联参数版本（本次运行对应的版本优先，匹配不到回退最新）---
         try:
-            latest_pv = await self._param_versions.collection.find_one(
-                {"model_id": record.model_id},
-                sort=[("version", -1)],
+            cursor = (
+                self._param_versions.collection.find({"model_id": record.model_id})
+                .sort("version", -1)
+                .limit(50)
             )
-            if latest_pv:
-                record.param_version_id = str(latest_pv["_id"])
-                record.param_version_number = latest_pv.get("version", 1)
+            candidates = [doc async for doc in cursor]
+            matched = None
+            if param_snapshot:
+                for doc in candidates:
+                    if _param_version_matches(doc, param_snapshot):
+                        matched = doc
+                        break
+            chosen = matched or (candidates[0] if candidates else None)
+            if chosen:
+                record.param_version_id = str(chosen["_id"])
+                record.param_version_number = chosen.get("version", 1)
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(
                 "回测关联参数版本失败 model_id=%s: %s", record.model_id, e
             )
         
-        record_dict = record.dict(by_alias=True, exclude={'id'})
+        # --- 可复现性指纹（S10）与身份注入链（S12）---
+        # 与 save_monitor_record 共用同一段推导，保证「监控批次 vs 手动回测」
+        # 的指纹口径一致，可直接按 reproducibility_fingerprint 对齐比对。
+        self._apply_reproducibility_fingerprints(record, model, param_snapshot)
+        await self._apply_record_identity(record, model, identity)
+
+        record_dict = self._record_to_doc(record)
         result = await self.backtest_collection.insert_one(record_dict)
         record_id = str(result.inserted_id)
+
+        # --- 运行台账（S11）：主记录插入成功后再追加，失败只 warn ---
+        # strategy_id / config_version_id 由 S12 身份注入链回填；此处先按现有值透传。
+        try:
+            await StrategyRunService().append_run(
+                run_kind="backtest",
+                model_id=record.model_id,
+                strategy_id=record.strategy_id,
+                config_version_id=record.config_version_id,
+                backtest_record_id=record_id,
+                pool_hash_value=record.asset_pool_hash,
+                contract_hash_value=record.contract_hash,
+                data_digest=record.data_digest_v2,
+                config_fingerprint=record.config_fingerprint,
+                reproducibility_fingerprint=record.reproducibility_fingerprint,
+                engine_version=settings.APP_VERSION,
+                window_start=record.start_date,
+                window_end=record.end_date,
+                metrics=build_run_metrics(record.result),
+                status="success",
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "策略运行台账写入失败 model_id=%s: %s", record.model_id, e
+            )
+
+        # --- 参数试错计数与搜索空间（S17）：写回 strategy_registry，失败只 warn ---
+        # 计数口径：按 param_hash 去重，同参数不同区间算 1 次；搜索空间只在
+        # 与库内值不一致时回写（网格由 get_param_schema 静态推导）。
+        if record.strategy_id:
+            try:
+                from app.services.strategy_registry_service import StrategyRegistryService
+
+                _registry = StrategyRegistryService()
+                await _registry.refresh_trial_count(record.strategy_id)
+                if model is not None:
+                    await _registry.refresh_parameter_search_space(
+                        record.strategy_id, model.template_code
+                    )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "试错计数/搜索空间刷新失败 strategy_id=%s: %s", record.strategy_id, e
+                )
         
         # --- 自动写入 latest_backtest_summary（层间数据流）---
         try:
@@ -249,6 +392,10 @@ class BacktestService:
                 "sharpe": float(bt_result.sharpe_ratio) if bt_result.sharpe_ratio else 0.0,
                 "max_drawdown": float(bt_result.max_drawdown) if bt_result.max_drawdown else 0.0,
                 "calmar": float(bt_result.calmar_ratio) if bt_result.calmar_ratio else None,
+                "annual_return_365": float(bt_result.annual_return_365) if bt_result.annual_return_365 else 0.0,
+                "annual_vol_365": float(bt_result.annual_volatility_365) if bt_result.annual_volatility_365 else 0.0,
+                "sharpe_365": float(bt_result.sharpe_ratio_365) if bt_result.sharpe_ratio_365 else 0.0,
+                "calmar_365": float(bt_result.calmar_ratio_365) if bt_result.calmar_ratio_365 else None,
                 "total_return": float(bt_result.total_return) if bt_result.total_return else 0.0,
                 "win_rate": float(bt_result.win_rate) if bt_result.win_rate else None,
                 "backtest_date": datetime.now().isoformat(),
@@ -273,6 +420,201 @@ class BacktestService:
             )
         
         return record_id
+
+    # ------------------------------------------------------------------
+    # 监控批次专用写入路径（阶段一）
+    # ------------------------------------------------------------------
+
+    async def save_monitor_record(
+        self,
+        record: BacktestRecord,
+        batch_id: str,
+        monitor_id: str,
+        *,
+        param_snapshot: Optional[Dict[str, Any]] = None,
+        identity: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """监控批次专用写入：直接 insert，不触发任何回测侧副作用.
+
+        与 :meth:`save_backtest_record` 的差异（必须保持）：
+            1. **不写 ``strategy_models.latest_backtest_summary``** —— 监控跑批不得
+               改变策略列表的「最近回测绩效」；
+            2. **不写 ``strategy_runs``** —— 监控台账已由
+               ``MonitorService._append_monitor_run`` 以 run_kind=monitor 写入，
+               两边都写会产生双份台账；
+            3. **不刷 ``trial_count``** —— 监控不是参数试错，计入会抬高策略的
+               参数搜索次数；
+            4. 强制 ``run_kind=monitor`` + ``batch_id`` + ``monitor_id``。
+
+        保留的部分：参数快照、数据指纹、可复现性指纹与身份链与回测同口径，
+        因此监控批次可与手动回测按 ``reproducibility_fingerprint`` 直接对齐。
+
+        Args:
+            record: 已组装好的记录（result 里放模型轨净值）。
+            batch_id: 批次号，不得为空。
+            monitor_id: 监控实例 ID，不得为空。
+            param_snapshot: 可选；不传且能读到模型时自动生成。
+            identity: 可选身份注入 ``{"strategy_id":..., "config_version_id":...}``。
+
+        Returns:
+            新插入记录的 ID 字符串。
+        """
+        if not batch_id:
+            raise ValueError("save_monitor_record 必须传入 batch_id")
+        if not monitor_id:
+            raise ValueError("save_monitor_record 必须传入 monitor_id")
+
+        record.run_kind = RunKind.MONITOR.value
+        record.batch_id = batch_id
+        record.monitor_id = monitor_id
+
+        model = None
+        try:
+            model = await self._models.get_model(record.model_id)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "监控记录读取策略模型失败 model_id=%s: %s", record.model_id, e
+            )
+
+        if param_snapshot is None and model is not None:
+            try:
+                param_snapshot = resolve_full_params(model)
+                param_snapshot["template_code"] = model.template_code
+                param_snapshot["asset_codes"] = list(model.asset_codes or [])
+                param_snapshot["rebalance_frequency"] = model.rebalance_frequency
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "监控记录生成参数快照失败 model_id=%s: %s", record.model_id, e
+                )
+        if param_snapshot is not None:
+            record.param_snapshot = param_snapshot
+
+        self._apply_reproducibility_fingerprints(record, model, param_snapshot)
+        await self._apply_record_identity(record, model, identity)
+
+        result = await self.backtest_collection.insert_one(self._record_to_doc(record))
+        return str(result.inserted_id)
+
+    def _apply_reproducibility_fingerprints(
+        self,
+        record: BacktestRecord,
+        model: Optional[StrategyModel],
+        param_snapshot: Optional[Dict[str, Any]],
+    ) -> None:
+        """可复现性指纹（S10）：纯计算，缺项留 None，落库前剔除.
+
+        回测与监控两条写入路径共用，口径单源。
+        """
+        try:
+            if record.param_hash is None:
+                record.param_hash = param_hash(param_snapshot)
+            if record.asset_pool_hash is None:
+                codes = (
+                    list(record.result.asset_names.keys())
+                    if record.result and record.result.asset_names
+                    else []
+                )
+                if not codes and model is not None:
+                    codes = list(model.asset_codes or [])
+                record.asset_pool_hash = pool_hash(codes)
+            if record.contract_hash is None and model is not None:
+                record.contract_hash = resolve_contract_hash(model.template_code)
+            if record.config_fingerprint is None and model is not None:
+                record.config_fingerprint = getattr(model, "config_fingerprint", None)
+            if record.reproducibility_fingerprint is None:
+                record.reproducibility_fingerprint = reproducibility_fingerprint(
+                    record.config_fingerprint or record.param_hash,
+                    pool_hash_value=record.asset_pool_hash,
+                    contract_hash_value=record.contract_hash,
+                    param_hash_value=record.param_hash,
+                    engine_version=settings.APP_VERSION,
+                    data_digest=record.data_digest_v2,
+                )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "可复现性指纹计算失败 model_id=%s: %s", record.model_id, e
+            )
+
+    async def _apply_record_identity(
+        self,
+        record: BacktestRecord,
+        model: Optional[StrategyModel],
+        identity: Optional[Dict[str, Any]],
+    ) -> None:
+        """身份注入链（S12）：模型 → 策略本体 → 本次配置版本.
+
+        优先级：record 字段 / identity 参数（显式传入）> 服务端反查。
+        反查失败不阻断保存：字段保持 None，落库时剔除（读取侧容忍空值）。
+        """
+        _identity = identity or {}
+        explicit_strategy_id = record.strategy_id or _identity.get("strategy_id")
+        explicit_version_id = record.config_version_id or _identity.get("config_version_id")
+        try:
+            strategy_id = explicit_strategy_id
+            if not strategy_id and model is not None:
+                strategy_id = await self._resolve_strategy_id(model.template_code)
+            record.strategy_id = strategy_id
+
+            config_version_id = explicit_version_id
+            if not config_version_id:
+                config_version_id = await self._resolve_config_version_id(
+                    record.model_id, record.config_fingerprint
+                )
+            record.config_version_id = config_version_id
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "记录身份注入失败 model_id=%s: %s", record.model_id, e
+            )
+
+    @staticmethod
+    def _record_to_doc(record: BacktestRecord) -> Dict[str, Any]:
+        """序列化为落库文档：可选字段为 None 时不写 null，保持存量文档形状."""
+        record_dict = record.dict(by_alias=True, exclude={'id'})
+        for _key in (
+            "strategy_id", "config_version_id", "config_fingerprint",
+            "asset_pool_hash", "contract_hash", "param_hash",
+            "data_digest_v2", "reproducibility_fingerprint",
+            "run_kind", "batch_id", "monitor_id",
+        ):
+            if record_dict.get(_key) is None:
+                record_dict.pop(_key, None)
+        return record_dict
+
+    async def _resolve_strategy_id(self, template_code: Optional[str]) -> Optional[str]:
+        """按策略码反查 ``strategy_registry`` 的 strategy_id（走别名归一）."""
+        code = str(template_code or "").strip()
+        if not code:
+            return None
+        try:
+            from app.services.strategy_registry_service import StrategyRegistryService
+
+            entry = await StrategyRegistryService().get_by_template_code(code)
+            return entry.strategy_id if entry else None
+        except Exception:
+            return None
+
+    async def _resolve_config_version_id(
+        self, model_id: str, config_fingerprint: Optional[str]
+    ) -> Optional[str]:
+        """取本次运行对应的配置版本：优先指纹相等，否则最新版本；无记录返回 None."""
+        try:
+            from app.services.strategy_version_service import StrategyVersionService
+
+            svc = StrategyVersionService()
+            if config_fingerprint:
+                doc = await svc.collection.find_one(
+                    {"model_id": model_id, "config_fingerprint": config_fingerprint},
+                    sort=[("version_no", -1)],
+                )
+                if doc:
+                    return doc.get("version_id")
+            return await svc.latest_version_id(model_id)
+        except Exception:
+            return None
 
     async def update_backtest_record_remark(self, record_id: str, model_id: str, remark: Optional[str]) -> bool:
         """更新回测记录备注"""
@@ -337,49 +679,13 @@ class BacktestService:
             except Exception:
                 pass
         
-        # 清理和转换策略参数，确保字典类型参数格式正确
+        # 清理和转换策略参数：字典类参数（资产权重约束 / 资产标签）统一解析为 dict，
+        # 解析口径与运行时、门禁同源（无法解析时为空字典 = 不限制）
         if isinstance(strategy_params, dict):
-            import json
-            cleaned_params = {}
-            for key, value in strategy_params.items():
-                # 处理 weight_caps / max_weight_dict 参数
-                if key in ("weight_caps", "max_weight_dict"):
-                    if isinstance(value, str):
-                        try:
-                            parsed = json.loads(value)
-                            # 确保解析后是字典
-                            if isinstance(parsed, dict):
-                                cleaned_params[key] = parsed
-                            else:
-                                # 如果不是字典，使用空字典
-                                cleaned_params[key] = {}
-                        except Exception:
-                            # 解析失败，使用空字典
-                            cleaned_params[key] = {}
-                    elif isinstance(value, dict):
-                        cleaned_params[key] = value
-                    else:
-                        # 其他类型（如数值），使用空字典
-                        cleaned_params[key] = {}
-                # 处理 _asset_tags 参数
-                elif key == "_asset_tags":
-                    if isinstance(value, str):
-                        try:
-                            parsed = json.loads(value)
-                            if isinstance(parsed, dict):
-                                cleaned_params[key] = parsed
-                            else:
-                                cleaned_params[key] = {}
-                        except Exception:
-                            cleaned_params[key] = {}
-                    elif isinstance(value, dict):
-                        cleaned_params[key] = value
-                    else:
-                        cleaned_params[key] = {}
-                else:
-                    # 其他参数直接传递
-                    cleaned_params[key] = value
-            strategy_params = cleaned_params
+            strategy_params = {
+                key: (parse_mapping_param(value) if key in _MAPPING_PARAM_KEYS else value)
+                for key, value in strategy_params.items()
+            }
         
         request_data = {
             "name": overrides.get("name", f"{model.name}_回测"),
@@ -390,8 +696,16 @@ class BacktestService:
             "end_date": end_date,
             "initial_cash": overrides.get("initial_cash", 10_000_000.0),
             "rebalance_freq": overrides.get("rebalance_freq", rebalance_freq),
-            "commission_rate": overrides.get("commission_rate", 0.0003),
-            "slippage": overrides.get("slippage", 0.0005),
+            # 缺省不计费，与 BacktestConfig / BacktestRequest 的 0.0 默认对齐。
+            # 曾硬编码 0.0003 / 0.0005 作兜底，导致两处口径断裂：策略经
+            # get_trading_costs 声明「不计费」（返回空 dict）时仍被扣万三手续费
+            # 与万五滑点；已声明分资产费率的策略，commission_by_code 只覆盖
+            # commission_rate，滑点无分资产通道，会被额外叠加一次。且组合与
+            # 监控通道均显式传 0.0（gross NAV），回测独自计费使三通道净值不可比。
+            # 策略自带费率一律走 get_trading_costs -> commission_by_code，
+            # 用户需要计费时在请求里显式传 commission_rate / slippage。
+            "commission_rate": overrides.get("commission_rate", 0.0),
+            "slippage": overrides.get("slippage", 0.0),
             "lookback_days": overrides.get("lookback_days", 500)
         }
         

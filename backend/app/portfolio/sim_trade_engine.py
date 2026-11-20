@@ -34,7 +34,9 @@ from app.backtesting.execution import ExecutionEngine
 from app.backtesting.signal import TargetWeightSignal
 from app.backtesting.types import Bar as BtBar, Position as BtPosition, Trade as BtTrade
 from app.services.asset_service import AssetService
+from app.services.published_snapshot import apply_published_snapshot
 from app.services.strategy_model_service import StrategyModelService
+from app.models.strategy_model import ModelStatus
 from app.allocation.services.registry import create_strategy_service_from_database
 
 logger = logging.getLogger("uvicorn.error")
@@ -124,7 +126,12 @@ class SimTradeEngine:
             rebalance_freq=self._resolve_rebalance_freq(model.rebalance_frequency),
             initial_cash=portfolio.initial_capital,
         )
-        data_feed = await DataFeed.from_market_service(market_service, config, lookback_days=500)
+        # 面板按 strategy_type 静态解析；不传则策略声明的 get_extra_panels
+        # 不生效，依赖面板的策略在模拟盘推进时会拿到空截面
+        data_feed = await DataFeed.from_market_service(
+            market_service, config, lookback_days=500,
+            strategy_type=model.template_code,
+        )
         if data_feed.prices.empty:
             return {"days_advanced": 0, "trades_generated": 0,
                     "message": "行情数据为空，无法推进"}
@@ -352,7 +359,15 @@ class SimTradeEngine:
             return {"days_advanced": 0, "trades_generated": 0,
                     "message": f"组合模型不存在: {portfolio.portfolio_model_id}"}
 
-        sub_pairs = await model_service.resolve_sub_strategies(portfolio_model)
+        # 已发布组合：成员/权重/初始净值读发布冻结快照
+        if portfolio_model.status == ModelStatus.PUBLISHED and portfolio_model.published_snapshot:
+            portfolio_model = apply_published_snapshot(
+                portfolio_model, portfolio_model.published_snapshot
+            )
+        membership = model_service.portfolio_membership(portfolio_model)
+        sub_pairs = await model_service.resolve_sub_strategies(
+            portfolio_model, sub_strategies=membership
+        )
         if not sub_pairs:
             return {"days_advanced": 0, "trades_generated": 0,
                     "message": "无法解析子策略"}
@@ -368,13 +383,6 @@ class SimTradeEngine:
         end_str = target_date.strftime("%Y%m%d")
 
         for sub_model, model_weight in sub_pairs:
-            # 使用组合当前配置的权重（可能已被手动调整）
-            actual_weight = model_weight
-            for alloc in portfolio.sub_strategies:
-                if alloc.model_id == sub_model.id:
-                    actual_weight = alloc.weight
-                    break
-
             try:
                 nav = await portfolio_svc._run_sub_strategy_backtest(
                     sub_model, start_str, end_str, initial_nav
@@ -382,7 +390,7 @@ class SimTradeEngine:
                 if nav is not None and len(nav) > 1:
                     key = sub_model.id or sub_model.name
                     sub_nav_series[key] = nav
-                    sub_weights[key] = actual_weight
+                    sub_weights[key] = model_weight
             except Exception as e:
                 logger.warning(f"[SimTrade] 子策略 {sub_model.name} 回测失败: {e}")
 

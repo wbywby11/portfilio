@@ -64,6 +64,9 @@ class SubStrategyDecomposition:
     annual_vol: float = 0.0                # 子策略年化波动
     sharpe: float = 0.0                    # 子策略夏普比率
     max_drawdown: float = 0.0              # 子策略最大回撤
+    annual_return_365: float = 0.0         # 子策略年化收益（365 自然日口径）
+    annual_vol_365: float = 0.0            # 子策略年化波动（365 自然日口径）
+    sharpe_365: float = 0.0                # 子策略夏普比率（365 自然日口径）
 
 
 @dataclass
@@ -273,6 +276,9 @@ def decompose_sub_strategy_returns(
             annual_vol=round(metrics.annual_volatility, 6),
             sharpe=round(metrics.sharpe_ratio, 4),
             max_drawdown=round(metrics.max_drawdown, 6),
+            annual_return_365=round(metrics.annual_return_365, 6),
+            annual_vol_365=round(metrics.annual_volatility_365, 6),
+            sharpe_365=round(metrics.sharpe_ratio_365, 4),
         ))
 
     return decompositions
@@ -596,6 +602,10 @@ def compute_portfolio_report(
             "max_drawdown": round(metrics.max_drawdown, 6),
             "calmar": round(metrics.calmar_ratio, 4),
             "total_return": round(metrics.total_return, 6),
+            "annual_return_365": round(metrics.annual_return_365, 6),
+            "annual_vol_365": round(metrics.annual_volatility_365, 6),
+            "sharpe_365": round(metrics.sharpe_ratio_365, 4),
+            "calmar_365": round(metrics.calmar_ratio_365, 4),
             "risk_free_rate": risk_free_rate,
             "periods_per_year": metrics.periods_per_year,
         })
@@ -627,6 +637,9 @@ def compute_portfolio_report(
                 "annual_vol": d.annual_vol,
                 "sharpe": d.sharpe,
                 "max_drawdown": d.max_drawdown,
+                "annual_return_365": d.annual_return_365,
+                "annual_vol_365": d.annual_vol_365,
+                "sharpe_365": d.sharpe_365,
             }
             for d in decomps
         ]

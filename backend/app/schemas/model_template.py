@@ -69,6 +69,10 @@ class ModelTemplateCreate(BaseModel):
     pdf_filename: Optional[str] = Field(None, description="策略PDF文档文件名")
     parameters: List[ModelParameterOut] = Field(default_factory=list, description="参数定义列表")
     category: Optional[str] = Field("allocation", description="策略分类: allocation/selection/control")
+    strategy_form: Optional[str] = Field(
+        "composite",
+        description="策略形态: composite=三层组合 / standalone=打包独立",
+    )
     composition: Optional[dict] = Field(None, description="三层组合配置")
 
 

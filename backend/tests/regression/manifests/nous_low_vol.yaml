@@ -1,0 +1,30 @@
+# 涌鑫低波版 V5 · FOF40 档（无日度波控）原型对账清单
+#
+# 基线来源：research/涌鑫低波版指数/低波版模型/results/NOUS_FOF40/none/nav.csv
+#   原型 step3_backtest.py 在 config_versions.py 的 NOUS_FOF40 版本、波控档位
+#   none 下的产出（2014-02-04 ~ 2026-07-27）。为免门禁依赖 research 目录的
+#   跨项目相对路径，原样归档到本目录（列与数值不变）。
+#
+# 档位对应（config_versions.py）：none=无波控；vol2pct / trig4_t2 / trig4_t2p5 /
+#   trig4_t3 为带日度波控的四档。本清单只对 none 档：系统「带波控」模型与原型
+#   四档目前均未对齐（实测 corr≈0.67、端点误差 15%~18%），差异属波控实现，
+#   待单独定位后另立清单，不并入本条以免用宽容差掩盖。
+prototype: nous_low_vol
+display_name: 涌鑫低波版 V5 · FOF40%（无波控档）
+description: 独立策略 nous_low_vol 的选样/赋权/约束三层与原型一致性的数值验收
+models:
+  nous_low_vol:
+    name: 涌鑫指数低波版_V5_无波控
+    template_code: nous_low_vol
+baseline:
+  nav_csv: tests/regression/manifests/nous_low_vol_fof40_none_nav.csv
+  series:
+    nous_low_vol: 净值
+  start_date: "20140204"
+  end_date: "20260727"
+  tolerance:
+    # 实测 corr=0.9991、端点误差 0.09%（系统零成本、原型含复制费率，方向为系统
+    # 偏高）。容差取「日收益相关 0.99 / 端点 2%」：足以吸收费率与舍入差，但选样
+    # 或赋权任一层走偏都会突破。
+    corr_min: 0.99
+    end_err_max: 0.02

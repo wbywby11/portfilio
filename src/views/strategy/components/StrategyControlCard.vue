@@ -22,22 +22,25 @@
 
       <!-- 控制器选择 -->
       <el-form-item label="控制器策略" label-width="100px">
-        <el-select
-          :value="form.controller_code"
-          placeholder="请选择风险控制策略"
-          @change="handleControllerCodeChange"
-          style="width: 100%;"
-        >
-          <el-option
-            v-for="tpl in controlTemplateList"
-            :key="tpl.code"
-            :label="tpl.name"
-            :value="tpl.code"
+        <div class="field-row">
+          <el-select
+            :value="form.controller_code"
+            class="field-row__control"
+            placeholder="请选择风险控制策略"
+            @change="handleControllerCodeChange"
           >
-            <span style="float: left">{{ tpl.name }}</span>
-            <span style="float: right; color: #8492a6; font-size: 12px">{{ tpl.description }}</span>
-          </el-option>
-        </el-select>
+            <el-option
+              v-for="tpl in controlTemplateList"
+              :key="tpl.code"
+              :label="tpl.name"
+              :value="tpl.code"
+            ></el-option>
+          </el-select>
+        </div>
+        <!-- 描述单独成行：塞进 option 会把下拉面板按内容宽度撑到弹窗之外 -->
+        <div v-if="selectedControllerTemplate && selectedControllerTemplate.description" class="template-desc">
+          {{ selectedControllerTemplate.description }}
+        </div>
       </el-form-item>
 
       <!-- ===== 滚动窗口波动率：自定义布局 ===== -->
@@ -276,6 +279,25 @@ export default {
 <style scoped>
 .control-card {
   margin-bottom: 20px;
+}
+
+/* 下拉框占满剩余宽度 */
+.field-row {
+  display: flex;
+  align-items: center;
+}
+
+.field-row__control {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 描述受表单内容宽度约束自动换行，不再撑宽下拉面板 */
+.template-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #909399;
 }
 .card-header {
   display: flex;

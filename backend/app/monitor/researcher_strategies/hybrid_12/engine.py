@@ -16,7 +16,7 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 # =============================================================================
 # 配置常量（与原型完全一致）
@@ -388,6 +388,7 @@ def run_backtest(
     fx_df: pd.DataFrame,
     trade_dates_list: List[pd.Timestamp],
     backtest_start: Optional[str] = None,
+    progress_cb: Optional[Callable[[int, int, pd.Timestamp], None]] = None,
 ) -> dict:
     """
     完整回测主入口。忠实复现原型 step1+step2+step3。
@@ -472,7 +473,18 @@ def run_backtest(
     prev_date = None
     prev_nav = None
 
+    # 进度上报：每 1% 触发一次（最多 100 次），避免逐日回调把任务表打满
+    _n_dates = len(backtest_dates)
+    _progress_step = max(1, _n_dates // 100) if progress_cb is not None else 0
+
     for date_idx, date in enumerate(backtest_dates):
+        if _progress_step:
+            _done = date_idx + 1
+            if _done % _progress_step == 0 or _done == _n_dates:
+                try:
+                    progress_cb(_done, _n_dates, date)
+                except Exception:  # noqa: BLE001 —— 进度失败不影响回测
+                    pass
         fx_rates = _get_fx_rates(fx_df, date, assets)
 
         # ---- 步骤A: 指数起始日 ----

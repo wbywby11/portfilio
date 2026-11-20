@@ -10,6 +10,10 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from loguru import logger
+
+from app.allocation.runtime_params import resolve_weight_caps
+from app.backtesting.schedule import parse_declared_vol_reset_policy
 from app.monitor import config
 from app.monitor.mongo_asset_codes import canonical_price_code
 
@@ -42,9 +46,22 @@ class MonitorRuntimeConfig:
     template_code: str = "risk_budget_target_vol"  # 策略模板类型
     selector_type: Optional[str] = None  # 资产选择器类型（sharpe/hybrid 等），monitor 路由键
     strategy_params: Dict[str, Any] = field(default_factory=dict)  # 策略特有参数透传
+    # 波控三键声明（发布快照冻结的策略自述）：空字典 = 策略未声明，
+    # 由 SignalDetector 按监控默认值（VOL_RESET_POLICY_PROTOTYPE）执行
+    vol_reset_policy: Dict[str, bool] = field(default_factory=dict)
+    # 波动率风控是否启用：由 resolve_vol_control 单点判定。
+    # 前端只读此布尔决定是否渲染「波动率监控」区；检测侧据此提前返回，
+    # 避免未配置策略被全局默认阈值静默重置（与回测侧 enable_vol_reset 同源）。
+    vol_control_enabled: bool = False
+    vol_threshold_source: Optional[str] = None  # 阈值取自哪个参数键（诊断用）
+    vol_control_reason: Optional[str] = None    # 未启用原因，见 resolve_vol_control
     asset_names: Optional[Dict[str, str]] = None  # code→name 映射（来自策略模型/资产主数据）
     trading_costs: Optional[Dict[str, float]] = None   # 策略自带交易费率（代码→单次费率）
     replication_costs: Optional[Dict[str, float]] = None  # 策略自带复制费率（代码→年化费率）
+    # 逐日推演的日历口径：
+    # prices=所选资产价格日期并集（系统策略默认，与回测轴 DataFeed.prices.index 同源）；
+    # trade_dates=Mongo 交易日历集合，仅研究员策略 sharpe_18/hybrid_12 显式使用
+    calendar_source: str = "prices"
 
 
 def _parse_json_if_string(val: Any) -> Any:
@@ -75,6 +92,53 @@ def _float_param(params: Dict[str, Any], key: str) -> Optional[float]:
         return None
 
 
+def resolve_vol_control(
+    params: Dict[str, Any],
+    live_volatility_threshold: Optional[float] = None,
+) -> Tuple[bool, Optional[float], Optional[str], Optional[str]]:
+    """单点判定「是否启用波动率风控」及「阈值取哪个值」。
+
+    返回 (enabled, threshold, source, disabled_reason)。
+
+    判定顺序（显式关闭优先于残留阈值；未配置时不兜底全局常量）：
+      1. enable_daily_vol_control=False       → 关（打包策略的日度波控开关）
+      2. enable_vol_reset=False               → 关（与回测侧同一开关语义）
+      3. target_vol<=0                        → 关（缩放因子恒 0，触发等于清仓）
+      4. 策略自己的阈值三键                    → 开，阈值取自该键
+      5. 模型顶栏 live_volatility_threshold    → 开
+      6. enable_vol_reset=True 但无阈值        → 开，用引擎默认值（显式要功能才兜底）
+      7. 以上皆无                             → 关（not_configured）
+
+    旧版实现无论策略是否配置都会回落到 config.VOL_TRIGGER_THRESHOLD(0.06)，
+    导致监控页对所有策略显示同一个「风控阈值 6.00%」并按该值触发重置。
+    """
+    if params.get("enable_daily_vol_control") is False:
+        return False, None, None, "daily_switch_off"
+    if params.get("enable_vol_reset") is False:
+        return False, None, None, "vol_reset_switch_off"
+    target_vol = _float_param(params, "target_vol")
+    if target_vol is not None and target_vol <= 0:
+        return False, None, None, "target_vol_zero"
+
+    for key in ("vol_reset_threshold", "volatility_threshold", "daily_vol_trigger"):
+        val = _float_param(params, key)
+        if val is not None and val > 0:
+            return True, val, key, None
+
+    if live_volatility_threshold is not None:
+        try:
+            live_thr = float(live_volatility_threshold)
+        except (TypeError, ValueError):
+            live_thr = None
+        if live_thr is not None and live_thr > 0:
+            return True, live_thr, "live_volatility_threshold", None
+
+    if params.get("enable_vol_reset") is True:
+        return True, float(config.VOL_TRIGGER_THRESHOLD), "engine_default", None
+
+    return False, None, None, "not_configured"
+
+
 def _parse_int_list(val: Any) -> Optional[List[int]]:
     if val is None:
         return None
@@ -99,6 +163,23 @@ def _parse_int_list(val: Any) -> Optional[List[int]]:
         return [int(float(val))]
     except (TypeError, ValueError):
         return None
+
+
+def _resolve_calendar_source(params: Dict[str, Any]) -> str:
+    """系统策略逐日推演日历口径恒为 "prices"（所选资产价格日期并集）.
+
+    trade_dates（Mongo 交易日历集合）仅研究员策略 sharpe_18/hybrid_12 使用，
+    由 _build_rt_from_researcher 显式声明；系统策略不再读取 calendar_source
+    参数，历史模型里残留的 calendar_source=trade_dates 一律忽略，使监控轴与
+    回测轴（DataFeed.prices.index）同源。
+    """
+    raw = params.get("calendar_source")
+    if raw is not None and str(raw).strip().lower() == "trade_dates":
+        logger.info(
+            "系统策略忽略历史参数 calendar_source=trade_dates，统一改用资产价格"
+            "日历（并集）；trade_dates 仅研究员策略 sharpe_18/hybrid_12 生效"
+        )
+    return "prices"
 
 
 def _overlay_selection_params_from_model(model: Any, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -335,6 +416,8 @@ def resolve_weight_cap_for_asset(asset_key: str, asset_names: Optional[Dict[str,
 
 
 def resolve_trading_cost_for_asset(asset_key: str, asset_names: Optional[Dict[str, str]] = None) -> float:
+    # 历史费率解析：通用监控已改为 gross NAV 口径（portfolio_tracker 不再调用），
+    # 保留供研究员策略对照与将来按资产配置费率时参考。
     # 合并全局 + 夏普率交易费率表
     merged = dict(config.TRADING_COST)
     merged.update(config.SHARPE_TRADING_COST)
@@ -346,6 +429,7 @@ def resolve_trading_cost_for_asset(asset_key: str, asset_names: Optional[Dict[st
 
 
 def resolve_replication_cost_for_asset(asset_key: str, asset_names: Optional[Dict[str, str]] = None) -> float:
+    # 历史费率解析：通用监控已改为 gross NAV 口径（portfolio_tracker 不再调用）。
     # 合并全局 + 夏普率复制费率表
     merged = dict(config.REPLICATION_COST)
     merged.update(config.SHARPE_REPLICATION_COST)
@@ -365,20 +449,17 @@ def resolve_asset_currency_for_monitor(asset_key: str, asset_names: Optional[Dic
 
 
 def _merge_weight_caps(asset_list: List[str], params: Dict[str, Any], asset_names: Optional[Dict[str, str]] = None) -> Dict[str, float]:
+    """全局基准上限叠加模型配置的资产权重约束.
+
+    模型侧取值口径见 :func:`app.allocation.runtime_params.resolve_weight_caps`
+    （现名 ``weight_caps`` 优先、为空时回退历史名 ``max_weight_dict``，
+    JSON 字符串同样解析），与回测门禁、Pipeline 后处理同源；
+    不在资产池内的键忽略。
+    """
     caps = {a: resolve_weight_cap_for_asset(a, asset_names=asset_names) for a in asset_list}
-    raw = params.get("weight_caps", params.get("max_weight_dict"))
-    if isinstance(raw, str):
-        raw = _parse_json_if_string(raw)
-    if not isinstance(raw, dict):
-        return caps
-    for key, val in raw.items():
-        try:
-            w = float(val)
-        except (TypeError, ValueError):
-            continue
-        ks = str(key).strip()
-        if ks in caps:
-            caps[ks] = w
+    for code, weight in resolve_weight_caps(params).items():
+        if code in caps:
+            caps[code] = weight
     return caps
 
 
@@ -391,6 +472,9 @@ def legacy_runtime() -> MonitorRuntimeConfig:
         weight_caps={k: float(v) for k, v in config.WEIGHT_CAPS.items()},
         risk_budget_both=0.25,
         risk_budget_single=0.125,
+        # 无策略上下文时按全局基准运行，波动率风控生效
+        vol_control_enabled=True,
+        vol_threshold_source="global_config",
     )
 
 
@@ -483,13 +567,17 @@ def monitor_runtime_from_snapshot(
     if target_vol is None:
         target_vol = float(config.TARGET_VOL)
 
-    # 优先使用合并后 parameters 中的重置阈值（含当前模型编辑结果），再回退顶栏 live_volatility_threshold
-    vol_trigger = _float_param(params, "vol_reset_threshold")
+    # 波动率风控的启用开关与阈值由 resolve_vol_control 单点判定：
+    # 策略没配就地返回「未启用」，不再回落全局 0.06（旧行为会让前端
+    # 给每个策略显示同一个阈值，并让检测侧按该值静默重置）。
+    (
+        vol_control_enabled,
+        vol_trigger,
+        vol_threshold_source,
+        vol_control_reason,
+    ) = resolve_vol_control(params, live_volatility_threshold)
     if vol_trigger is None:
-        vol_trigger = _float_param(params, "volatility_threshold")
-    if vol_trigger is None and live_volatility_threshold is not None:
-        vol_trigger = float(live_volatility_threshold)
-    if vol_trigger is None:
+        # 未启用时仅作结构占位，触发判定与前端展示都以开关为准，不会读到此值
         vol_trigger = float(config.VOL_TRIGGER_THRESHOLD)
 
     # 优先读取策略模型保存的 max_leverage（前端/后端强制固化写入），
@@ -508,6 +596,7 @@ def monitor_runtime_from_snapshot(
     weight_caps = _merge_weight_caps(asset_list, params, asset_names=asset_names)
 
     mw = _resolve_selection_windows_from_params(params)
+    calendar_source = _resolve_calendar_source(params)
 
     tc = str(snap.get("template_code") or "").strip().lower()
     sel_type = str(snap.get("selector_type") or "").strip().lower() or None
@@ -540,7 +629,12 @@ def monitor_runtime_from_snapshot(
             template_code=tc or "manual_allocation",
             selector_type=sel_type,
             strategy_params={},
+            vol_reset_policy=parse_declared_vol_reset_policy(snap.get("vol_reset_policy")),
             asset_names=asset_names,
+            calendar_source=calendar_source,
+            # 主观配置模板按预设日调仓，不涉及波动率风控
+            vol_control_enabled=False,
+            vol_control_reason="manual_allocation_mode",
         )
 
     # 通用路径：所有其他策略（包括 etf_cycle_rotation、risk_parity 等）
@@ -570,29 +664,48 @@ def monitor_runtime_from_snapshot(
         template_code=tc or "vol_scaled_budget",
         selector_type=sel_type,
         strategy_params=strategy_params,
+        vol_reset_policy=parse_declared_vol_reset_policy(snap.get("vol_reset_policy")),
         asset_names=asset_names,
+        calendar_source=calendar_source,
+        vol_control_enabled=vol_control_enabled,
+        vol_threshold_source=vol_threshold_source,
+        vol_control_reason=vol_control_reason,
     )
 
 
 def monitor_runtime_from_model(model: Any) -> Optional[MonitorRuntimeConfig]:
     """
     从 StrategyModel 构建运行时配置。
-    未实盘发布、无有效快照时返回 None（调用方使用 legacy_runtime）。
+
+    实盘监控只读 live_snapshot（发布冻结内容的副本），不再用当前文档参数覆盖，
+    确保「重新发布 → 再实盘发布」后下游一次切换到新逻辑。
+    未实盘发布、无有效快照时返回 None；快照缺资产时直接报错，不回退全局基准。
     """
     if not getattr(model, "live_publish_enabled", False):
         return None
     snap = getattr(model, "live_snapshot", None) or {}
-    cur_codes = getattr(model, "asset_codes", None)
-    codes_list = normalize_strategy_asset_codes(cur_codes)
-    # 从模型获取 code→name 映射，优先使用模型配置的资产名称
-    an = getattr(model, "asset_names", None)
+    if not isinstance(snap, dict) or not snap:
+        return None
+
+    snap_params = _normalize_parameters(snap.get("parameters") or {})
+    codes_list = normalize_strategy_asset_codes(snap.get("asset_codes")) or normalize_strategy_asset_codes(
+        snap_params.get("monitor_asset_codes")
+    )
+    if not codes_list:
+        raise ValueError(
+            f"策略「{getattr(model, 'name', '')}」实盘快照缺少资产列表，请重新发布后实盘发布"
+        )
+
+    an = snap.get("asset_names")
+    if not isinstance(an, dict) or not an:
+        an = getattr(model, "asset_names", None)
     asset_names = dict(an) if isinstance(an, dict) and an else None
     return monitor_runtime_from_snapshot(
-        snap if isinstance(snap, dict) else {},
+        snap,
         getattr(model, "live_volatility_threshold", None),
-        current_parameters=getattr(model, "parameters", None),
-        current_asset_codes=codes_list,
-        model_for_selection=model,
+        current_parameters=None,
+        current_asset_codes=None,
+        model_for_selection=None,
         asset_names=asset_names,
     )
 
@@ -830,7 +943,12 @@ def live_effective_structured_params(
 
     out: Dict[str, Any] = {
         "target_vol_pct": round(float(rt.target_vol) * 100, 2),
-        "vol_reset_threshold_pct": round(float(rt.vol_trigger_threshold) * 100, 2),
+        # 未启用波动率风控时阈值只是结构占位值，不对外输出（否则前端会展示
+        # 一个策略从未配过的 6.00%）
+        "vol_reset_threshold_pct": (
+            round(float(rt.vol_trigger_threshold) * 100, 2)
+            if getattr(rt, "vol_control_enabled", True) else None
+        ),
         "max_total_leverage": round(float(rt.max_leverage), 4),
         "asset_classes": classes,
     }
@@ -911,9 +1029,14 @@ def live_effective_display_bundle(
             f"主观配置 · 总仓位≤100% · {cls_part} · 底层：{tail} · 预设调仓{n_adj}日"
         )
         return summary, assets
+    vol_part = (
+        f"重置阈值{rt.vol_trigger_threshold * 100:.1f}% "
+        if getattr(rt, "vol_control_enabled", True)
+        else "波动率重置未启用 "
+    )
     summary = (
         f"目标波动{rt.target_vol * 100:.1f}% "
-        f"重置阈值{rt.vol_trigger_threshold * 100:.1f}% "
+        f"{vol_part}"
         f"· {cls_part} · 底层：{tail}"
     )
     return summary, assets

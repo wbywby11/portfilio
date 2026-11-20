@@ -18,7 +18,8 @@
         <el-form-item label="状态">
           <el-select v-model="searchForm.status" placeholder="请选择" clearable style="width: 120px;">
             <el-option label="草稿" value="草稿"></el-option>
-            <el-option label="已发布" value="已发布"></el-option>
+            <el-option label="发布" value="发布"></el-option>
+            <el-option label="实盘" value="实盘"></el-option>
             <el-option label="已归档" value="已归档"></el-option>
           </el-select>
         </el-form-item>
@@ -45,18 +46,34 @@
         border
         stripe
         height="600"
+        :scroll-x="{enabled: true, gt: 0}"
         :scroll-y="{enabled: true, gt: 0}"
         show-overflow="title"
       >
-        <vxe-column field="name" title="策略名称" min-width="180" show-overflow="title"></vxe-column>
-        <vxe-column field="template_code" title="所用模板" width="140">
+        <vxe-column field="name" title="策略名称" min-width="150" show-overflow="title"></vxe-column>
+        <vxe-column field="template_code" title="所用模板" width="120">
           <template #default="{ row }">
             <el-tag size="small">
               {{ row.template_name || row.template_code }}
             </el-tag>
           </template>
         </vxe-column>
-        <vxe-column title="年化收益率" width="95" align="right">
+        <vxe-column field="status" title="状态" width="90" align="center">
+          <template #default="{ row }">
+            <el-tooltip :content="getStatusHint(row)" placement="top" append-to-body>
+              <el-tag :type="getStatusType(row)" size="small">
+                {{ getStatusLabel(row) }}
+              </el-tag>
+            </el-tooltip>
+          </template>
+        </vxe-column>
+        <vxe-column title="发布版本" width="90" align="center">
+          <template #default="{ row }">
+            <span v-if="row.published_version" style="font-weight: 600;">v{{ row.published_version }}</span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </vxe-column>
+        <vxe-column title="年化收益率（260日）" width="130" align="right">
           <template #default="{ row }">
             <span v-if="row.latest_backtest_summary" :style="{color: (row.latest_backtest_summary.annual_return||0) >= 0 ? '#f56c6c' : '#67c23a'}">
               {{ formatPct(row.latest_backtest_summary.annual_return) }}
@@ -64,17 +81,35 @@
             <span v-else style="color:#c0c4cc">—</span>
           </template>
         </vxe-column>
-        <vxe-column title="年化波动率" width="95" align="right">
+        <vxe-column title="年化收益率（365日）" width="130" align="right">
+          <template #default="{ row }">
+            <span v-if="row.latest_backtest_summary">{{ formatPct(row.latest_backtest_summary.annual_return_365) }}</span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </vxe-column>
+        <vxe-column title="年化波动率（260日）" width="130" align="right">
           <template #default="{ row }">
             <span v-if="row.latest_backtest_summary">{{ formatPct(row.latest_backtest_summary.annual_vol) }}</span>
             <span v-else style="color:#c0c4cc">—</span>
           </template>
         </vxe-column>
-        <vxe-column title="夏普率" width="75" align="right">
+        <vxe-column title="年化波动率（365日）" width="130" align="right">
+          <template #default="{ row }">
+            <span v-if="row.latest_backtest_summary">{{ formatPct(row.latest_backtest_summary.annual_vol_365) }}</span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </vxe-column>
+        <vxe-column title="夏普率（260日）" width="110" align="right">
           <template #default="{ row }">
             <span v-if="row.latest_backtest_summary" :style="{color: (row.latest_backtest_summary.sharpe||0) >= 1 ? '#f56c6c' : (row.latest_backtest_summary.sharpe||0) >= 0 ? '#e6a23c' : '#67c23a', fontWeight: 600}">
               {{ formatNum(row.latest_backtest_summary.sharpe) }}
             </span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </vxe-column>
+        <vxe-column title="夏普率（365日）" width="110" align="right">
+          <template #default="{ row }">
+            <span v-if="row.latest_backtest_summary">{{ formatNum(row.latest_backtest_summary.sharpe_365) }}</span>
             <span v-else style="color:#c0c4cc">—</span>
           </template>
         </vxe-column>
@@ -92,20 +127,6 @@
               {{ formatDateShort(row.latest_backtest_summary.start_date) }} ~ {{ formatDateShort(row.latest_backtest_summary.end_date) }}
             </span>
             <span v-else style="color:#c0c4cc">—</span>
-          </template>
-        </vxe-column>
-        <vxe-column field="status" title="状态" width="80">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
-              {{ getStatusLabel(row.status) }}
-            </el-tag>
-          </template>
-        </vxe-column>
-        <vxe-column field="live_publish_enabled" title="实盘" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.live_publish_enabled ? 'success' : 'info'" size="small">
-              {{ row.live_publish_enabled ? '已发布' : '未发布' }}
-            </el-tag>
           </template>
         </vxe-column>
         <vxe-column field="asset_codes" title="关联资产" width="90">
@@ -127,21 +148,56 @@
             </el-popover>
           </template>
         </vxe-column>
-        <vxe-column title="操作" width="150" fixed="right">
+        <vxe-column title="操作" width="270" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button type="text" size="small" @click="handleView(row)">查看</el-button>
-            <el-button type="text" size="small" @click="handleEdit(row)">编辑</el-button>
-            <el-dropdown trigger="click" @command="cmd => handleRowCommand(cmd, row)">
-              <el-button type="text" size="small">
-                更多<i class="el-icon-arrow-down el-icon--right"></i>
-              </el-button>
-              <el-dropdown-menu slot="dropdown">
-                <el-dropdown-item command="publish" :disabled="row.status === '已发布' || row.status === 'published' || isRowArchived(row)">发布</el-dropdown-item>
-                <el-dropdown-item command="livePublish" :disabled="!canRowLivePublish(row)">实盘发布</el-dropdown-item>
-                <el-dropdown-item command="liveUnpublish" :disabled="!row.live_publish_enabled || isRowArchived(row)">取消实盘</el-dropdown-item>
-                <el-dropdown-item command="delete" divided style="color: #f56c6c;">删除</el-dropdown-item>
-              </el-dropdown-menu>
-            </el-dropdown>
+            <div class="row-actions">
+              <el-button size="mini" type="text" @click.stop="handleView(row)">查看</el-button>
+              <el-tooltip
+                :content="isRowArchived(row) ? '已归档，不可编辑' : '已发布，配置已冻结；请先取消发布再编辑'"
+                :disabled="!isRowPublished(row) && !isRowArchived(row)"
+                placement="top"
+              >
+                <span>
+                  <el-button
+                    size="mini"
+                    type="text"
+                    :disabled="isRowPublished(row) || isRowArchived(row)"
+                    @click.stop="handleEdit(row)"
+                  >编辑</el-button>
+                </span>
+              </el-tooltip>
+              <el-button
+                v-if="isRowPublished(row)"
+                size="mini"
+                type="text"
+                class="warn-btn"
+                :disabled="!canRowUnpublish(row)"
+                @click.stop="handleUnpublishRow(row)"
+              >取消发布</el-button>
+              <el-button
+                v-else
+                size="mini"
+                type="text"
+                :disabled="!canRowPublish(row)"
+                @click.stop="handlePublish(row)"
+              >发布</el-button>
+              <el-button
+                v-if="row.live_publish_enabled"
+                size="mini"
+                type="text"
+                class="warn-btn"
+                :disabled="!canRowLiveUnpublish(row)"
+                @click.stop="handleLiveUnpublishRow(row)"
+              >取消实盘</el-button>
+              <el-button
+                v-else
+                size="mini"
+                type="text"
+                :disabled="!canRowLivePublish(row)"
+                @click.stop="handleLivePublishRow(row)"
+              >实盘发布</el-button>
+              <el-button size="mini" type="text" class="danger-btn" @click.stop="handleDelete(row)">删除</el-button>
+            </div>
           </template>
         </vxe-column>
       </vxe-table>
@@ -218,9 +274,7 @@ export default {
       currentModelId: '',
       detailDialogVisible: false,
       formDialogVisible: false,
-      isEdit: false,
-      liveOpRowId: null,
-      liveOpKind: ''
+      isEdit: false
     };
   },
   created() {
@@ -238,12 +292,27 @@ export default {
     async fetchData() {
       this.loading = true;
       try {
+        // 合并后的「发布 / 实盘」在后端同属已发布状态，实盘与否由 live_publish_enabled 区分
+        const backendStatus = ['发布', '实盘'].includes(this.searchForm.status)
+          ? '已发布'
+          : this.searchForm.status;
         const res = await this.$store.dispatch('strategy/fetchStrategyModelList', {
-          status: this.searchForm.status,
+          status: backendStatus,
           template_code: this.searchForm.template_code
         });
-        this.tableData = res;
-        this.pagination.total = res.length;
+        let list = Array.isArray(res) ? res : [];
+        // 列表接口无名称参数，名称关键字在前端过滤
+        const keyword = (this.searchForm.name || '').trim();
+        if (keyword) {
+          list = list.filter(item => (item.name || '').includes(keyword));
+        }
+        if (this.searchForm.status === '发布') {
+          list = list.filter(item => !item.live_publish_enabled);
+        } else if (this.searchForm.status === '实盘') {
+          list = list.filter(item => item.live_publish_enabled);
+        }
+        this.tableData = list;
+        this.pagination.total = list.length;
       } catch (error) {
         this.$message.error('加载策略列表失败');
       } finally {
@@ -272,30 +341,28 @@ export default {
       this.detailDialogVisible = true;
     },
     handleEdit(row) {
+      if (this.isRowPublished(row)) {
+        this.$message.warning('策略已发布，配置已冻结；请先取消发布再编辑');
+        return;
+      }
       this.isEdit = true;
       this.currentModelId = row.id;
       this.formDialogVisible = true;
-    },
-    handleRowCommand(cmd, row) {
-      if (cmd === 'publish') this.handlePublish(row);
-      else if (cmd === 'livePublish') this.handleLivePublishRow(row);
-      else if (cmd === 'liveUnpublish') this.handleLiveUnpublishRow(row);
-      else if (cmd === 'delete') this.handleDelete(row);
     },
     handleFormSuccess() {
       this.formDialogVisible = false;
       this.fetchData();
     },
     async handlePublish(row) {
-      this.$confirm('确定要发布该策略模型吗？发布后策略将可以被其他模块使用。', '提示', {
-        confirmButtonText: '确定',
+      this.$confirm('确定要发布该策略模型吗？发布后模板、资产、参数、窗口、调仓频率将全部冻结，下游组合与回测均按此版本运行；如需修改必须先取消发布。', '发布', {
+        confirmButtonText: '确定发布',
         cancelButtonText: '取消',
         type: 'warning'
       }).then(async () => {
         try {
           this.loading = true;
           await this.$store.dispatch('strategy/publishModel', row.id);
-          this.$message.success('发布成功');
+          this.$message.success('发布成功，配置已冻结');
           // 刷新列表以更新状态
           await this.fetchData();
         } catch (error) {
@@ -318,6 +385,12 @@ export default {
     canRowLivePublish(row) {
       return this.isRowPublished(row) && !this.isRowArchived(row) && !row.live_publish_enabled;
     },
+    canRowLiveUnpublish(row) {
+      return !!row.live_publish_enabled && !this.isRowArchived(row);
+    },
+    canRowUnpublish(row) {
+      return this.isRowPublished(row) && !this.isRowArchived(row);
+    },
     liveListOperator() {
       return this.$store.getters['user/userName']
         || this.$store.state.user?.userInfo?.name
@@ -328,15 +401,13 @@ export default {
       if (!this.canRowLivePublish(row)) return;
       try {
         await this.$confirm(
-          '确认实盘发布「' + (row.name || row.id) + '」？次交易日生效；vol_scaled_budget + 混合动量策略可进入「日常监控」准入列表。',
+          '确认实盘发布「' + (row.name || row.id) + '」？实盘后可在日常监控展示，次交易日生效；vol_scaled_budget + 混合动量策略可进入「日常监控」准入列表。',
           '实盘发布',
           { type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消' }
         );
       } catch {
         return;
       }
-      this.liveOpRowId = row.id;
-      this.liveOpKind = 'publish';
       try {
         await this.$store.dispatch('strategy/livePublishModel', {
           modelId: row.id,
@@ -346,40 +417,61 @@ export default {
         await this.fetchData();
       } catch (error) {
         this.$message.error(error.response?.data?.detail || error.message || '实盘发布失败');
-      } finally {
-        this.liveOpRowId = null;
-        this.liveOpKind = '';
       }
     },
     async handleLiveUnpublishRow(row) {
-      if (!row.live_publish_enabled || this.isRowArchived(row)) return;
+      if (!this.canRowLiveUnpublish(row)) return;
       try {
         await this.$confirm(
-          '确认取消「' + (row.name || row.id) + '」的实盘发布？',
-          '取消实盘发布',
+          '确认取消「' + (row.name || row.id) + '」的实盘？取消后将从日常监控下架，历史数据与操作记录保留。',
+          '取消实盘',
           { type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消' }
         );
       } catch {
         return;
       }
-      this.liveOpRowId = row.id;
-      this.liveOpKind = 'unpublish';
       try {
         await this.$store.dispatch('strategy/liveUnpublishModel', {
           modelId: row.id,
           params: { source: 'strategy_model_list', operator: this.liveListOperator() }
         });
-        this.$message.success('已取消实盘发布');
+        this.$message.success('已取消实盘发布，监控已下架');
         await this.fetchData();
       } catch (error) {
         this.$message.error(error.response?.data?.detail || error.message || '操作失败');
-      } finally {
-        this.liveOpRowId = null;
-        this.liveOpKind = '';
       }
     },
+    async handleUnpublishRow(row) {
+      if (!this.canRowUnpublish(row)) return;
+      const liveHint = row.live_publish_enabled
+        ? '将先取消实盘并从日常监控下架；'
+        : '';
+      try {
+        await this.$confirm(
+          '确认取消发布「' + (row.name || row.id) + '」？' + liveHint +
+          '若正被实盘组合使用，需先取消组合实盘并调整成员；模型回到草稿可编辑，版本号与历史记录保留。',
+          '取消发布',
+          { type: 'warning', confirmButtonText: '确定取消发布', cancelButtonText: '保留发布' }
+        );
+      } catch {
+        return;
+      }
+      try {
+        await this.$store.dispatch('strategy/unpublishModel', {
+          modelId: row.id,
+          params: { source: 'strategy_model_list', operator: this.liveListOperator() }
+        });
+        this.$message.success('已取消发布，模型回到草稿');
+        await this.fetchData();
+      } catch (error) {
+        this.$message.error(error.response?.data?.detail || error.message || '取消发布失败');
+      }
+    },
+    canRowPublish(row) {
+      return !this.isRowPublished(row) && !this.isRowArchived(row);
+    },
     handleDelete(row) {
-      this.$confirm(`确定要删除策略 "${row.name}" 吗?`, '提示', {
+      this.$confirm(`确定要删除策略 "${row.name}" 吗？若正被实盘组合使用将无法删除，此操作不可撤销。`, '提示', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
@@ -389,7 +481,8 @@ export default {
           this.$message.success('删除成功');
           this.fetchData();
         } catch (error) {
-          this.$message.error('删除失败：' + (error.response?.data?.detail || error.message));
+          // 409 = 被实盘组合引用等业务拦截，直接展示后端提示，避免重复前缀
+          this.$message.error(error.response?.data?.detail || ('删除失败：' + (error.message || '未知错误')));
         }
       }).catch(() => {});
     },
@@ -401,35 +494,37 @@ export default {
       this.pagination.current = val;
       this.fetchData();
     },
-    getStatusType(status) {
+    // 状态合并：实盘 > 发布 > 已归档 > 草稿
+    getStatusValue(row) {
+      if (row.live_publish_enabled) return '实盘';
+      if (this.isRowPublished(row)) return '发布';
+      if (this.isRowArchived(row)) return '已归档';
+      return '草稿';
+    },
+    getStatusType(row) {
       const map = {
         '草稿': 'info',
-        '已发布': 'success',
-        '已归档': '',
-        // 兼容英文状态
-        'draft': 'info',
-        'published': 'success',
-        'archived': ''
+        '发布': '',
+        '实盘': 'success',
+        '已归档': 'warning'
       };
-      return map[status] || 'info';
+      const value = this.getStatusValue(row);
+      return Object.prototype.hasOwnProperty.call(map, value) ? map[value] : 'info';
     },
-    getStatusLabel(status) {
+    getStatusLabel(row) {
+      return this.getStatusValue(row);
+    },
+    getStatusHint(row) {
       const map = {
-        '草稿': '草稿',
-        '已发布': '已发布',
-        '已归档': '已归档',
-        // 兼容英文状态
-        'draft': '草稿',
-        'published': '已发布',
-        'archived': '已归档'
+        '草稿': '草稿：可自由编辑，尚不能用于组合',
+        '发布': '发布：配置已冻结，可被组合引用；修改需先取消发布，被实盘组合引用时需先解除引用',
+        '实盘': '实盘：已在日常监控展示；修改需先取消实盘再取消发布，被实盘组合引用时需先解除引用',
+        '已归档': '已归档：不再参与组合与监控'
       };
-      return map[status] || status;
-    },
-    formatDate(date) {
-      return date ? dayjs(date).format('YYYY-MM-DD HH:mm:ss') : '-';
+      return map[this.getStatusValue(row)] || '';
     },
     formatDateShort(date) {
-      return date ? dayjs(date).format('YYYY-MM-DD') : '-';
+      return date ? dayjs(date).format('YYYY-MM-DD') : '—';
     },
     formatPct(v) {
       if (v === null || v === undefined) return '—';
@@ -472,4 +567,28 @@ export default {
   margin-bottom: 20px;
   border-radius: 4px;
 }
+
+.danger-btn {
+  color: #f56c6c;
+}
+
+.warn-btn {
+  color: #e6a23c;
+}
+
+.warn-btn.is-disabled,
+.warn-btn.is-disabled:hover {
+  color: #c0c4cc;
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.row-actions ::v-deep .el-button + .el-button {
+  margin-left: 0;
+}
+
 </style>

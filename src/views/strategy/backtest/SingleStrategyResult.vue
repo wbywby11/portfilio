@@ -30,24 +30,33 @@
         </el-col>
         <el-col :span="8">
           <div class="metric-item">
-            <div class="metric-label">年化收益率</div>
+            <div class="metric-label">年化收益率（260日）</div>
             <div class="metric-value" :class="getReturnClass(result.annual_return)">
               {{ formatPercent(result.annual_return) }}
+            </div>
+            <div class="metric-sub">
+              年化收益率（365日）：{{ formatPercent(result.annual_return_365) }}
             </div>
           </div>
         </el-col>
         <el-col :span="8">
           <div class="metric-item">
-            <div class="metric-label">夏普比率</div>
+            <div class="metric-label">夏普比率（260日）</div>
             <div class="metric-value">{{ formatNumber(result.sharpe_ratio, 3) }}</div>
+            <div class="metric-sub">
+              夏普比率（365日）：{{ formatNumber(result.sharpe_ratio_365, 3) }}
+            </div>
           </div>
         </el-col>
       </el-row>
       <el-row :gutter="20" style="margin-top: 20px;">
         <el-col :span="8">
           <div class="metric-item">
-            <div class="metric-label">年化波动率</div>
+            <div class="metric-label">年化波动率（260日）</div>
             <div class="metric-value">{{ formatPercent(result.volatility) }}</div>
+            <div class="metric-sub">
+              年化波动率（365日）：{{ formatPercent(result.volatility_365) }}
+            </div>
           </div>
         </el-col>
         <el-col :span="8">
@@ -60,8 +69,11 @@
         </el-col>
         <el-col :span="8">
           <div class="metric-item">
-            <div class="metric-label">Calmar比率</div>
+            <div class="metric-label">Calmar比率（260日）</div>
             <div class="metric-value">{{ formatNumber(result.calmar_ratio, 3) }}</div>
+            <div class="metric-sub">
+              Calmar比率（365日）：{{ formatNumber(result.calmar_ratio_365, 3) }}
+            </div>
           </div>
         </el-col>
       </el-row>
@@ -132,14 +144,8 @@
       <div slot="header">
         <span>净值与回撤走势</span>
       </div>
-      <el-row :gutter="20">
-        <el-col :span="12">
-          <div :id="`nav-chart-${chartId}`" style="height: 400px; width: 100%;"></div>
-        </el-col>
-        <el-col :span="12">
-          <div :id="`drawdown-chart-${chartId}`" style="height: 400px; width: 100%;"></div>
-        </el-col>
-      </el-row>
+      <!-- 上下堆叠主副图：共享 X 轴 + axisPointer 联动，主图净值约 70%、副图回撤约 30% -->
+      <div :id="`nav-drawdown-chart-${chartId}`" style="height: 520px; width: 100%;"></div>
     </el-card>
 
     <!-- 持仓权重变化 -->
@@ -176,6 +182,62 @@
         <span style="color:#909399;">（图上仅显示圆点，悬停可查看当日详情）</span>
       </div>
       <div :id="`volatility-chart-${chartId}`" style="height: 400px; width: 100%;"></div>
+    </el-card>
+
+    <!-- 子策略绩效与成本（仅组合回测返回）：成本来自子策略真实成交 -->
+    <el-card shadow="never" style="margin-bottom: 20px;" v-if="subStrategyRows.length > 0">
+      <div slot="header">
+        <span>🧾 子策略绩效与成本</span>
+      </div>
+      <el-table :data="subStrategyRows" size="mini" border style="width: 100%;">
+        <el-table-column prop="name" label="子策略" min-width="140"></el-table-column>
+        <el-table-column label="配置权重" width="90" align="right">
+          <template slot-scope="{ row }">{{ formatPercent(row.weight) }}</template>
+        </el-table-column>
+        <el-table-column label="年化收益（260日）" width="130" align="right">
+          <template slot-scope="{ row }">
+            <span :class="getReturnClass(row.annual_return)">{{ formatPercent(row.annual_return) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="年化收益（365日）" width="130" align="right">
+          <template slot-scope="{ row }">{{ formatPercent(row.annual_return_365) }}</template>
+        </el-table-column>
+        <el-table-column label="年化波动（260日）" width="130" align="right">
+          <template slot-scope="{ row }">{{ formatPercent(row.annual_volatility) }}</template>
+        </el-table-column>
+        <el-table-column label="年化波动（365日）" width="130" align="right">
+          <template slot-scope="{ row }">{{ formatPercent(row.annual_volatility_365) }}</template>
+        </el-table-column>
+        <el-table-column label="夏普（260日）" width="105" align="right">
+          <template slot-scope="{ row }">{{ formatNumber(row.sharpe_ratio, 2) }}</template>
+        </el-table-column>
+        <el-table-column label="夏普（365日）" width="105" align="right">
+          <template slot-scope="{ row }">{{ formatNumber(row.sharpe_ratio_365, 2) }}</template>
+        </el-table-column>
+        <el-table-column label="最大回撤" width="100" align="right">
+          <template slot-scope="{ row }">
+            <span :class="getReturnClass(row.max_drawdown)">{{ formatPercent(row.max_drawdown) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="成交笔数" width="90" align="right">
+          <template slot-scope="{ row }">{{ row.n_trades }}</template>
+        </el-table-column>
+        <el-table-column label="手续费" width="110" align="right">
+          <template slot-scope="{ row }">￥{{ formatCurrency(row.total_commission) }}</template>
+        </el-table-column>
+        <el-table-column label="滑点成本" width="110" align="right">
+          <template slot-scope="{ row }">￥{{ formatCurrency(row.total_slippage) }}</template>
+        </el-table-column>
+        <el-table-column label="累计换手率" width="110" align="right">
+          <template slot-scope="{ row }">
+            {{ row.turnover != null ? formatPercent(row.turnover) : '-' }}
+          </template>
+        </el-table-column>
+      </el-table>
+      <div style="margin-top: 10px; font-size: 12px; color: #909399; line-height: 1.8;">
+        子策略成本按其自身真实成交统计；组合层成本按合成资产再平衡成交额统计（见上方「交易成本分析」）。
+        成交明细为子策略真实交易，两者口径不同，不可直接相加。
+      </div>
     </el-card>
 
     <!-- 子策略归因（仅组合回测返回）：逐日贡献精确可加，Σ贡献 + 残差 = 组合总收益 -->
@@ -311,7 +373,7 @@
 import * as echarts from 'echarts';
 import { debounce } from 'lodash';
 import { updateBacktestRemark } from '@/api/strategy';
-import { downsampleParallel } from '@/utils/downsample';
+import { downsampleMultiSeries } from '@/utils/downsample';
 
 export default {
   name: 'SingleStrategyResult',
@@ -483,6 +545,26 @@ export default {
       const initialValue = this.result.snapshots[0].total_value || 1000000;
       return this.totalCost / initialValue;
     },
+    /** 子策略绩效与成本（仅组合回测返回） */
+    subStrategyRows() {
+      const list = this.result && this.result.sub_strategies;
+      if (!Array.isArray(list) || list.length === 0) return [];
+      return list.map(s => ({
+        name: s.name,
+        weight: s.weight,
+        annual_return: s.annual_return,
+        annual_volatility: s.annual_volatility,
+        sharpe_ratio: s.sharpe_ratio,
+        max_drawdown: s.max_drawdown,
+        annual_return_365: s.annual_return_365,
+        annual_volatility_365: s.annual_volatility_365,
+        sharpe_ratio_365: s.sharpe_ratio_365,
+        n_trades: s.n_trades != null ? s.n_trades : 0,
+        total_commission: s.total_commission != null ? s.total_commission : 0,
+        total_slippage: s.total_slippage != null ? s.total_slippage : 0,
+        turnover: s.turnover != null ? s.turnover : null
+      }));
+    },
     /** 子策略收益归因（仅组合回测返回） */
     attribution() {
       return (this.result && this.result.attribution) ? this.result.attribution : {};
@@ -517,8 +599,7 @@ export default {
       if (this.navData && this.navData.length > 0) {
         this.$nextTick(() => {
           setTimeout(() => {
-            this.initNavChart();
-            this.initDrawdownChart();
+            this.initNavDrawdownChart();
           }, 100);
         });
       }
@@ -623,14 +704,13 @@ export default {
     },
     initAllCharts() {
       this.$nextTick(() => {
-        const navEl = document.getElementById(`nav-chart-${this.chartId}`);
+        const navEl = document.getElementById(`nav-drawdown-chart-${this.chartId}`);
         const hasSize = navEl && navEl.offsetWidth > 0 && navEl.offsetHeight > 0;
         if (!hasSize) return;
         // 分帧渲染：逐个 requestAnimationFrame 降低主线程阻塞
         const tasks = [];
         if (this.navData && this.navData.length > 0) {
-          tasks.push(() => this.initNavChart());
-          tasks.push(() => this.initDrawdownChart());
+          tasks.push(() => this.initNavDrawdownChart());
         }
         if (this.positionData && this.positionData.length > 0) {
           tasks.push(() => this.initPositionChart());
@@ -648,185 +728,170 @@ export default {
         runNext(0);
       });
     },
-    initNavChart() {
-      const chartDom = document.getElementById(`nav-chart-${this.chartId}`);
+    /**
+     * 净值与回撤：上下堆叠主副图（共享 X 轴 + axisPointer 联动）
+     * - 主图：净值曲线（左 Y 轴 3 位小数，隐藏 X 轴刻度）
+     * - 副图：回撤面积图（Y 轴 max=0 负向填充，百分比刻度）
+     * - tooltip：trigger='axis' 合并展示日期 / 净值 / 回撤
+     */
+    initNavDrawdownChart() {
+      const chartDom = document.getElementById(`nav-drawdown-chart-${this.chartId}`);
       if (!chartDom || chartDom.offsetWidth === 0) return;
-      const key = `nav-chart-${this.chartId}`;
+      const key = `nav-drawdown-chart-${this.chartId}`;
       let myChart = this.chartInstances[key];
       if (!myChart || myChart.isDisposed()) {
         myChart = echarts.init(chartDom);
         this.chartInstances[key] = myChart;
       }
-      
-      let dates = this.navData.map(d => d.date);
-      let navs = this.navData.map(d => d.nav);
-      let drawdowns = this.navData.map(d => (d.drawdown || 0) * 100);
 
-      // 降采样：限制最多 500 个数据点，避免大数据量时 ECharts 卡顿
-      const sampledNav = downsampleParallel(dates, navs, 500);
-      dates = sampledNav.dates;
-      navs = sampledNav.values;
-      const sampledDD = downsampleParallel(dates, drawdowns, 500);
-      drawdowns = sampledDD.values;
+      // 降采样：净值与回撤共用同一批索引，保证上下两图 X 轴严格对齐
+      const sampled = downsampleMultiSeries(
+        this.navData.map(d => d.date),
+        {
+          nav: this.navData.map(d => d.nav),
+          drawdown: this.navData.map(d => (d.drawdown || 0) * 100)
+        },
+        500
+      );
+      const dates = sampled.dates;
+      const navs = sampled.series.nav;
+      const drawdowns = sampled.series.drawdown;
+
+      // 两个 grid 各自只带自己的 series，合并 tooltip 需按 dataIndex 补齐另一侧数值
+      const navMarker = '<span style="display:inline-block;margin-right:5px;border-radius:10px;width:10px;height:10px;background-color:#409EFF;"></span>';
+      const ddMarker = '<span style="display:inline-block;margin-right:5px;border-radius:10px;width:10px;height:10px;background-color:#F56C6C;"></span>';
 
       const option = {
         tooltip: {
           trigger: 'axis',
+          confine: true,
           axisPointer: {
-            type: 'cross'
+            type: 'cross',
+            crossStyle: { color: '#909399' },
+            label: { backgroundColor: '#606266' }
           },
+          // 两个 grid 各自只带自己的 series，按 dataIndex 补齐另一侧数值，合并成一个 tooltip
           formatter: (params) => {
-            let html = `${params[0].axisValue}<br />`;
-            params.forEach(p => {
-              if (p.seriesName === '净值') {
-                html += `${p.marker} ${p.seriesName}: ${p.value != null ? p.value.toFixed(4) : '-'}<br />`;
-              } else if (p.seriesName === '回撤') {
-                html += `${p.marker} ${p.seriesName}: ${p.value != null ? p.value.toFixed(2) + '%' : '-'}<br />`;
-              }
-            });
-            return html;
+            if (!params || !params.length) return '';
+            const idx = params[0].dataIndex;
+            const date = dates[idx] != null ? dates[idx] : params[0].axisValue;
+            const nav = navs[idx];
+            const dd = drawdowns[idx];
+            return `${date}<br />`
+              + `${navMarker}净值: ${nav != null ? Number(nav).toFixed(4) : '-'}<br />`
+              + `${ddMarker}回撤: ${dd != null ? Number(dd).toFixed(2) + '%' : '-'}`;
           }
         },
+        // 图例统一放在容器右上角
         legend: {
-          data: ['净值', '回撤']
+          data: ['净值', '回撤'],
+          top: 0,
+          right: 8,
+          itemWidth: 14,
+          itemHeight: 10,
+          textStyle: { color: '#606266', fontSize: 12 }
         },
-        grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '3%',
-          containLabel: true
+        // 上下两图 X 轴联动：悬浮任一图，十字准星同步
+        axisPointer: {
+          link: [{ xAxisIndex: 'all' }]
         },
-        xAxis: {
-          type: 'category',
-          boundaryGap: false,
-          data: dates
-        },
+        grid: [
+          // 主图（净值）：约 70% 绘图高度
+          { top: 36, left: 64, right: 32, height: '52%' },
+          // 副图（回撤）：约 30% 绘图高度
+          { top: '67%', left: 64, right: 32, height: '21%' }
+        ],
+        xAxis: [
+          {
+            type: 'category',
+            gridIndex: 0,
+            data: dates,
+            boundaryGap: false,
+            axisLine: { lineStyle: { color: '#DCDFE6' } },
+            axisTick: { show: false },
+            // 主图隐藏刻度标签，日期只在副图显示
+            axisLabel: { show: false },
+            axisPointer: { label: { show: false } }
+          },
+          {
+            type: 'category',
+            gridIndex: 1,
+            data: dates,
+            boundaryGap: false,
+            axisLine: { lineStyle: { color: '#DCDFE6' } },
+            axisTick: { show: false },
+            axisLabel: { color: '#909399', fontSize: 11 }
+          }
+        ],
         yAxis: [
           {
             type: 'value',
+            gridIndex: 0,
             name: '净值',
-            position: 'left',
-            scale: true,
-            axisLabel: {
-              formatter: '{value}'
-            }
+            nameTextStyle: { color: '#909399', fontSize: 12 },
+            // 保证 y=1.0 基准线始终落在可视范围内
+            min: (value) => {
+              const lo = Math.min(value.min, 1.0);
+              const span = Math.max(value.max - lo, 0.01);
+              return Number((lo - span * 0.06).toFixed(4));
+            },
+            axisLine: { show: false },
+            axisTick: { show: false },
+            axisLabel: { color: '#909399', fontSize: 11, formatter: (v) => Number(v).toFixed(3) },
+            splitLine: { lineStyle: { color: '#F0F2F5', type: 'dashed' } }
           },
           {
             type: 'value',
+            gridIndex: 1,
             name: '回撤',
-            position: 'right',
-            axisLabel: {
-              formatter: '{value}%'
-            }
+            nameTextStyle: { color: '#909399', fontSize: 12 },
+            // 回撤恒为负值：顶部固定 0 轴，面积自 0 向下填充；最小值按数据自适应
+            max: 0,
+            min: (value) => {
+              const lo = Math.min(value.min || 0, 0);
+              if (lo === 0) return -1;
+              return Number((lo - Math.max(Math.abs(lo) * 0.15, 0.1)).toFixed(2));
+            },
+            axisLine: { show: false },
+            axisTick: { show: false },
+            axisLabel: { color: '#909399', fontSize: 11, formatter: (v) => `${Number(v).toFixed(2)}%` },
+            splitLine: { lineStyle: { color: '#F0F2F5', type: 'dashed' } }
           }
         ],
         series: [
           {
             name: '净值',
             type: 'line',
+            xAxisIndex: 0,
             yAxisIndex: 0,
             data: navs,
             smooth: true,
-            itemStyle: {
-              color: '#409EFF'
-            },
+            showSymbol: false,
+            symbol: 'emptyCircle',
+            symbolSize: 6,
+            lineStyle: { width: 2, color: '#409EFF' },
+            itemStyle: { color: '#409EFF' },
             markLine: {
-              data: [
-                { yAxis: 1.0, name: '基准线', lineStyle: { color: '#909399', type: 'dashed' } }
-              ]
+              silent: true,
+              symbol: 'none',
+              label: { show: false },
+              lineStyle: { color: '#999', type: 'dashed', width: 1 },
+              data: [{ yAxis: 1.0 }]
             }
           },
           {
             name: '回撤',
             type: 'line',
+            xAxisIndex: 1,
             yAxisIndex: 1,
             data: drawdowns,
-            smooth: true,
-            lineStyle: { width: 1.5 },
-            areaStyle: {
-              color: {
-                type: 'linear',
-                x: 0, y: 0, x2: 0, y2: 1,
-                colorStops: [
-                  { offset: 0, color: 'rgba(245, 108, 108, 0.3)' },
-                  { offset: 1, color: 'rgba(245, 108, 108, 0.02)' }
-                ]
-              }
-            },
-            itemStyle: {
-              color: '#F56C6C'
-            }
-          }
-        ]
-      };
-
-      myChart.setOption(option, true);
-      
-      // 延迟resize，确保容器有正确的尺寸
-      setTimeout(() => {
-        myChart.resize();
-      }, 100);
-    },
-    initDrawdownChart() {
-      const chartDom = document.getElementById(`drawdown-chart-${this.chartId}`);
-      if (!chartDom || chartDom.offsetWidth === 0) return;
-      const key = `drawdown-chart-${this.chartId}`;
-      let myChart = this.chartInstances[key];
-      if (!myChart || myChart.isDisposed()) {
-        myChart = echarts.init(chartDom);
-        this.chartInstances[key] = myChart;
-      }
-      
-      let dates = this.navData.map(d => d.date);
-      let drawdowns = this.navData.map(d => (d.drawdown || 0) * 100);
-
-      // 降采样：限制最多 500 个数据点
-      const sampledDD = downsampleParallel(dates, drawdowns, 500);
-      dates = sampledDD.dates;
-      drawdowns = sampledDD.values;
-
-      const option = {
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: {
-            type: 'cross'
-          },
-          formatter: (params) => {
-            const param = params[0];
-            return `${param.name}<br/>回撤: ${param.value.toFixed(2)}%`;
-          }
-        },
-        title: {
-          text: '回撤走势',
-          left: 'center',
-          textStyle: {
-            fontSize: 14
-          }
-        },
-        grid: {
-          left: '3%',
-          right: '4%',
-          bottom: '3%',
-          containLabel: true
-        },
-        xAxis: {
-          type: 'category',
-          boundaryGap: false,
-          data: dates
-        },
-        yAxis: {
-          type: 'value',
-          name: '回撤 (%)',
-          axisLabel: {
-            formatter: '{value}%'
-          }
-        },
-        series: [
-          {
-            name: '回撤',
-            type: 'line',
-            data: drawdowns,
-            smooth: true,
+            // 面积图不做平滑，避免插值 overshoot 越过 0 轴
+            smooth: false,
+            showSymbol: false,
+            symbol: 'emptyCircle',
+            symbolSize: 6,
+            lineStyle: { width: 1, color: '#F56C6C' },
+            itemStyle: { color: '#F56C6C' },
             areaStyle: {
               color: {
                 type: 'linear',
@@ -835,20 +900,17 @@ export default {
                 x2: 0,
                 y2: 1,
                 colorStops: [
-                  { offset: 0, color: 'rgba(245, 108, 108, 0.3)' },
-                  { offset: 1, color: 'rgba(245, 108, 108, 0.1)' }
+                  { offset: 0, color: 'rgba(245, 108, 108, 0.2)' },
+                  { offset: 1, color: 'rgba(245, 108, 108, 0)' }
                 ]
               }
-            },
-            itemStyle: {
-              color: '#F56C6C'
             }
           }
         ]
       };
 
       myChart.setOption(option, true);
-      
+
       // 延迟resize，确保容器有正确的尺寸
       setTimeout(() => {
         myChart.resize();
@@ -1220,7 +1282,7 @@ export default {
       };
 
       myChart.setOption(option, true);
-      
+
       // 延迟resize，确保容器有正确的尺寸
       setTimeout(() => {
         myChart.resize();
@@ -1294,8 +1356,13 @@ export default {
   color: #67C23A;
 }
 
-[id^="nav-chart-"],
-[id^="drawdown-chart-"],
+.metric-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #909399;
+}
+
+[id^="nav-drawdown-chart-"],
 [id^="position-chart-"],
 [id^="volatility-chart-"] {
   width: 100%;

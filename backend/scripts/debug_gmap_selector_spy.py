@@ -74,7 +74,9 @@ async def main() -> None:
         initial_cash=10_000_000, commission_rate=0.0, slippage=0.0,
     )
     ms = MarketService()
-    data_feed = await DataFeed.from_market_service(ms, config, lookback_days=500)
+    data_feed = await DataFeed.from_market_service(
+        ms, config, lookback_days=500, strategy_type=model.template_code,
+    )
     print("DataFeed 价格矩阵:", data_feed.prices.shape,
           "范围:", data_feed.prices.index.min().date(), "~", data_feed.prices.index.max().date())
     strategy_service = await create_strategy_service_from_database(ms)

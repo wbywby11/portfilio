@@ -64,21 +64,42 @@
       <el-table :data="metricsData" border stripe>
         <el-table-column prop="thscode" label="资产代码" width="120" fixed></el-table-column>
         <el-table-column prop="name" label="资产名称" width="150" fixed></el-table-column>
-        <el-table-column prop="annual_return" label="年化收益率" width="120">
+        <el-table-column prop="annual_return" label="年化收益率（260日）" width="140">
           <template slot-scope="scope">
             <span :style="{color: scope.row.annual_return >= 0 ? '#67c23a' : '#f56c6c'}">
               {{ (scope.row.annual_return * 100).toFixed(2) }}%
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="annual_volatility" label="年化波动率" width="120">
+        <el-table-column prop="annual_return_365" label="年化收益率（365日）" width="140">
+          <template slot-scope="scope">
+            <span v-if="scope.row.annual_return_365 != null">
+              {{ (scope.row.annual_return_365 * 100).toFixed(2) }}%
+            </span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="annual_volatility" label="年化波动率（260日）" width="140">
           <template slot-scope="scope">
             {{ (scope.row.annual_volatility * 100).toFixed(2) }}%
           </template>
         </el-table-column>
-        <el-table-column prop="sharpe_ratio" label="夏普比率" width="110">
+        <el-table-column prop="annual_volatility_365" label="年化波动率（365日）" width="140">
+          <template slot-scope="scope">
+            <span v-if="scope.row.annual_volatility_365 != null">
+              {{ (scope.row.annual_volatility_365 * 100).toFixed(2) }}%
+            </span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="sharpe_ratio" label="夏普比率（260日）" width="125">
           <template slot-scope="scope">
             {{ scope.row.sharpe_ratio ? scope.row.sharpe_ratio.toFixed(3) : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="sharpe_ratio_365" label="夏普比率（365日）" width="125">
+          <template slot-scope="scope">
+            {{ scope.row.sharpe_ratio_365 != null ? scope.row.sharpe_ratio_365.toFixed(3) : '-' }}
           </template>
         </el-table-column>
         <el-table-column prop="max_drawdown" label="最大回撤" width="110">
@@ -88,9 +109,14 @@
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="calmar_ratio" label="卡玛比率" width="110">
+        <el-table-column prop="calmar_ratio" label="卡玛比率（260日）" width="125">
           <template slot-scope="scope">
             {{ scope.row.calmar_ratio ? scope.row.calmar_ratio.toFixed(3) : '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="calmar_ratio_365" label="卡玛比率（365日）" width="125">
+          <template slot-scope="scope">
+            {{ scope.row.calmar_ratio_365 != null ? scope.row.calmar_ratio_365.toFixed(3) : '-' }}
           </template>
         </el-table-column>
         <el-table-column prop="total_return" label="累计收益率" width="120">

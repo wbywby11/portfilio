@@ -44,25 +44,28 @@
           </div>
 
           <el-form-item label="策略模板" prop="template_code">
-            <el-select
-              v-model="form.template_code"
-              placeholder="请选择策略模板"
-              @change="handleTemplateChange"
-              style="width: 100%;"
-            >
-              <el-option
-                v-for="tpl in allocationTemplateList"
-                :key="tpl.code"
-                :label="`${tpl.code} - ${tpl.name}`"
-                :value="tpl.code"
+            <div class="field-row">
+              <el-select
+                v-model="form.template_code"
+                class="field-row__control"
+                placeholder="请选择策略模板"
+                @change="handleTemplateChange"
               >
-                <span style="float: left">{{ tpl.code }} - {{ tpl.name }}</span>
-                <span style="float: right; color: #8492a6; font-size: 13px">{{ tpl.description }}</span>
-              </el-option>
-            </el-select>
-            <el-tooltip content="选择资产配置策略，不同策略有不同的风险收益特征" placement="top">
-              <i class="el-icon-question" style="color: #909399; margin-left: 4px; cursor: help;"></i>
-            </el-tooltip>
+                <el-option
+                  v-for="tpl in allocationTemplateList"
+                  :key="tpl.code"
+                  :label="`${tpl.code} - ${tpl.name}`"
+                  :value="tpl.code"
+                ></el-option>
+              </el-select>
+              <el-tooltip content="选择资产配置策略，不同策略有不同的风险收益特征" placement="top">
+                <i class="el-icon-question field-row__icon"></i>
+              </el-tooltip>
+            </div>
+            <!-- 描述单独成行：塞进 option 会把下拉面板按内容宽度撑到弹窗之外 -->
+            <div v-if="currentTemplate && currentTemplate.description" class="template-desc">
+              {{ currentTemplate.description }}
+            </div>
           </el-form-item>
 
           <el-form-item label="选择资产" prop="asset_codes">
@@ -93,6 +96,18 @@
               >
                 {{ getAssetLabel(code) }}
               </el-tag>
+            </div>
+            <!-- 原型预设来源：应用即快照，标签后续变更不会自动同步 -->
+            <div v-if="form.preset_code" class="preset-source">
+              <i class="el-icon-collection-tag"></i>
+              <span>
+                来自预设 {{ presetSourceName }}
+                <template v-if="isPresetTagPool">（标签池，应用时快照）</template>
+                <template v-else>（应用时快照）</template>
+                ，标签后续变更不会自动同步
+              </span>
+              <el-tag v-if="presetModified" size="mini" type="warning" class="preset-source__flag">已调整</el-tag>
+              <el-tag v-if="presetOutdated" size="mini" type="info" class="preset-source__flag">基于旧版预设</el-tag>
             </div>
           </el-form-item>
 
@@ -132,8 +147,9 @@
           </el-form-item>
         </el-card>
 
-        <!-- 资产选择策略区域（子组件） -->
+        <!-- 资产选择策略区域（子组件）；打包独立策略的选样在策略包内，不渲染 -->
         <strategy-selection-card
+          v-if="!isStandaloneTemplate"
           :form="form"
           :selection-template-list="selectionTemplateList"
           :template-list="templateList"
@@ -142,8 +158,9 @@
           @reset-selector-params="resetSelectorParameters"
         />
 
-        <!-- 风险控制策略（子组件） -->
+        <!-- 风险控制策略（子组件）；打包独立策略的日度风控在策略包内，不渲染 -->
         <strategy-control-card
+          v-if="!isStandaloneTemplate"
           :form="form"
           :control-template-list="controlTemplateList"
           :template-list="templateList"
@@ -159,7 +176,10 @@
           :is-manual-allocation="isManualAllocationTemplate"
           :is-sharpe-risk-budget="isSharpeRiskBudgetTemplate"
           :is-risk-budget-target-vol="isRiskBudgetTargetVolTemplate"
+          :presets="presetList"
+          :preset-loading="presetApplying"
           @reset-params="resetParameters"
+          @apply-preset="previewPreset"
           @param-change="handleAllocatorParamChange"
         />
 
@@ -171,6 +191,57 @@
         </el-form-item>
       </el-form>
     </div>
+
+    <!-- 预设展开/校验结果：blocking 阻断应用，data 允许保存但禁用回测，warning 仅提示 -->
+    <el-dialog
+      title="预设校验结果"
+      :visible.sync="presetIssuesVisible"
+      width="680px"
+      append-to-body
+      @close="closePresetDialog"
+    >
+      <div v-if="pendingPreset" class="preset-dialog">
+        <div class="preset-dialog__summary">
+          <span class="preset-dialog__name">{{ pendingPreset.name }}</span>
+          <span class="preset-dialog__meta">
+            资产 {{ (pendingPreset.asset_codes || []).length }} 只 · 预设版本 {{ pendingPreset.preset_version }}
+          </span>
+        </div>
+
+        <div
+          v-for="section in presetIssueSections"
+          :key="section.level"
+          class="preset-issue-section"
+          :class="'is-' + section.level"
+        >
+          <div class="preset-issue-section__title">{{ section.title }}（{{ section.items.length }}）</div>
+          <div v-for="(issue, idx) in section.items" :key="section.level + idx" class="preset-issue">
+            <div class="preset-issue__msg">{{ issue.message }}</div>
+            <div v-if="issue.hint" class="preset-issue__hint">{{ issue.hint }}</div>
+            <div v-if="issue.assets && issue.assets.length" class="preset-issue__assets">
+              {{ issue.assets.join('、') }}
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!pendingPreset.issues || pendingPreset.issues.length === 0" class="preset-dialog__ok">
+          <i class="el-icon-circle-check"></i> 校验通过，可直接应用。
+        </div>
+
+        <div class="preset-dialog__note">
+          预设校验不包含单日跳变与价格非正检查，这两项在回测时由引擎校验。
+        </div>
+      </div>
+      <span slot="footer">
+        <el-button size="small" @click="closePresetDialog">取消</el-button>
+        <el-button
+          size="small"
+          type="primary"
+          :disabled="!pendingPreset || pendingPreset.applicable === false"
+          @click="applyPendingPreset"
+        >{{ pendingPreset && pendingPreset.applicable === false ? '存在阻断问题' : '应用' }}</el-button>
+      </span>
+    </el-dialog>
   </div>
 </template>
 
@@ -246,7 +317,12 @@ export default {
         selector_parameters: {},
         enable_control: false,
         controller_code: '',
-        controller_parameters: {}
+        controller_parameters: {},
+        // 原型预设来源（preset_version / preset_applied_at / snapshot 由后端写入）
+        preset_code: '',
+        preset_version: '',
+        preset_applied_at: null,
+        asset_selection_snapshot: null
       },
       assetOptions: [],
       submitting: false,
@@ -335,6 +411,20 @@ export default {
     isManualAllocationTemplate() {
       const code = (this.form.template_code || '').toString().toLowerCase();
       return code === 'manual_allocation' || code === 'manual_allocation_strategy';
+    },
+    /** 打包独立形态策略：选样/赋权/约束/风控全在策略包内，
+     *  composition 三层均为 null，不渲染「资产选择策略」与「风险控制策略」
+     *  两张卡片；选样数量、分组、风控阈值等全部走模型参数区（core/advanced） */
+    isStandaloneTemplate() {
+      const tpl = this.currentTemplate;
+      return !!tpl && tpl.strategy_form === 'standalone';
+    },
+    /** 当前预设是否走标签池（决定来源说明的括号内容） */
+    isPresetTagPool() {
+      const snap = this.form.asset_selection_snapshot;
+      if (!snap) return false;
+      const mode = String(snap.mode || '').toLowerCase();
+      return mode === 'tags' || mode === 'hybrid';
     },
     /** 风险预算目标波动率 */
     isRiskBudgetTargetVolTemplate() {
@@ -568,6 +658,7 @@ export default {
     },
 
     handleControllerCodeChange(code) {
+      this.form.controller_code = code || '';
       if (!code) {
         this.form.controller_parameters = {};
         return;
@@ -620,8 +711,15 @@ export default {
         selector_parameters: {},
         enable_control: false,
         controller_code: '',
-        controller_parameters: {}
+        controller_parameters: {},
+        preset_code: '',
+        preset_version: '',
+        preset_applied_at: null,
+        asset_selection_snapshot: null
       };
+      this.presetBaseline = '';
+      this.presetModified = false;
+      this.presetOutdated = false;
       if (this.$refs.form) {
         this.$refs.form.resetFields();
       }
@@ -756,6 +854,134 @@ export default {
 
 .form-card {
   margin-bottom: 20px;
+}
+
+/* 下拉框与右侧说明图标同一行，避免 100% 宽度把图标挤到下一行 */
+.field-row {
+  display: flex;
+  align-items: center;
+}
+
+.field-row__control {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-row__icon {
+  flex-shrink: 0;
+  margin-left: 6px;
+  color: #909399;
+  cursor: help;
+}
+
+/* 模板描述：受表单内容宽度约束自动换行，不再撑宽下拉面板 */
+.template-desc {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #909399;
+}
+
+/* 原型预设来源：应用即快照，与「已调整」「基于旧版预设」两个标记同行 */
+.preset-source {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #909399;
+}
+
+.preset-source__flag {
+  margin-left: 2px;
+}
+
+/* 预设校验结果弹窗：blocking 红 / data 黄 / warning 灰 */
+.preset-dialog__summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.preset-dialog__name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.preset-dialog__meta {
+  font-size: 12px;
+  color: #909399;
+}
+
+.preset-issue-section {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  border-left: 3px solid transparent;
+}
+
+.preset-issue-section.is-blocking_error {
+  background: #fef0f0;
+  border-left-color: #f56c6c;
+}
+
+.preset-issue-section.is-data_error {
+  background: #fdf6ec;
+  border-left-color: #e6a23c;
+}
+
+.preset-issue-section.is-warning {
+  background: #f4f4f5;
+  border-left-color: #909399;
+}
+
+.preset-issue-section__title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #303133;
+  margin-bottom: 6px;
+}
+
+.preset-issue + .preset-issue {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #dcdfe6;
+}
+
+.preset-issue__msg {
+  font-size: 13px;
+  color: #303133;
+  line-height: 1.6;
+}
+
+.preset-issue__hint,
+.preset-issue__assets {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.preset-dialog__ok {
+  margin-top: 14px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #67c23a;
+  background: #f0f9eb;
+  border-radius: 4px;
+}
+
+.preset-dialog__note {
+  margin-top: 14px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.6;
 }
 
 .card-header {

@@ -28,6 +28,7 @@
         border
         stripe
         height="600"
+        :scroll-x="{enabled: true, gt: 0}"
         :scroll-y="{enabled: true, gt: 0}"
         show-overflow="title"
       >
@@ -47,7 +48,14 @@
             <span v-else style="color:#c0c4cc">—</span>
           </template>
         </vxe-column>
-        <vxe-column title="年化收益率" width="110" align="right">
+        <vxe-column title="实盘状态" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.live_publish_enabled ? 'success' : 'info'" size="small">
+              {{ row.live_publish_enabled ? '实盘中' : '未实盘' }}
+            </el-tag>
+          </template>
+        </vxe-column>
+        <vxe-column title="年化收益率（260日）" width="140" align="right">
           <template #default="{ row }">
             <span v-if="row.latest_backtest_summary" :style="{color: (row.latest_backtest_summary.annual_return||0) >= 0 ? '#f56c6c' : '#67c23a'}">
               {{ formatPct(row.latest_backtest_summary.annual_return) }}
@@ -55,17 +63,35 @@
             <span v-else style="color:#c0c4cc">—</span>
           </template>
         </vxe-column>
-        <vxe-column title="年化波动率" width="110" align="right">
+        <vxe-column title="年化收益率（365日）" width="140" align="right">
+          <template #default="{ row }">
+            <span v-if="row.latest_backtest_summary">{{ formatPct(row.latest_backtest_summary.annual_return_365) }}</span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </vxe-column>
+        <vxe-column title="年化波动率（260日）" width="140" align="right">
           <template #default="{ row }">
             <span v-if="row.latest_backtest_summary">{{ formatPct(row.latest_backtest_summary.annual_vol) }}</span>
             <span v-else style="color:#c0c4cc">—</span>
           </template>
         </vxe-column>
-        <vxe-column title="夏普率" width="90" align="right">
+        <vxe-column title="年化波动率（365日）" width="140" align="right">
+          <template #default="{ row }">
+            <span v-if="row.latest_backtest_summary">{{ formatPct(row.latest_backtest_summary.annual_vol_365) }}</span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </vxe-column>
+        <vxe-column title="夏普率（260日）" width="120" align="right">
           <template #default="{ row }">
             <span v-if="row.latest_backtest_summary" :style="{color: (row.latest_backtest_summary.sharpe||0) >= 1 ? '#f56c6c' : (row.latest_backtest_summary.sharpe||0) >= 0 ? '#e6a23c' : '#67c23a', fontWeight: 600}">
               {{ formatNum(row.latest_backtest_summary.sharpe) }}
             </span>
+            <span v-else style="color:#c0c4cc">—</span>
+          </template>
+        </vxe-column>
+        <vxe-column title="夏普率（365日）" width="120" align="right">
+          <template #default="{ row }">
+            <span v-if="row.latest_backtest_summary">{{ formatNum(row.latest_backtest_summary.sharpe_365) }}</span>
             <span v-else style="color:#c0c4cc">—</span>
           </template>
         </vxe-column>
@@ -85,20 +111,35 @@
             <span v-else style="color:#c0c4cc">—</span>
           </template>
         </vxe-column>
-        <vxe-column title="操作" width="150" fixed="right">
+        <vxe-column title="操作" width="200" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button type="text" size="small" @click="handleView(row)">详情</el-button>
-            <el-button type="text" size="small" @click="handleEdit(row)">编辑</el-button>
-            <el-dropdown trigger="click" @command="cmd => handleRowCommand(cmd, row)">
-              <el-button type="text" size="small">
-                更多<i class="el-icon-arrow-down el-icon--right"></i>
-              </el-button>
-              <el-dropdown-menu slot="dropdown">
-                <el-dropdown-item command="livePublish" :disabled="row.live_publish_enabled">实盘发布</el-dropdown-item>
-                <el-dropdown-item command="liveUnpublish" :disabled="!row.live_publish_enabled">取消实盘</el-dropdown-item>
-                <el-dropdown-item command="delete" divided style="color: #f56c6c;">删除</el-dropdown-item>
-              </el-dropdown-menu>
-            </el-dropdown>
+            <div class="row-actions">
+              <el-button size="mini" type="text" @click.stop="handleView(row)">详情</el-button>
+              <el-tooltip
+                :content="row.live_publish_enabled ? '组合已实盘，配置已冻结；请先取消实盘再编辑' : '编辑组合配置'"
+                placement="top"
+              >
+                <span>
+                  <el-button size="mini" type="text" :disabled="!!row.live_publish_enabled" @click.stop="handleEdit(row)">编辑</el-button>
+                </span>
+              </el-tooltip>
+              <el-button
+                v-if="row.live_publish_enabled"
+                size="mini"
+                type="text"
+                class="warn-btn"
+                :disabled="!canLiveUnpublish(row)"
+                @click.stop="handleLiveUnpublish(row)"
+              >取消实盘</el-button>
+              <el-button
+                v-else
+                size="mini"
+                type="text"
+                :disabled="!canLivePublish(row)"
+                @click.stop="handleLivePublish(row)"
+              >实盘发布</el-button>
+              <el-button size="mini" type="text" class="danger-btn" @click.stop="handleDelete(row)">删除</el-button>
+            </div>
           </template>
         </vxe-column>
       </vxe-table>
@@ -165,9 +206,7 @@ export default {
       currentId: '',
       createDialogVisible: false,
       editDialogVisible: false,
-      editId: null,
-      liveOpRowId: null,
-      liveOpKind: ''
+      editId: null
     };
   },
   computed: {
@@ -197,11 +236,6 @@ export default {
     handleSearch() {
       // filteredData 是计算属性，会自动响应
     },
-    handleRowCommand(cmd, row) {
-      if (cmd === 'livePublish') this.handleLivePublish(row);
-      else if (cmd === 'liveUnpublish') this.handleLiveUnpublish(row);
-      else if (cmd === 'delete') this.handleDelete(row);
-    },
     handleCreate() {
       // 组件弹窗方式打开，避免硬编码路由路径在远端部署下失效
       this.createDialogVisible = true;
@@ -215,6 +249,10 @@ export default {
       this.detailDialogVisible = true;
     },
     handleEdit(row) {
+      if (row.live_publish_enabled) {
+        this.$message.warning('组合已实盘，配置已冻结；请先取消实盘再编辑');
+        return;
+      }
       this.editId = row.id;
       this.editDialogVisible = true;
     },
@@ -222,74 +260,56 @@ export default {
       this.editDialogVisible = false;
       this.fetchData();
     },
+    canLivePublish(row) {
+      return !!this.getLinkedModelId(row) && !row.live_publish_enabled;
+    },
+    canLiveUnpublish(row) {
+      return !!row.live_publish_enabled;
+    },
 
     getLinkedModelId(row) {
       return row.portfolio_model_id || row.model_id || null;
     },
-    getPublishTargetIds(row) {
-      // 优先直接关联模型，否则回退到子策略模型
-      const direct = this.getLinkedModelId(row);
-      if (direct) return [direct];
-      const subIds = (row.sub_strategies || [])
-        .map(s => s.model_id)
-        .filter(Boolean);
-      return [...new Set(subIds)];
-    },
     async handleLivePublish(row) {
-      const ids = this.getPublishTargetIds(row);
-      if (!ids.length) {
-        this.$message.warning('该组合无关联策略模型且无子策略，无法实盘发布');
+      const modelId = this.getLinkedModelId(row);
+      if (!modelId) {
+        this.$message.warning('该组合尚未关联组合模型，无法实盘发布');
         return;
       }
-      const desc = ids.length > 1 ? `关联的 ${ids.length} 个子策略模型` : '关联的模型';
       try {
         await this.$confirm(
-          `确定将组合「${row.name}」${desc}进行实盘发布？发布后可在日常监控中运行。`,
-          '实盘发布确认',
-          { confirmButtonText: '确定发布', cancelButtonText: '取消', type: 'info' }
+          `确认实盘发布组合「${row.name}」？实盘后将进入日常监控，于次交易日生效；实盘期间配置冻结，取消实盘后可编辑。`,
+          '实盘发布',
+          { confirmButtonText: '确定发布', cancelButtonText: '取消', type: 'warning' }
         );
       } catch { return; }
-      this.liveOpRowId = row.id;
-      this.liveOpKind = 'publish';
       try {
-        for (const mid of ids) {
-          await livePublishModel(mid, { source: 'portfolio_list' });
-        }
-        this.$message.success('实盘发布成功，可在日常监控中添加该策略');
+        await livePublishModel(modelId, { source: 'portfolio_list' });
+        this.$message.success('实盘发布成功，已进入日常监控');
         await this.fetchData();
       } catch (e) {
         this.$message.error('实盘发布失败：' + (e.response?.data?.detail || e.message || '未知错误'));
         await this.fetchData();
-      } finally {
-        this.liveOpRowId = null;
-        this.liveOpKind = '';
       }
     },
     async handleLiveUnpublish(row) {
       if (!row.live_publish_enabled) return;
-      const ids = this.getPublishTargetIds(row);
-      if (!ids.length) return;
+      const modelId = this.getLinkedModelId(row);
+      if (!modelId) return;
       try {
         await this.$confirm(
-          `确认取消组合「${row.name}」的实盘发布？取消后将不再出现在日常监控准入列表中。`,
-          '取消实盘发布',
+          `确认取消组合「${row.name}」的实盘？取消后将从日常监控下架，历史数据与操作记录保留。`,
+          '取消实盘',
           { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
         );
       } catch { return; }
-      this.liveOpRowId = row.id;
-      this.liveOpKind = 'unpublish';
       try {
-        for (const mid of ids) {
-          await liveUnpublishModel(mid, { source: 'portfolio_list' });
-        }
-        this.$message.success('已取消实盘发布');
+        await liveUnpublishModel(modelId, { source: 'portfolio_list' });
+        this.$message.success('已取消实盘发布，监控已下架');
         await this.fetchData();
       } catch (e) {
         this.$message.error('取消实盘失败：' + (e.response?.data?.detail || e.message || '未知错误'));
         await this.fetchData();
-      } finally {
-        this.liveOpRowId = null;
-        this.liveOpKind = '';
       }
     },
     async handleDelete(row) {
@@ -367,5 +387,28 @@ export default {
   padding: 20px;
   margin-bottom: 20px;
   border-radius: 4px;
+}
+
+.danger-btn {
+  color: #f56c6c;
+}
+
+.warn-btn {
+  color: #e6a23c;
+}
+
+.warn-btn.is-disabled,
+.warn-btn.is-disabled:hover {
+  color: #c0c4cc;
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.row-actions ::v-deep .el-button + .el-button {
+  margin-left: 0;
 }
 </style>

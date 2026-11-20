@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import pandas as pd
@@ -18,6 +19,7 @@ from app.analysis.formulas import (
     calculate_sharpe_ratio,
     calculate_calmar_ratio,
 )
+from app.analysis.performance import PERIODS_PER_YEAR_365, calendar_span_days
 
 
 @dataclass
@@ -33,16 +35,22 @@ class AssetMetrics:
     
     # 收益指标
     cumulative_return: float         # 累计收益率
-    annualized_return: float         # 年化收益率
+    annualized_return: float         # 年化收益率（260 交易日）
     
     # 风险指标
     daily_volatility: float          # 日度波动率
-    annualized_volatility: float     # 年化波动率
+    annualized_volatility: float     # 年化波动率（260 交易日）
     max_drawdown: float              # 最大回撤
     
     # 风险调整收益指标
-    sharpe_ratio: float              # 夏普比率
-    calmar_ratio: float              # Calmar比率
+    sharpe_ratio: float              # 夏普比率（260 交易日）
+    calmar_ratio: float              # Calmar比率（260 交易日）
+
+    # 365 口径（自然日/年）：同一组公式只换年化因子；累计收益/最大回撤不复制
+    annualized_return_365: float = 0.0
+    annualized_volatility_365: float = 0.0
+    sharpe_ratio_365: float = 0.0
+    calmar_ratio_365: float = 0.0
 
 
 def calculate_asset_metrics(
@@ -57,7 +65,7 @@ def calculate_asset_metrics(
         prices: 价格序列（index=时间）
         thscode: 资产代码
         risk_free_rate: 无风险利率（年化）
-        freq_factor: 年化因子（默认260个交易日）
+        freq_factor: 年化因子（默认260个交易日）；365 口径固定按 365 自然日同步计算
     
     返回:
         AssetMetrics 对象
@@ -91,6 +99,35 @@ def calculate_asset_metrics(
         freq_factor=freq_factor
     )
     calmar_ratio = calculate_calmar_ratio(annualized_return, max_drawdown)
+
+    # 5. 365 口径：分母换成日历天数，与 compute_performance 同一换算
+    n_td = len(returns)
+    span = calendar_span_days(prices.index)
+    if span is None or n_td == 0:
+        # 首末未跨日或没有有效收益样本：365 口径没有可用的分母
+        annualized_return_365 = 0.0
+        annualized_volatility_365 = 0.0
+        sharpe_ratio_365 = 0.0
+    else:
+        if cumulative_return > -1.0:
+            annualized_return_365 = float(
+                (1.0 + cumulative_return) ** (PERIODS_PER_YEAR_365 / span) - 1.0
+            )
+        else:
+            annualized_return_365 = -1.0
+        # 日波动率 → 每日历日波动率 → 按 365 天年化，与 260 口径收敛到同一个值
+        annualized_volatility_365 = float(daily_volatility) * math.sqrt(
+            PERIODS_PER_YEAR_365 * n_td / span
+        )
+        # 算术口径夏普：每日历日收益 = 日收益 / d，标准差 = 日标准差 / √d
+        d = span / n_td
+        excess_mean = float(returns.mean()) / d - risk_free_rate / PERIODS_PER_YEAR_365
+        excess_std = float(returns.std()) / math.sqrt(d)
+        sharpe_ratio_365 = (
+            float(excess_mean / excess_std * math.sqrt(PERIODS_PER_YEAR_365))
+            if excess_std > 0 else 0.0
+        )
+    calmar_ratio_365 = calculate_calmar_ratio(annualized_return_365, max_drawdown)
     
     return AssetMetrics(
         thscode=thscode,
@@ -103,4 +140,8 @@ def calculate_asset_metrics(
         max_drawdown=max_drawdown,
         sharpe_ratio=sharpe_ratio,
         calmar_ratio=calmar_ratio,
+        annualized_return_365=annualized_return_365,
+        annualized_volatility_365=annualized_volatility_365,
+        sharpe_ratio_365=sharpe_ratio_365,
+        calmar_ratio_365=calmar_ratio_365,
     )

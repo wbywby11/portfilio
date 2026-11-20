@@ -32,6 +32,21 @@ class LiveRebalanceMode(str, Enum):
     MANUAL = "manual"
 
 
+class RunKind(str, Enum):
+    """运行类型：区分回测产物与监控批次产物（两者同存 backtest_records 集合）"""
+    BACKTEST = "backtest"
+    MONITOR = "monitor"
+
+
+def normalize_run_kind(value: Optional[str]) -> str:
+    """归一运行类型：存量文档 ``run_kind`` 缺失或为 null 时视为 backtest.
+
+    存量回测记录不做迁移，读取侧统一过本函数；过滤监控记录用
+    ``{"run_kind": {"$ne": "monitor"}}``，能同时命中缺失与显式 backtest。
+    """
+    return RunKind.MONITOR.value if value == RunKind.MONITOR.value else RunKind.BACKTEST.value
+
+
 class AssetPosition(BaseModel):
     """资产持仓"""
     asset_code: str = Field(..., description="资产代码")
@@ -167,6 +182,11 @@ class BacktestResult(BaseModel):
     sharpe_ratio: float = Field(..., description="夏普比率")
     max_drawdown: float = Field(..., description="最大回撤")
     calmar_ratio: Optional[float] = Field(None, description="卡玛比率")
+    # 365 口径（自然日/年）：与 260 口径并存；累计收益/最大回撤/胜率只存一份
+    annual_return_365: Optional[float] = Field(None, description="年化收益率（365 自然日口径）")
+    annual_volatility_365: Optional[float] = Field(None, description="年化波动率（365 自然日口径）")
+    sharpe_ratio_365: Optional[float] = Field(None, description="夏普比率（365 自然日口径）")
+    calmar_ratio_365: Optional[float] = Field(None, description="卡玛比率（365 自然日口径）")
     latest_unit_value: float = Field(1.0, description="最新单位净值")
     win_rate: Optional[float] = Field(None, description="胜率")
     equity_curve: List[EquityPoint] = Field(default_factory=list, description="净值曲线")
@@ -177,6 +197,9 @@ class BacktestResult(BaseModel):
         description="权重变化记录列表，每项包含date(日期)和weights(各资产权重字典)字段"
     )
     asset_names: Optional[Dict[str, str]] = Field(None, description="资产名称字典")
+    correlation_matrix: Optional[Dict[str, Dict[str, float]]] = Field(
+        None, description="相关性矩阵（组合回测为子策略间相关性），键为名称"
+    )
     today_nav: Optional[TodayNav] = Field(None, description="当日净值")
     today_weights: Optional[Dict[str, float]] = Field(None, description="当日权重")
     today_planned_rebalance: Optional[TodayPlannedRebalance] = Field(None, description="当日计划调仓（若为调仓日）")
@@ -185,6 +208,7 @@ class BacktestResult(BaseModel):
     sub_strategies: Optional[List[Dict[str, Any]]] = Field(None, description="""
         子策略回测结果列表，仅投资组合回测时使用。
         每个元素: {model_id, name, weight, annual_return, annual_vol, sharpe, max_drawdown, equity_curve}
+        以及 365 口径的 annual_return_365 / annual_volatility_365 / sharpe_ratio_365
     """)
     
     def dict(self, **kwargs):
@@ -221,6 +245,33 @@ class BacktestRecord(BaseModel):
         None,
         description="行情数据指纹（hash of asset_codes + start_date + end_date），用于检测数据变化"
     )
+
+    # ── 可复现性指纹（S10）与身份链（S12）──
+    # 全部 Optional + 默认 None：历史文档 / 存量读取路径不受影响；写入时
+    # save_backtest_record 会把 None 键从文档里剔除（不写 null）。
+    strategy_id: Optional[str] = Field(None, description="策略本体标识（strategy_registry.strategy_id）")
+    config_version_id: Optional[str] = Field(None, description="本次运行对应的配置版本（strategy_versions.version_id）")
+    config_fingerprint: Optional[str] = Field(None, description="配置指纹（已发布模型取 model.config_fingerprint）")
+    asset_pool_hash: Optional[str] = Field(None, description="资产池指纹（排序去重后 sha256）")
+    contract_hash: Optional[str] = Field(None, description="数据契约指纹")
+    param_hash: Optional[str] = Field(None, description="参数指纹（按参数快照去重，供试错计数）")
+    data_digest_v2: Optional[str] = Field(
+        None,
+        description="行情矩阵摘要（hash 区间内 (code,date,close)）；与旧 data_fingerprint 双写共存"
+    )
+    reproducibility_fingerprint: Optional[str] = Field(
+        None, description="可复现性指纹（配置+池子+契约+参数+引擎版本+数据摘要）"
+    )
+
+    # ── 监控批次复用本集合（阶段一）──
+    # 全部 Optional：存量回测文档不受影响，读取侧用 normalize_run_kind 归一。
+    # 监控写入走 backtest_service.save_monitor_record，不走 save_backtest_record，
+    # 因此不会改写 strategy_models.latest_backtest_summary，也不写 strategy_runs 台账。
+    run_kind: Optional[str] = Field(
+        None, description="运行类型：backtest（默认，存量为 null）/ monitor（监控批次产出）"
+    )
+    batch_id: Optional[str] = Field(None, description="监控批次号；run_kind=monitor 时必填")
+    monitor_id: Optional[str] = Field(None, description="监控实例 ID；run_kind=monitor 时必填")
     created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
     
     @field_validator('start_date', 'end_date', mode='before')
@@ -263,6 +314,21 @@ class StrategyModel(BaseModel):
     # 参数配置
     parameters: Dict[str, Any] = Field(default_factory=dict, description="模型参数")
     rebalance_frequency: str = Field(..., description="调仓频率")
+
+    # 原型预设来源（只记录应用痕迹，不存预设定义）
+    preset_code: Optional[str] = Field(None, description="来源预设代码")
+    preset_version: Optional[str] = Field(
+        None, description="预设定义内容 hash（sha256 前 8 位），用于判断是否基于旧版预设"
+    )
+    preset_applied_at: Optional[datetime] = Field(None, description="预设应用时间")
+    asset_selection_snapshot: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "应用时的资产池规则快照："
+            "{mode, tags, group_rules, groups, expanded_at, expanded_codes, applied_hash}。"
+            "标签模式的池子在应用时展开为快照，后续标签变更不自动同步"
+        ),
+    )
     
     # 策略建仓日（用于策略监控的起始日期）
     inception_date: Optional[datetime] = Field(None, description="策略建仓日")
@@ -296,6 +362,14 @@ class StrategyModel(BaseModel):
     # 状态管理
     status: ModelStatus = Field(ModelStatus.DRAFT, description="模型状态")
     published_at: Optional[datetime] = Field(None, description="发布时间")
+    published_version: int = Field(0, description="发布版本号（每次发布 +1）")
+    published_snapshot: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="发布冻结快照：发布时的完整运行配置，下游组合/回测/绩效统一读取",
+    )
+    config_fingerprint: Optional[str] = Field(
+        None, description="发布快照指纹（用于核对下游运行的是哪一版配置）"
+    )
 
     # 实盘发布管理（与 status 独立，不冲突）
     live_publish_enabled: bool = Field(False, description="是否已实盘发布")
@@ -307,8 +381,11 @@ class StrategyModel(BaseModel):
     )
     live_volatility_threshold: Optional[float] = Field(None, description="实盘波动率阈值")
     live_version: int = Field(0, description="实盘发布版本号")
-    live_snapshot: Dict[str, Any] = Field(default_factory=dict, description="实盘配置快照")
-    live_snapshot_outdated: bool = Field(False, description="实盘快照是否落后于当前策略配置")
+    live_published_version: int = Field(0, description="实盘发布时对应的发布版本号")
+    live_snapshot: Dict[str, Any] = Field(default_factory=dict, description="实盘配置快照（由发布快照复制）")
+    live_snapshot_outdated: bool = Field(
+        False, description="已废弃：发布冻结后实盘快照不再与当前配置产生差异，仅保留兼容旧数据"
+    )
     
     # 策略标签与回测摘要（层间连接：第5层回测 → 第6层入库）
     tags: List[str] = Field(default_factory=list, description="策略标签，用于检索和分类")

@@ -12,29 +12,31 @@
           type="primary"
           size="small"
           @click="handleBacktest"
-          :disabled="model.status === '已发布' || model.status === 'published'"
+          :disabled="model.status === '已发布' || model.status === 'published' || backtestBlocked"
+          :title="backtestBlocked ? backtestBlockedTip : ''"
           :loading="backtesting"
         >
           {{ backtesting ? '回测中...' : '运行回测' }}
         </el-button>
         <el-button
-          type="success"
-          size="small"
-          @click="handlePublish"
-          :disabled="model.status === '已发布' || model.status === 'published'"
-        >
-          发布策略
-        </el-button>
-        <el-button
-          type="primary"
+          v-if="isPublishedModel"
+          type="warning"
           size="small"
           plain
-          icon="el-icon-upload2"
-          :disabled="!canOperateLivePublish"
-          :loading="livePublishing"
-          @click="handleLivePublish"
+          :disabled="isArchivedModel"
+          :loading="unpublishing"
+          @click="handleUnpublish"
         >
-          实盘发布
+          取消发布
+        </el-button>
+        <el-button
+          v-else
+          type="success"
+          size="small"
+          :disabled="isArchivedModel"
+          @click="handlePublish"
+        >
+          发布策略
         </el-button>
         <el-button
           v-if="model.live_publish_enabled"
@@ -49,47 +51,61 @@
           取消实盘
         </el-button>
         <el-button
-          v-if="model.live_publish_enabled && model.live_snapshot_outdated"
+          v-else
+          type="primary"
+          size="small"
+          plain
+          icon="el-icon-upload2"
+          :disabled="!canOperateLivePublish"
+          :loading="livePublishing"
+          @click="handleLivePublish"
+        >
+          实盘发布
+        </el-button>
+        <el-button
+          v-if="liveSnapshotBehind"
           type="warning"
           size="small"
           plain
           :loading="liveRepublishing"
           @click="handleLiveRepublish"
         >
-          同步实盘
+          同步实盘版本
         </el-button>
       </div>
     </div>
     <!-- Dialog模式操作栏 -->
-    <div v-if="isDialog" style="margin-bottom: 16px; display: flex; justify-content: flex-end; gap: 8px;">
+    <div v-if="isDialog" class="header-actions">
         <el-button
           v-if="false"
           type="primary"
           size="small"
           @click="handleBacktest"
-          :disabled="model.status === '已发布' || model.status === 'published'"
+          :disabled="model.status === '已发布' || model.status === 'published' || backtestBlocked"
+          :title="backtestBlocked ? backtestBlockedTip : ''"
           :loading="backtesting"
         >
           {{ backtesting ? '回测中...' : '运行回测' }}
         </el-button>
         <el-button
-          type="success"
-          size="small"
-          @click="handlePublish"
-          :disabled="model.status === '已发布' || model.status === 'published'"
-        >
-          发布策略
-        </el-button>
-        <el-button
-          type="primary"
+          v-if="isPublishedModel"
+          type="warning"
           size="small"
           plain
-          icon="el-icon-upload2"
-          :disabled="!canOperateLivePublish"
-          :loading="livePublishing"
-          @click="handleLivePublish"
+          :disabled="isArchivedModel"
+          :loading="unpublishing"
+          @click="handleUnpublish"
         >
-          实盘发布
+          取消发布
+        </el-button>
+        <el-button
+          v-else
+          type="success"
+          size="small"
+          :disabled="isArchivedModel"
+          @click="handlePublish"
+        >
+          发布策略
         </el-button>
         <el-button
           v-if="model.live_publish_enabled"
@@ -104,14 +120,26 @@
           取消实盘
         </el-button>
         <el-button
-          v-if="model.live_publish_enabled && model.live_snapshot_outdated"
+          v-else
+          type="primary"
+          size="small"
+          plain
+          icon="el-icon-upload2"
+          :disabled="!canOperateLivePublish"
+          :loading="livePublishing"
+          @click="handleLivePublish"
+        >
+          实盘发布
+        </el-button>
+        <el-button
+          v-if="liveSnapshotBehind"
           type="warning"
           size="small"
           plain
           :loading="liveRepublishing"
           @click="handleLiveRepublish"
         >
-          同步实盘
+          同步实盘版本
         </el-button>
     </div>
 
@@ -122,7 +150,7 @@
       show-icon
       style="margin-bottom: 16px;"
       title="来自日常监控"
-      description="修改策略参数后，请使用「实盘发布」或「同步到最新实盘」写入快照；实盘变更会记录在实盘发布记录中。保存策略后若未实盘发布，日常监控顶部参数与下方绩效仍可能不一致。">
+      description="策略发布后配置已冻结，修改需先取消发布。发布新版本后，如需实盘跟随最新逻辑，请点「同步实盘版本」以最新发布快照重建实盘快照；变更记录在实盘发布记录中。">
     </el-alert>
 
     <div :class="{'page-content': !isDialog}" v-loading="loading">
@@ -130,7 +158,14 @@
       <el-card shadow="never" class="info-card">
         <div slot="header" class="card-header">
           <span>基本信息</span>
-          <el-button type="text" size="small" @click="handleEdit">编辑</el-button>
+          <el-tooltip
+            :content="isPublishedModel ? '已发布，配置已冻结；请先取消发布再编辑，被实盘组合引用时需先解除引用' : '编辑策略配置'"
+            placement="top"
+          >
+            <span>
+              <el-button type="text" size="small" :disabled="isPublishedModel || isArchivedModel" @click="handleEdit">编辑</el-button>
+            </span>
+          </el-tooltip>
         </div>
         <el-descriptions :column="4" border size="small">
           <el-descriptions-item label="策略名称" :span="2">
@@ -150,12 +185,24 @@
             <span v-if="model.live_publish_enabled && model.live_effective_date" style="margin-left: 8px; color: #67c23a; font-size: 12px;">
               生效日 {{ formatDateShort(model.live_effective_date) }}
             </span>
-            <el-tag v-if="model.live_publish_enabled && model.live_snapshot_outdated" type="warning" size="mini" style="margin-left: 8px;">
-              快照待同步
+            <el-tag v-if="liveSnapshotBehind" type="warning" size="mini" style="margin-left: 8px;">
+              实盘落后发布版本
             </el-tag>
             <span v-if="model.live_publish_enabled" style="margin-left: 12px; color: #909399; font-size: 12px;">
               可在「分析 → 日常监控」中跟踪
             </span>
+          </el-descriptions-item>
+          <el-descriptions-item label="发布 / 实盘版本">
+            <el-tag v-if="model.published_version" size="mini" type="info">发布 v{{ model.published_version }}</el-tag>
+            <el-tag v-else size="mini">未发布</el-tag>
+            <el-tag v-if="model.live_publish_enabled" size="mini" type="success" style="margin-left: 6px;">
+              实盘 v{{ model.live_published_version || '—' }}
+            </el-tag>
+            <el-tooltip v-if="model.config_fingerprint" :content="'快照指纹：' + model.config_fingerprint" placement="top">
+              <span style="margin-left: 6px; color: #909399; font-size: 12px; cursor: default;">
+                {{ model.config_fingerprint.slice(0, 8) }}
+              </span>
+            </el-tooltip>
           </el-descriptions-item>
           <el-descriptions-item label="业绩基准" v-if="model.benchmark_name">
             {{ model.benchmark_name }}
@@ -168,6 +215,25 @@
             <el-button type="text" size="mini" @click="assetListExpanded = !assetListExpanded" style="margin-left: 8px;">
               {{ assetListExpanded ? '收起' : '展开' }}
             </el-button>
+          </el-descriptions-item>
+          <el-descriptions-item label="原型预设" :span="4" v-if="model.preset_code">
+            <span>来自预设 {{ presetSourceLabel }}</span>
+            <el-tag v-if="model.preset_modified" type="warning" size="mini" style="margin-left: 8px;">
+              已调整
+            </el-tag>
+            <el-tooltip
+              v-if="model.preset_outdated"
+              content="预设定义已变更，当前模型仍按应用时的旧版本运行"
+              placement="top"
+            >
+              <el-tag type="info" size="mini" style="margin-left: 8px;">基于旧版预设</el-tag>
+            </el-tooltip>
+            <span v-if="model.preset_applied_at" style="margin-left: 12px; color: #909399; font-size: 12px;">
+              {{ formatDate(model.preset_applied_at) }} 应用
+            </span>
+            <span style="margin-left: 12px; color: #909399; font-size: 12px;">
+              应用即快照，标签后续变更不会自动同步
+            </span>
           </el-descriptions-item>
           <el-descriptions-item label="策略描述" :span="4" v-if="model.description">
             {{ model.description }}
@@ -419,14 +485,24 @@
                       </span>
                     </div>
                     <div class="metric-item">
-                      <span class="metric-label">年化收益</span>
+                      <span class="metric-label">年化收益（260日）</span>
                       <span class="metric-value" :style="{ color: getReturnColor(record.result.annual_return) }">
                         {{ (record.result.annual_return * 100).toFixed(2) }}%
                       </span>
                     </div>
                     <div class="metric-item">
-                      <span class="metric-label">夏普比率</span>
+                      <span class="metric-label">年化收益（365日）</span>
+                      <span class="metric-value">
+                        {{ record.result.annual_return_365 != null ? (record.result.annual_return_365 * 100).toFixed(2) + '%' : '-' }}
+                      </span>
+                    </div>
+                    <div class="metric-item">
+                      <span class="metric-label">夏普比率（260日）</span>
                       <span class="metric-value">{{ record.result.sharpe_ratio ? record.result.sharpe_ratio.toFixed(3) : '-' }}</span>
+                    </div>
+                    <div class="metric-item">
+                      <span class="metric-label">夏普比率（365日）</span>
+                      <span class="metric-value">{{ record.result.sharpe_ratio_365 != null ? record.result.sharpe_ratio_365.toFixed(3) : '-' }}</span>
                     </div>
                     <div class="metric-item">
                       <span class="metric-label">最大回撤</span>
@@ -485,24 +561,27 @@
               <el-row :gutter="12" class="metrics-row">
                 <el-col :span="6">
                   <div class="metric-card">
-                    <div class="metric-label">年化收益</div>
+                    <div class="metric-label">年化收益（260日）</div>
                     <div class="metric-value" :style="{color: (portfolioReport.annual_return||0) >= 0 ? '#67c23a' : '#f56c6c'}">
                       {{ ((portfolioReport.annual_return||0)*100).toFixed(2) }}%
                     </div>
+                    <div class="metric-sub">365日：{{ ((portfolioReport.annual_return_365||0)*100).toFixed(2) }}%</div>
                   </div>
                 </el-col>
                 <el-col :span="6">
                   <div class="metric-card">
-                    <div class="metric-label">年化波动</div>
+                    <div class="metric-label">年化波动（260日）</div>
                     <div class="metric-value">{{ ((portfolioReport.annual_vol||0)*100).toFixed(2) }}%</div>
+                    <div class="metric-sub">365日：{{ ((portfolioReport.annual_vol_365||0)*100).toFixed(2) }}%</div>
                   </div>
                 </el-col>
                 <el-col :span="6">
                   <div class="metric-card">
-                    <div class="metric-label">夏普比率</div>
+                    <div class="metric-label">夏普比率（260日）</div>
                     <div class="metric-value" :style="{color: (portfolioReport.sharpe||0) >= 1 ? '#67c23a' : '#e6a23c', fontWeight: 600}">
                       {{ (portfolioReport.sharpe||0).toFixed(2) }}
                     </div>
+                    <div class="metric-sub">365日：{{ (portfolioReport.sharpe_365||0).toFixed(2) }}</div>
                   </div>
                 </el-col>
                 <el-col :span="6">
@@ -520,16 +599,25 @@
                   <el-table-column prop="weight" label="权重" width="60" align="right">
                     <template slot-scope="{ row }">{{ (row.weight * 100).toFixed(0) }}%</template>
                   </el-table-column>
-                  <el-table-column label="收益" width="80" align="right">
+                  <el-table-column label="收益（260日）" width="110" align="right">
                     <template slot-scope="{ row }">
                       <span :style="{color: row.annual_return >= 0 ? '#67c23a' : '#f56c6c'}">{{ (row.annual_return * 100).toFixed(2) }}%</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="波动" width="70" align="right">
+                  <el-table-column label="收益（365日）" width="110" align="right">
+                    <template slot-scope="{ row }">{{ ((row.annual_return_365||0) * 100).toFixed(2) }}%</template>
+                  </el-table-column>
+                  <el-table-column label="波动（260日）" width="110" align="right">
                     <template slot-scope="{ row }">{{ (row.annual_vol * 100).toFixed(2) }}%</template>
                   </el-table-column>
-                  <el-table-column label="夏普" width="60" align="right">
+                  <el-table-column label="波动（365日）" width="110" align="right">
+                    <template slot-scope="{ row }">{{ ((row.annual_vol_365||0) * 100).toFixed(2) }}%</template>
+                  </el-table-column>
+                  <el-table-column label="夏普（260日）" width="100" align="right">
                     <template slot-scope="{ row }">{{ row.sharpe.toFixed(2) }}</template>
+                  </el-table-column>
+                  <el-table-column label="夏普（365日）" width="100" align="right">
+                    <template slot-scope="{ row }">{{ (row.sharpe_365||0).toFixed(2) }}</template>
                   </el-table-column>
                 </el-table>
               </div>
@@ -582,7 +670,7 @@ import { mapState } from 'vuex';
 import dayjs from 'dayjs';
 import BacktestDetailDialog from '@/components/BacktestDetailDialog.vue';
 import VersionCompareDialog from './components/VersionCompareDialog.vue';
-import { updateBacktestRemark, generatePortfolioReport, getParamVersions } from '@/api/strategy';
+import { updateBacktestRemark, generatePortfolioReport, getParamVersions, getStrategyPresets, validateStrategyConfig } from '@/api/strategy';
 import {
   isRiskBudgetTargetVolTemplateCode,
   RISK_BUDGET_TARGET_VOL_HIDDEN_PARAMETER_NAMES,
@@ -642,6 +730,7 @@ export default {
       livePublishing: false,
       liveUnpublishing: false,
       liveRepublishing: false,
+      unpublishing: false,
       backtestHistory: [],
       portfolioReport: null,
       reportLoading: false,
@@ -668,7 +757,11 @@ export default {
       },
       editDialogVisible: false,
       editingRecordId: null,
-      editingRemark: ''
+      editingRemark: '',
+      // 原型预设：code → 预设摘要（用 name 展示，不直接露 code）
+      presetNameMap: {},
+      // 回测实时门禁：blocking_error / data_error 两级问题（warning 不阻断）
+      backtestGateIssues: []
     };
   },
   computed: {
@@ -681,8 +774,34 @@ export default {
     isArchivedModel() {
       return this.model.status === '已归档' || this.model.status === 'archived';
     },
+    /** 预设来源展示名（未拉到清单时回退为预设代码） */
+    presetSourceLabel() {
+      if (!this.model.preset_code) return '';
+      const item = this.presetNameMap[this.model.preset_code];
+      return item ? item.name : this.model.preset_code;
+    },
+    /** 回测实时门禁：blocking 与数据缺口都禁用「运行回测」 */
+    backtestBlocked() {
+      return this.backtestGateIssues.length > 0;
+    },
+    /** 门禁提示：首条问题 + 其余条数 */
+    backtestBlockedTip() {
+      const first = this.backtestGateIssues[0];
+      if (!first) return '';
+      const prefix = first.level === 'blocking_error' ? '配置阻断' : '数据缺口';
+      const rest = this.backtestGateIssues.length > 1
+        ? `（另有 ${this.backtestGateIssues.length - 1} 项问题）` : '';
+      return `${prefix}：${first.message}${rest}`;
+    },
     canOperateLivePublish() {
       return this.isPublishedModel && !this.isArchivedModel && !this.model.live_publish_enabled;
+    },
+    /** 实盘快照落后于最新发布版本（需同步实盘版本才跟随新逻辑） */
+    liveSnapshotBehind() {
+      if (!this.model.live_publish_enabled) return false;
+      const published = Number(this.model.published_version || 0);
+      const live = Number(this.model.live_published_version || 0);
+      return published > live;
     },
     fromMonitorHint() {
       return this.$route && this.$route.query && String(this.$route.query.fromMonitor) === '1';
@@ -820,12 +939,49 @@ export default {
         // 确保模板列表已加载（供选择器/控制器参数标签查找）
         await this.$store.dispatch('strategy/fetchTemplateList');
         this.model = await this.$store.dispatch('strategy/fetchStrategyModel', this.modelId);
+        this.loadPresetNames(this.model.template_code);
+        await this.refreshBacktestGate();
         await this.loadBacktestHistory();
         await this.loadParamVersions();
       } catch (error) {
         this.$message.error('加载数据失败');
       } finally {
         this.loading = false;
+      }
+    },
+    /** 拉取当前模板的预设清单（只用于把 preset_code 翻成可读名称） */
+    async loadPresetNames(templateCode) {
+      if (!templateCode) return;
+      try {
+        const res = await getStrategyPresets(templateCode);
+        const map = {};
+        ((res && res.data) || []).forEach(item => { map[item.code] = item; });
+        this.presetNameMap = map;
+      } catch (error) {
+        console.error('加载预设清单失败:', error);
+      }
+    },
+    /** 实时门禁：与预设 resolve 共用同一套校验；接口失败时放行（后端回测前仍 enforce_static_contract） */
+    async refreshBacktestGate() {
+      if (!this.model || !this.model.template_code) {
+        this.backtestGateIssues = [];
+        return;
+      }
+      try {
+        const res = await validateStrategyConfig({
+          template_code: this.model.template_code,
+          asset_codes: this.model.asset_codes || [],
+          parameters: this.model.parameters || {},
+          min_history_days: this.model.min_history_days
+        });
+        const data = (res && res.data) || {};
+        const issues = data.issues || [];
+        this.backtestGateIssues = issues.filter(
+          i => i.level === 'blocking_error' || i.level === 'data_error'
+        );
+      } catch (error) {
+        console.error('回测门禁校验失败:', error);
+        this.backtestGateIssues = [];
       }
     },
     async loadBacktestHistory(keepPosition = false) {
@@ -853,19 +1009,46 @@ export default {
       this.loadBacktestHistory(true);
     },
     async handlePublish() {
-      this.$confirm('确定要发布该策略吗？发布后策略将可以被其他模块使用。', '提示', {
-        confirmButtonText: '确定',
+      this.$confirm('确定要发布该策略吗？发布后模板、资产、参数、窗口、调仓频率将全部冻结，下游组合与回测均按此版本运行；如需修改必须先取消发布。', '发布', {
+        confirmButtonText: '确定发布',
         cancelButtonText: '取消',
         type: 'warning'
       }).then(async () => {
         try {
           await this.$store.dispatch('strategy/publishModel', this.modelId);
-          this.$message.success('发布成功');
+          this.$message.success('发布成功，配置已冻结');
           await this.loadData();
         } catch (error) {
           this.$message.error('发布失败：' + (error.response?.data?.detail || error.message));
         }
       }).catch(() => {});
+    },
+    async handleUnpublish() {
+      const liveHint = this.model.live_publish_enabled
+        ? '将先取消实盘并从日常监控下架；'
+        : '';
+      try {
+        await this.$confirm(
+          `确认取消发布「${this.model.name || this.modelId}」？${liveHint}若正被实盘组合使用，需先取消组合实盘并调整成员；模型回到草稿可编辑，版本号与历史记录保留。`,
+          '取消发布',
+          { type: 'warning', confirmButtonText: '确定取消发布', cancelButtonText: '保留发布' }
+        );
+      } catch {
+        return;
+      }
+      this.unpublishing = true;
+      try {
+        await this.$store.dispatch('strategy/unpublishModel', {
+          modelId: this.modelId,
+          params: { source: 'strategy_model_detail', operator: this.liveOperator() }
+        });
+        this.$message.success('已取消发布，模型回到草稿');
+        await this.loadData();
+      } catch (error) {
+        this.$message.error(error.response?.data?.detail || error.message || '取消发布失败');
+      } finally {
+        this.unpublishing = false;
+      }
     },
     liveOperator() {
       return this.$store.getters['user/userName']
@@ -896,7 +1079,7 @@ export default {
       }).catch(() => {});
     },
     async handleLiveUnpublish() {
-      this.$confirm('确认取消该策略的实盘发布？日常监控将不再包含此策略实例（已写入的监控数据仍保留）。', '取消实盘发布', {
+      this.$confirm(`确认取消「${this.model.name || this.modelId}」的实盘？取消后将从日常监控下架，历史数据与操作记录保留。`, '取消实盘', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
@@ -917,7 +1100,7 @@ export default {
       }).catch(() => {});
     },
     async handleLiveRepublish() {
-      this.$confirm('将当前配置同步到最新实盘版本？将于次交易日生效。', '同步实盘', {
+      this.$confirm('将最新发布版本同步到实盘？实盘快照将重建为当前发布快照，于次交易日生效。', '同步实盘版本', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
@@ -943,6 +1126,10 @@ export default {
       }).catch(() => {});
     },
     handleEdit() {
+      if (this.isPublishedModel) {
+        this.$message.warning('策略已发布，配置已冻结；请先取消发布再编辑');
+        return;
+      }
       this.editDialogVisible = true;
     },
     handleEditSuccess() {
@@ -1099,15 +1286,6 @@ export default {
         bias_threshold: '乖离率阈值',
         risk_index_code: '风控指数代码',
         risk_drop_threshold: '风控跌幅阈值',
-        // etf_discount 特有
-        window: '滚动窗口',
-        signal_type: '开仓信号分位点',
-        close_signal_type: '平仓信号分位点',
-        enable_tech_filter: '技术指标过滤',
-        std_filter_mode: 'STD过滤模式',
-        tech_min_pass: '最少通过条件数',
-        enable_rolling_params: '月度参数优选',
-        lookback_months: '参数优选回看月数',
         // cross_sectional_momentum 特有
         momentum_window: '动量回顾窗口',
         // cross_sectional_long_short 特有
@@ -1150,7 +1328,6 @@ export default {
         'sharpe': '夏普率综合打分',
         'momentum_reversal': '动量+反转(7+1)',
         'etf_rotation': 'ETF轮动',
-        'etf_discount': 'ETF贴水率',
         'cross_sectional_momentum': '截面动量',
         'cross_sectional_long_short': '截面多空',
         'trend_following': '趋势跟踪',
@@ -1247,7 +1424,20 @@ export default {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+}
+
+.header-right ::v-deep .el-button + .el-button,
+.header-actions ::v-deep .el-button + .el-button {
+  margin-left: 0;
+}
+
+.header-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
 .page-title {
@@ -1485,6 +1675,12 @@ export default {
   font-size: 16px;
   font-weight: 600;
   color: #303133;
+}
+
+.metric-card .metric-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #909399;
 }
 
 /* 空状态 */

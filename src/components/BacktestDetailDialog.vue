@@ -42,26 +42,29 @@
           </el-col>
           <el-col :span="4">
             <div class="metric-box">
-              <div class="metric-label">年化收益率</div>
+              <div class="metric-label">年化收益率（260日）</div>
               <div class="metric-value" :style="{ color: getReturnColor(record.result.annual_return) }">
                 {{ record.result.annual_return != null ? (record.result.annual_return * 100).toFixed(2) + '%' : '-' }}
               </div>
+              <div class="metric-sub">365日：{{ record.result.annual_return_365 != null ? (record.result.annual_return_365 * 100).toFixed(2) + '%' : '-' }}</div>
             </div>
           </el-col>
           <el-col :span="4">
             <div class="metric-box">
-              <div class="metric-label">年化波动率</div>
+              <div class="metric-label">年化波动率（260日）</div>
               <div class="metric-value">
                 {{ record.result.annual_volatility != null ? (record.result.annual_volatility * 100).toFixed(2) + '%' : '-' }}
               </div>
+              <div class="metric-sub">365日：{{ record.result.annual_volatility_365 != null ? (record.result.annual_volatility_365 * 100).toFixed(2) + '%' : '-' }}</div>
             </div>
           </el-col>
           <el-col :span="4">
             <div class="metric-box">
-              <div class="metric-label">夏普比率</div>
+              <div class="metric-label">夏普比率（260日）</div>
               <div class="metric-value" :style="{ color: record.result.sharpe_ratio > 1 ? '#f56c6c' : '#909399' }">
                 {{ record.result.sharpe_ratio != null ? record.result.sharpe_ratio.toFixed(3) : '-' }}
               </div>
+              <div class="metric-sub">365日：{{ record.result.sharpe_ratio_365 != null ? record.result.sharpe_ratio_365.toFixed(3) : '-' }}</div>
             </div>
           </el-col>
           <el-col :span="4">
@@ -74,14 +77,29 @@
           </el-col>
           <el-col :span="4" v-if="record.result.calmar_ratio != null">
             <div class="metric-box">
-              <div class="metric-label">卡玛比率</div>
+              <div class="metric-label">卡玛比率（260日）</div>
               <div class="metric-value">
                 {{ record.result.calmar_ratio.toFixed(3) }}
               </div>
+              <div class="metric-sub">365日：{{ record.result.calmar_ratio_365 != null ? record.result.calmar_ratio_365.toFixed(3) : '-' }}</div>
             </div>
           </el-col>
         </el-row>
       </el-card>
+
+      <!-- 旧记录无明细提示（升级前保存的回测记录只含指标） -->
+      <el-alert
+        v-if="!record.result.equity_curve || record.result.equity_curve.length === 0"
+        title="该记录未保存明细数据"
+        type="info"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 12px;"
+      >
+        <div slot="default">
+          历史回测记录只保存了绩效指标。重新运行回测后，这里将展示净值曲线、回撤、权重变化、持仓记录与相关性矩阵。
+        </div>
+      </el-alert>
 
       <!-- 权益曲线图表 -->
       <el-card shadow="never" class="info-section" v-if="record.result.equity_curve && record.result.equity_curve.length > 0">
@@ -192,7 +210,7 @@
 
       <!-- 相关性矩阵 -->
       <el-card shadow="never" class="info-section" v-if="record.result.correlation_matrix && Object.keys(record.result.correlation_matrix).length > 0">
-        <div slot="header">资产相关性矩阵</div>
+        <div slot="header">相关性矩阵</div>
         <el-table
           :data="correlationTableData"
           border
@@ -227,6 +245,7 @@
 import dayjs from 'dayjs';
 import * as echarts from 'echarts';
 import { downsampleParallel } from '@/utils/downsample';
+import { createDateAxisLabelFormatter } from '@/utils/dateAxis';
 
 export default {
   name: 'BacktestDetailDialog',
@@ -438,8 +457,10 @@ export default {
       const returnCurve = this.record.result.return_curve || [];
       
       // 准备数据
-      let dates = equityCurve.map(item => dayjs(item.date).format('MM-DD'));
+      let dates = equityCurve.map(item => dayjs(item.date).format('YYYY-MM-DD'));
       let unitValues = equityCurve.map(item => item.unit_value);
+      // 轴标签格式：跨年显示 YYYY-MM，单年显示 MM-DD（基于完整序列判断）
+      const dateLabelFormatter = createDateAxisLabelFormatter(dates);
       
       // 累计收益率数据（从 return_curve 获取）
       let returnValues = [];
@@ -502,7 +523,10 @@ export default {
         xAxis: {
           type: 'category',
           boundaryGap: false,
-          data: dates
+          data: dates,
+          axisLabel: {
+            formatter: dateLabelFormatter
+          }
         },
         yAxis: this.chartType === 'both'
           ? [
@@ -615,6 +639,9 @@ export default {
         }
       });
       const assetList = Array.from(allAssets);
+
+      // 轴标签格式：跨年显示 YYYY-MM，单年显示 MM-DD
+      const dateLabelFormatter = createDateAxisLabelFormatter(weightChanges.map(change => change.date).filter(Boolean));
       
       // 为每个资产创建时间序列数据
       const seriesData = {};
@@ -730,9 +757,7 @@ export default {
           type: 'time',
           boundaryGap: false,
           axisLabel: {
-            formatter: (value) => {
-              return dayjs(value).format('MM-DD');
-            }
+            formatter: dateLabelFormatter
           }
         },
         yAxis: {
@@ -839,8 +864,10 @@ export default {
         return;
       }
       
-      let dates = this.drawdownData.map(item => dayjs(item.date).format('MM-DD'));
+      let dates = this.drawdownData.map(item => dayjs(item.date).format('YYYY-MM-DD'));
       let values = this.drawdownData.map(item => item.value);
+      // 轴标签格式：跨年显示 YYYY-MM，单年显示 MM-DD（基于完整序列判断）
+      const dateLabelFormatter = createDateAxisLabelFormatter(dates);
 
       // 降采样：限制最多 500 个数据点
       const sampledDD = downsampleParallel(dates, values, 500);
@@ -869,7 +896,10 @@ export default {
         xAxis: {
           type: 'category',
           boundaryGap: false,
-          data: dates
+          data: dates,
+          axisLabel: {
+            formatter: dateLabelFormatter
+          }
         },
         yAxis: {
           type: 'value',
@@ -925,8 +955,10 @@ export default {
         sampledVolData = indices.map(idx => this.volatilityData[idx]);
       }
 
-      const dates = sampledVolData.map(item => dayjs(item.date).format('MM-DD'));
+      const dates = sampledVolData.map(item => dayjs(item.date).format('YYYY-MM-DD'));
       const values = sampledVolData.map(item => item.value);
+      // 轴标签格式：跨年显示 YYYY-MM，单年显示 MM-DD（基于完整序列判断）
+      const dateLabelFormatter = createDateAxisLabelFormatter(this.volatilityData.map(item => item.date));
       const volResetPoints = sampledVolData
         .map((item, i) => (item.isVolReset ? { name: '波动率重置', coord: [i, item.value] } : null))
         .filter(Boolean);
@@ -955,7 +987,10 @@ export default {
         xAxis: {
           type: 'category',
           boundaryGap: false,
-          data: dates
+          data: dates,
+          axisLabel: {
+            formatter: dateLabelFormatter
+          }
         },
         yAxis: {
           type: 'value',
@@ -1039,6 +1074,13 @@ export default {
 .metric-value {
   font-size: 20px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #909399;
   font-variant-numeric: tabular-nums;
 }
 

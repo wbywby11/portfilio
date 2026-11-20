@@ -511,7 +511,8 @@ export default {
       try {
         const [logRes, modelRes, optRes] = await Promise.all([
           getLiveChangeLogs(this.modelId, { limit: 80, skip: 0 }),
-          getStrategyModel(this.modelId).catch(() => null),
+          // modelId 可能是监控实例 id 而非策略模型 id：探测失败时降级（不打印 404 日志）
+          getStrategyModel(this.modelId, { skipGlobal404Message: true }).catch(() => null),
           getAssetOptions().catch(() => null)
         ]);
         const logBody = logRes && logRes.data !== undefined ? logRes.data : logRes;

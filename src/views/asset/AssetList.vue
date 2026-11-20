@@ -56,6 +56,26 @@
             ></el-option>
           </el-select>
         </el-form-item>
+        <el-form-item label="标签">
+          <el-select
+            v-model="searchForm.tags"
+            placeholder="多个取交集"
+            multiple
+            collapse-tags
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            style="width: 220px;"
+          >
+            <el-option
+              v-for="item in tagOptions"
+              :key="item.tag"
+              :label="`${item.tag} (${item.count})`"
+              :value="item.tag"
+            ></el-option>
+          </el-select>
+        </el-form-item>
         <el-form-item>
           <el-button type="primary" icon="el-icon-search" @click="handleSearch">查询</el-button>
           <el-button icon="el-icon-refresh" @click="handleReset">重置</el-button>
@@ -87,6 +107,23 @@
         <vxe-column field="security_type" title="证券细分" width="80">
           <template #default="{ row }">
             <span>{{ row.security_type || '-' }}</span>
+          </template>
+        </vxe-column>
+        <vxe-column field="tags" title="标签" min-width="180" show-overflow="title">
+          <template #default="{ row }">
+            <template v-if="row.tags && row.tags.length">
+              <el-tag
+                v-for="tag in row.tags.slice(0, 3)"
+                :key="tag"
+                size="small"
+                type="success"
+                style="margin-right: 4px;"
+              >{{ tag }}</el-tag>
+              <el-tooltip v-if="row.tags.length > 3" :content="row.tags.slice(3).join('、')" placement="top">
+                <el-tag size="small" type="info">+{{ row.tags.length - 3 }}</el-tag>
+              </el-tooltip>
+            </template>
+            <span v-else style="color: #c0c4cc;">-</span>
           </template>
         </vxe-column>
         <vxe-column field="exchange" title="交易所" width="90"></vxe-column>
@@ -184,7 +221,7 @@
 
 <script>
 import { mapState } from 'vuex';
-import { downloadAssetTemplate, importAssetsFromExcel } from '@/api/asset';
+import { downloadAssetTemplate, importAssetsFromExcel, getAssetTags } from '@/api/asset';
 import AssetForm from './AssetForm.vue';
 import AssetQuote from './AssetQuote.vue';
 import AssetDetail from './AssetDetail.vue';
@@ -202,8 +239,11 @@ export default {
         code: '',
         name: '',
         instrument_type: '',
-        asset_class: ''
+        asset_class: '',
+        tags: []
       },
+      // 全部已用标签（供筛选下拉）
+      tagOptions: [],
       tableData: [],
       pagination: {
         current: 1,
@@ -223,8 +263,19 @@ export default {
   },
   created() {
     this.fetchData();
+    this.fetchTagOptions();
   },
   methods: {
+    async fetchTagOptions() {
+      try {
+        const response = await getAssetTags();
+        this.tagOptions = (response && response.data) || [];
+      } catch (error) {
+        // 标签列表仅用于辅助筛选，取不到不阻断列表展示
+        console.error('加载资产标签失败:', error);
+        this.tagOptions = [];
+      }
+    },
     async fetchData() {
       try {
         await this.$store.dispatch('asset/fetchAssetList', {
@@ -232,6 +283,7 @@ export default {
           asset_class: this.searchForm.asset_class || undefined,
           code: this.searchForm.code || undefined,
           name: this.searchForm.name || undefined,
+          tags: this.searchForm.tags && this.searchForm.tags.length ? this.searchForm.tags : undefined,
           page: this.pagination.current,
           pageSize: this.pagination.pageSize
         });
@@ -250,7 +302,8 @@ export default {
         code: '',
         name: '',
         instrument_type: '',
-        asset_class: ''
+        asset_class: '',
+        tags: []
       };
       this.fetchData();
     },

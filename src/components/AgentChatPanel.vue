@@ -249,6 +249,7 @@ const CONFIRM_TOOL_LABELS = {
   'run_backtest': '执行回测',
   'create_portfolio': '创建组合',
   'adjust_portfolio': '调整组合',
+  'create_strategy_model': '创建策略模型',
   'update_monitor_config': '更新监控配置',
   'trigger_data_sync': '触发数据同步',
   'save_report': '保存报告'
@@ -285,6 +286,7 @@ export default {
         'query_portfolios': '正在查询组合...',
         'create_portfolio': '正在准备创建组合...',
         'adjust_portfolio': '正在准备调整组合...',
+        'create_strategy_model': '正在准备创建策略模型...',
         'query_monitors': '正在查询监控状态...',
         'update_monitor_config': '正在准备更新监控配置...',
         'query_assets': '正在盘点数据资产...',
@@ -1310,12 +1312,32 @@ export default {
           content,
           created_at: new Date().toISOString()
         })
+        // 确认执行成功后自动续跑：确认决策是独立 HTTP 请求，Agent 循环在发起
+        // 确认卡片时已结束，需补发一条继续消息重新拉起循环，完成多步任务的剩余步骤
+        if (decision === 'confirmed' && !outcome.error) {
+          this.scheduleAutoContinue()
+        }
       } catch (e) {
         console.error('提交确认决策失败:', e)
         this.$message.error('提交确认决策失败: ' + ((e && e.message) || '未知错误'))
       } finally {
         this.$set(card, '_busy', false)
       }
+    },
+
+    /**
+     * 写操作确认执行成功后的自动续跑调度。
+     * 同一轮多张并行确认卡片会各自触发，用防抖合并为一次续跑；
+     * 续跑以普通用户消息形式发出，复用现有 SSE 链路，Agent 可看到
+     * 会话历史中的执行结果消息并继续剩余步骤（回测/对比/报告等）。
+     */
+    scheduleAutoContinue() {
+      if (this._autoContinueTimer) clearTimeout(this._autoContinueTimer)
+      this._autoContinueTimer = setTimeout(() => {
+        this._autoContinueTimer = null
+        if (this.isStreaming) return
+        this.handleSend('上述写操作已确认执行完成，请基于执行结果继续完成原任务的剩余步骤。')
+      }, 1200)
     },
 
     /**

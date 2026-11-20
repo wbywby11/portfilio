@@ -47,6 +47,91 @@ class RunSpec:
     # 风控口径：None → 默认 RiskConfig()（不约束杠杆/单资产上限）
     risk_config: Optional[RiskConfig] = None
 
+    # 逐日进度回调（可选）：``(done, total, bar_time) -> None``。
+    # 引擎在工作线程同步调用，按 1% 节流在引擎侧完成；回调异常不阻断回测。
+    # 组合监控用它把「回测到哪一天」实时写进任务进度。
+    progress_cb: Optional[Any] = None
+
+
+def _resolve_contract(allocator: Any):
+    """取 allocator 类声明的数据契约（未声明或无此能力时返回 None）.
+
+    契约为空（``DataContract()`` 全缺省）时门禁快速返回，存量策略零影响。
+    """
+    if allocator is None:
+        return None
+    getter = getattr(type(allocator), "get_data_contract", None)
+    if not callable(getter):
+        return None
+    # 声明本身报错属于策略包配置错误，直接向上抛，不静默放行
+    return getter()
+
+
+def _strategy_label(allocator: Any, composition: Optional[Dict[str, Any]]) -> str:
+    """异常文本里的策略标识：优先 composition 的 allocator code，回退类名."""
+    code = (composition or {}).get("allocator")
+    if code:
+        return str(code)
+    if allocator is not None:
+        return type(allocator).__name__
+    return "unknown"
+
+
+def _gate_static(
+    allocator: Any,
+    thscodes: List[str],
+    composition: Optional[Dict[str, Any]],
+    strategy_params: Dict[str, Any],
+) -> None:
+    """运行前门禁（静态面）：资产数量/分组划分/日历口径声明.
+
+    引擎层不查库，``asset_meta`` 留空（``expected_asset_class`` 的库侧校验
+    由 services/strategy_data_contract_service.py 在实盘发布时补做）。
+    不满足即抛 DataContractError，不降级、不跳过资产、不放宽断言。
+    """
+    from app.backtesting.data_contract import validate_static
+
+    contract = _resolve_contract(allocator)
+    if contract is None or contract.is_empty:
+        return
+    report = validate_static(contract, list(thscodes or []), strategy_params)
+    report.raise_if_failed(_strategy_label(allocator, composition))
+
+
+def _gate_prices(spec: "RunSpec", strategy: IStrategy) -> None:
+    """运行前门禁（数据面）：历史长度/日历一致性/价格异常 + 策略自定义检查.
+
+    价格矩阵取 ``DataFeed.strategy_prices``（仅置 inf→NaN，保留缺日）；
+    不能用 ``DataFeed.prices``，后者经 sanitize_prices 已 ffill 缺日、
+    并把单日涨跌超阈值的点用前一日价格填充，在其上校验日历一致性与
+    单日跳变会恒通过。未提供保真矩阵时回退 prices。
+    """
+    from app.backtesting.data_contract import (
+        merge_reports,
+        validate_custom,
+        validate_with_prices,
+    )
+
+    allocator = spec.allocator
+    if allocator is None:
+        # 特殊路径（直传已构建策略）：CompositionPipeline 持有 allocator
+        allocator = getattr(strategy, "_allocator", None)
+    contract = _resolve_contract(allocator)
+    if contract is None or contract.is_empty:
+        return
+
+    codes = list(spec.thscodes or spec.config.thscodes or [])
+    params = spec.strategy_params or {}
+    prices = getattr(spec.data_feed, "strategy_prices", None)
+    if prices is None:
+        prices = spec.data_feed.prices
+
+    report = merge_reports(
+        validate_with_prices(contract, codes, params, prices),
+        validate_custom(contract, allocator, prices, params),
+    )
+    report.raise_if_failed(_strategy_label(allocator, spec.composition))
+
 
 def build_strategy(spec: RunSpec) -> IStrategy:
     """按 spec 构建策略对象（CompositionPipeline 唯一构造点）."""
@@ -75,8 +160,14 @@ def build_pipeline(
     供不运行逐日引擎的 Step1 权重生成构建块（监控适配器、研究员策略、
     模拟交易）复用；引擎层外禁止直接构造 CompositionPipeline，
     由 tests/test_backtesting_boundary.py 静态守卫。
+
+    本函数是四条通道（回测 / 监控适配器 / 组合子策略 / 模拟交易）的
+    唯一构造点，故静态面数据契约门禁挂在此处：契约不满足直接报错，
+    不构造引擎。
     """
     from app.backtesting.composition_pipeline import CompositionPipeline
+
+    _gate_static(allocator, thscodes, composition, strategy_params or {})
 
     return CompositionPipeline(
         allocator=allocator,
@@ -86,6 +177,43 @@ def build_pipeline(
     )
 
 
+def _resolve_cost_owner(spec: "RunSpec", strategy: IStrategy) -> Any:
+    """定位真正声明费率的策略对象（契约同 ``_gate_prices``）.
+
+    ``CompositionPipeline._base_strategy`` 返回自身，不能用来取 allocator；
+    优先 ``spec.allocator``，其次 pipeline 持有的 ``_allocator``，最后才是
+    包装对象自身（直传已构建策略的路径）。
+    """
+    owner = spec.allocator
+    if owner is None:
+        owner = getattr(strategy, "_allocator", None)
+    if owner is None:
+        owner = getattr(strategy, "_base_strategy", None)
+    return owner if owner is not None else strategy
+
+
+def _apply_trading_costs(spec: "RunSpec", strategy: IStrategy) -> None:
+    """把策略声明的分资产费率回填到 config（成交时由 ExecutionEngine 扣除）.
+
+    策略通过 ``get_trading_costs(params)`` 自述费率表；未声明（默认空 dict）时
+    不影响 ``commission_rate``，存量策略行为不变。费率与执行日无关，与原型
+    ``Σ|目标−调仓前实际权重| × 费率`` 同口径（Engine 按实际成交额计费）。
+
+    ``spec.strategy_params`` 为空时回退策略对象自身持有的参数字典，避免
+    参数未透传导致费率被静默跳过（声明了费率却不生效会直接体现为净值偏高）。
+    """
+    owner = _resolve_cost_owner(spec, strategy)
+    getter = getattr(owner, "get_trading_costs", None)
+    if not callable(getter):
+        return
+    params = spec.strategy_params
+    if not params:
+        params = getattr(owner, "_strategy_params", None) or {}
+    costs = getter(params) or {}
+    if costs:
+        spec.config.commission_by_code = {str(k): float(v) for k, v in costs.items()}
+
+
 def run_unified(spec: RunSpec) -> BacktestResult:
     """唯一引擎运行入口：构建引擎组件并逐日推进.
 
@@ -93,12 +221,15 @@ def run_unified(spec: RunSpec) -> BacktestResult:
         BacktestResult（snapshots / trades / config）
     """
     strategy = build_strategy(spec)
+    _gate_prices(spec, strategy)
+    _apply_trading_costs(spec, strategy)
     engine = BacktestEngine(
         config=spec.config,
         data_feed=spec.data_feed,
         strategy=strategy,
         risk_manager=RiskManager(spec.risk_config),
         execution_engine=ExecutionEngine(spec.config),
+        progress_cb=spec.progress_cb,
     )
     return engine.run()
 
@@ -131,6 +262,14 @@ def generate_targets(spec: RunSpec) -> List[Dict[str, Any]]:
     # 行情日历注入：与引擎同口径（声明 set_price_calendar 的策略）
     if hasattr(strategy, "set_price_calendar"):
         strategy.set_price_calendar(trade_dates)
+
+    # 面板注入：与引擎同口径，必须在 resolve_execution_schedule 之前
+    # （面板期日作为 event_dates 驱动调仓）
+    if hasattr(strategy, "set_panels"):
+        strategy.set_panels(
+            getattr(spec.data_feed, "panels", None),
+            getattr(spec.data_feed, "panel_dates", None),
+        )
 
     from app.backtesting.schedule import ScheduleResolver, resolve_execution_schedule
 

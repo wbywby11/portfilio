@@ -113,6 +113,34 @@ _LEGACY_TYPE_TO_SECURITY: dict[str, str] = {
     "数字货币": SecurityType.CRYPTO.value,
 }
 
+# 标签分隔符：Excel 一个单元格里可能写多个标签，导入与模型层共用同一套切分口径
+TAG_SEPARATORS: tuple[str, ...] = (",", "，", ";", "；", "|", "\n", "\t")
+
+
+def normalize_tags(value: object) -> list[str]:
+    """把标签值归一为去空、去重、保序的字符串列表。
+
+    兼容前端多选（list）、Excel 单元格（逗号/顿号/分号/竖线分隔的字符串）、
+    以及历史污染写入的 NaN / 空串。
+    """
+    if value is None:
+        return []
+    if isinstance(value, float) and math.isnan(value):
+        return []
+    if isinstance(value, (list, tuple, set)):
+        items = [str(v) for v in value]
+    else:
+        text = str(value)
+        for sep in TAG_SEPARATORS:
+            text = text.replace(sep, "\n")
+        items = text.split("\n")
+    out: list[str] = []
+    for item in items:
+        tag = item.strip()
+        if tag and tag not in out:
+            out.append(tag)
+    return out
+
 
 class Asset(BaseModel):
     """资产模型（三维度正交分类）"""
@@ -126,6 +154,13 @@ class Asset(BaseModel):
     asset_class: AssetClass = Field(..., description="资产大类：权益/固收/商品/货币/另类")
     # 维度 3：证券细分（可选细粒度标签）
     security_type: Optional[SecurityType] = Field(None, description="证券细分标签：股票/ETF/指数/基金/...")
+
+    # 业务标签（与三维度分类正交）：策略预设按标签选资产池用
+    # 约定前缀：pool:<池名> 资产池成员 / class:<大类> 分组用大类 / market:<市场> 市场归属
+    tags: List[str] = Field(
+        default_factory=list,
+        description="业务标签，如 pool:nous_no_us、class:gold、market:hk",
+    )
 
     # [历史兼容] 旧的混存字段，新代码应改用上面三个维度
     # 存量数据迁移完成前保留；迁移后此字段将移除
@@ -188,6 +223,9 @@ class Asset(BaseModel):
             v = data.get(key)
             if isinstance(v, float) and math.isnan(v):
                 data[key] = None
+
+        # 标签归一：存量文档没有该字段、或历史污染写了 NaN/空串，统一为 []
+        data["tags"] = normalize_tags(data.get("tags"))
 
         legacy = data.get("asset_type")
         legacy = str(legacy).strip() if legacy is not None else ""

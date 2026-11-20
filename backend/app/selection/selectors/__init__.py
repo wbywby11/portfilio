@@ -7,7 +7,6 @@ from app.selection.selectors.cross_sectional_momentum import CrossSectionalMomen
 from app.selection.selectors.trend_following import TrendFollowingSelector
 from app.selection.selectors.cross_sectional_long_short import CrossSectionalLongShortSelector
 from app.selection.selectors.etf_rotation import ETFRotationSelector
-from app.selection.selectors.etf_discount import ETFDiscountSelector
 
 __all__ = [
     'BaseAssetSelector',
@@ -17,5 +16,4 @@ __all__ = [
     'TrendFollowingSelector',
     'CrossSectionalLongShortSelector',
     'ETFRotationSelector',
-    'ETFDiscountSelector',
 ]

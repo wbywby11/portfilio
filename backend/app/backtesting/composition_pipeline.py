@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from app.allocation.runtime_params import WEIGHT_CAPS_PARAM_NAMES, resolve_weight_caps
 from app.backtesting.signal import TargetWeightSignal
 from app.backtesting.strategy_api import IStrategy, _log_rebalance_weights
 from app.selection import SELECTION_REGISTRY, create_selector
@@ -32,6 +33,7 @@ _PIPELINE_CONTROL_KEYS = frozenset({
     'enable_control',
     'preserve_price_gaps',   # 缺日保真（数据源层消费，非 allocator 参数）
     'inception_weights', 'inception_weights_auto_normalize',  # 期初建仓（引擎层消费）
+    'calendar_source',       # 日历口径（监控 time_norm 消费，非 allocator 参数）
 })
 
 # 选择器运行时内部键：选择器/监控运行时消费但未在 get_param_schema() 中声明
@@ -41,11 +43,6 @@ _SELECTOR_RUNTIME_KEYS = frozenset({
     'macd_long_window',
     'top_n', 'risk_triggered',                      # etf_rotation 内部
 })
-
-# 双层共用键：选择器 schema 有声明，但 allocator（vol_scaled_budget/risk_parity/
-# black_litterman 等）同样消费，必须继续传给 allocator，不能过滤
-_ALLOCATOR_SHARED_KEYS = frozenset({'min_history_days', 'lookback_days'})
-
 
 def _collect_selector_schema_keys() -> frozenset:
     """从 SELECTION_REGISTRY 各选择器的参数 Schema 派生参数键集合.
@@ -62,16 +59,75 @@ def _collect_selector_schema_keys() -> frozenset:
     return frozenset(keys)
 
 
+# 选择器 schema 派生键（自动收集）
+_SELECTOR_SCHEMA_KEYS = _collect_selector_schema_keys()
+
+# 恒不下传 allocator 的键：Pipeline/前端控制键 + 选择器运行时内部键
+# （由 Pipeline、引擎、数据源层、监控运行时消费，与策略形态无关）
+_SELECTION_ONLY_KEYS = _PIPELINE_CONTROL_KEYS | _SELECTOR_RUNTIME_KEYS
+
+# 双层共用键：选择器 schema 有声明，但 allocator（vol_scaled_budget/risk_parity/
+# black_litterman 等）同样消费，必须继续传给 allocator，不能过滤
+_ALLOCATOR_SHARED_KEYS = frozenset({'min_history_days', 'lookback_days'})
+
 _SELECTION_PARAM_KEYS = (
-    _PIPELINE_CONTROL_KEYS
-    | _SELECTOR_RUNTIME_KEYS
-    | (_collect_selector_schema_keys() - _ALLOCATOR_SHARED_KEYS)
+    _SELECTION_ONLY_KEYS
+    | (_SELECTOR_SCHEMA_KEYS - _ALLOCATOR_SHARED_KEYS)
 )
 
 # 已在内部处理杠杆的分配模型（不应在 Pipeline 层再次缩放）
 _INTERNAL_LEVERAGE_IMPLS = frozenset({
     "VolScaledBudgetStrategy",
 })
+
+# 按 allocator 类缓存的「调用时应过滤掉的策略参数键」
+_FILTERED_PARAM_KEYS_CACHE: Dict[type, frozenset] = {}
+
+
+def _allocator_declared_keys(allocator: Any) -> frozenset:
+    """返回 allocator 在自己的 ParamSchema 中声明的参数键集合.
+
+    读取失败时返回空集并记 warning（等价于「无自声明键」，退回原过滤行为），
+    不因元信息缺失中断回测。
+    """
+    cls = type(allocator)
+    try:
+        return frozenset(p.name for p in cls.get_param_schema().params)
+    except Exception as exc:  # pragma: no cover - 防御性分支
+        logger.warning(
+            "[Pipeline] 读取 %s 参数声明失败，按无自声明键处理: %s",
+            cls.__name__, exc,
+        )
+        return frozenset()
+
+
+def _filtered_param_keys(allocator: Any) -> frozenset:
+    """该 allocator 调用时应过滤掉的策略参数键集合（按类缓存）.
+
+    选择器键过滤规则的目的是防止选择层参数渗进**不拥有选样能力**的分配器。
+    打包独立形态（``composition.selector=None``）在包内复用选择器完成选样，
+    这些参数由 allocator 自己声明、自己消费，属于 allocator 自有参数，必须
+    放行——否则前端配了不生效，构成隐藏参数。
+
+    判据是「allocator 是否自己声明该键」，不按策略类名特判：三层形态下现有
+    allocator 均不声明选择器键（由 ``tests/test_schema_consistency.py``
+    ``test_allocator_no_selector_params`` 守卫），故本规则对存量策略惰性，
+    结果与 ``_SELECTION_PARAM_KEYS`` 完全一致。
+
+    放行仅限选择器 schema 键：``_SELECTION_ONLY_KEYS``（Pipeline/前端控制键、
+    选择器运行时内部键）恒过滤，即使 allocator 展开了
+    ``model_level_param_group()`` 声明了 ``calendar_source`` 等键也不下传——
+    它们由 Pipeline/引擎/监控运行时消费，不属 allocator 入参。
+    """
+    cls = type(allocator)
+    cached = _FILTERED_PARAM_KEYS_CACHE.get(cls)
+    if cached is None:
+        cached = _SELECTION_ONLY_KEYS | (
+            (_SELECTOR_SCHEMA_KEYS - _ALLOCATOR_SHARED_KEYS)
+            - _allocator_declared_keys(allocator)
+        )
+        _FILTERED_PARAM_KEYS_CACHE[cls] = cached
+    return cached
 
 
 class CompositionPipeline(IStrategy):
@@ -114,12 +170,36 @@ class CompositionPipeline(IStrategy):
         # 引擎注入的完整行情日历（ISO 字符串元组，进程内复用同一对象），
         # 透传给需要精确时序判定的选择器（见 _run_multi_signal）
         self._price_calendar_iso: Optional[tuple] = None
+        # 引擎注入的非价格截面面板（面板名 → {期日 → 截面 DataFrame(index=code)}），
+        # 供 allocate 按期取数；仅声明 get_extra_panels 的策略会被注入
+        self._panels: Dict[str, Dict[pd.Timestamp, pd.DataFrame]] = {}
+        self._panel_dates: Dict[str, List[pd.Timestamp]] = {}
+        # allocator 是否声明包内自带日度风控（惰性求值后缓存）
+        self._native_vol_control: Optional[bool] = None
 
     def set_price_calendar(self, trade_dates) -> None:
         """引擎在回测启动前注入完整行情日历（价格矩阵索引）."""
         self._price_calendar_iso = tuple(
             pd.Timestamp(d).strftime("%Y-%m-%d") for d in trade_dates
         )
+
+    def set_panels(self, panels, panel_dates=None) -> None:
+        """引擎在回测启动前注入非价格截面面板（与 set_price_calendar 同位置）.
+
+        必须在 resolve_execution_schedule 之前调用：面板期日要作为 event_dates
+        驱动调仓（见 get_execution_schedule）。
+
+        Args:
+            panels: {面板名: {期日 Timestamp: 截面 DataFrame(index=code)}}
+            panel_dates: {面板名: [期日 Timestamp]}；缺省从 panels 推导
+        """
+        self._panels = dict(panels or {})
+        if panel_dates is None:
+            panel_dates = {
+                name: sorted(periods.keys())
+                for name, periods in self._panels.items()
+            }
+        self._panel_dates = dict(panel_dates or {})
 
     # ------------------------------------------------------------------
     # IStrategy 接口实现
@@ -152,7 +232,7 @@ class CompositionPipeline(IStrategy):
 
         # Step 2: 构建 allocation 参数（注入标签、选择行等）
         alloc_params = self._build_allocation_params(
-            active_assets, asset_tags, use_full_matrix
+            active_assets, asset_tags, use_full_matrix, as_of
         )
 
         # multi_signal 模式：注入复合信号权重
@@ -161,7 +241,25 @@ class CompositionPipeline(IStrategy):
 
         # Step 3: Allocation（必选）
         # momentum_reversal (7+1) 需要完整价格矩阵（含未选中资产），其他选择器仅传入选中资产
-        allocate_prices = history_prices if use_full_matrix else history_prices[active_assets]
+        if use_full_matrix:
+            allocate_prices = history_prices
+        else:
+            # 选中资产可能来自面板/自定义候选池，未必在当前回测窗口内有行情。
+            # 直接按 active_assets 取列会抛 KeyError，这里先与窗口价格矩阵取交集：
+            # 无行情的标的无法分配，只能剔除；全部剔除则说明窗口与候选池不匹配，需显式报错。
+            no_price = [c for c in active_assets if c not in history_prices.columns]
+            if no_price:
+                logger.warning(
+                    "[Pipeline] 选中资产中 %d 只在当前回测窗口内无行情，已从分配矩阵剔除：%s",
+                    len(no_price), no_price[:20],
+                )
+                active_assets = [c for c in active_assets if c in history_prices.columns]
+                if not active_assets:
+                    raise ValueError(
+                        f"选中资产在当前回测窗口内均无行情数据（共 {len(no_price)} 只），无法分配。"
+                        "请检查回测区间、行情入库情况或候选池配置"
+                    )
+            allocate_prices = history_prices[active_assets]
 
         weights_series = self._allocator.allocate(allocate_prices, **alloc_params)
 
@@ -215,10 +313,12 @@ class CompositionPipeline(IStrategy):
     ) -> Tuple[bool, Optional[float]]:
         """代理调用 allocator 的波动率触发检查（含 control monitor 委托）.
 
-        当 composition 未配置 controller 时，直接返回未触发，
-        避免 allocator 内置兜底逻辑被误触发。
+        当 composition 未配置 controller 且 allocator 未声明包内自带风控时，
+        直接返回未触发，避免 allocator 内置兜底逻辑被误触发。
+        打包形态的独立策略 controller 为 None、风控写在策略包内，
+        由 has_native_vol_control() 声明放行。
         """
-        if not self._composition.get("controller"):
+        if not self._composition.get("controller") and not self._allocator_has_native_vol_control():
             return False, None
         if hasattr(self._allocator, "check_volatility_trigger"):
             merged = self._merge_params_with_controller(params)
@@ -237,10 +337,10 @@ class CompositionPipeline(IStrategy):
     ) -> Optional[pd.Series]:
         """代理调用 allocator 的波动率重置权重计算（含 control monitor 委托）.
 
-        当 composition 未配置 controller 时，直接返回 None，
-        避免 allocator 内置兜底逻辑被误触发。
+        当 composition 未配置 controller 且 allocator 未声明包内自带风控时，
+        直接返回 None，避免 allocator 内置兜底逻辑被误触发。
         """
-        if not self._composition.get("controller"):
+        if not self._composition.get("controller") and not self._allocator_has_native_vol_control():
             return None
         if hasattr(self._allocator, "compute_volatility_reset_weights"):
             merged = self._merge_params_with_controller(params)
@@ -250,6 +350,30 @@ class CompositionPipeline(IStrategy):
                 **merged
             )
         return None
+
+    def _allocator_has_native_vol_control(self) -> bool:
+        """allocator 是否声明包内自带日度波动率风控（结果缓存）.
+
+        打包形态的独立策略 composition.controller 为 None，但风控写在策略包内
+        （重写 check_volatility_trigger / compute_volatility_reset_weights），
+        需放行代理；三层组合形态的策略未声明此方法或返回 False，
+        短路行为与历史完全一致。声明读取异常时按无自带风控处理，
+        不静默放大风控范围。
+        """
+        if self._native_vol_control is None:
+            fn = getattr(self._allocator, "has_native_vol_control", None)
+            if callable(fn):
+                try:
+                    self._native_vol_control = bool(fn())
+                except Exception as exc:
+                    logger.warning(
+                        "[Pipeline] has_native_vol_control 声明读取失败，"
+                        "按无自带风控处理: %s", exc
+                    )
+                    self._native_vol_control = False
+            else:
+                self._native_vol_control = False
+        return self._native_vol_control
 
     def _merge_params_with_controller(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """合并策略参数与 controller_parameters 子字典（扁平化）.
@@ -281,22 +405,55 @@ class CompositionPipeline(IStrategy):
                 delay = int(user_delay)
             except (TypeError, ValueError):
                 logger.warning("[Pipeline] execution_delay 参数非法，忽略：%r", user_delay)
-                return sched
-            base = dict(sched or {})
-            # 模型显式声明执行延迟 = 该模型对执行口径有独立要求（如同模板
-            # 服务不同原型口径），allocator 自带的 skip_dates/
-            # selection_start_date 是为其他模型定制的配置，不得泄露给当前
-            # 模型，重建干净 schedule 只保留调仓频率
-            clean = {"rebalance_freq": base.get("rebalance_freq", "monthly")}
-            if base.get("skip_dates") or base.get("selection_start_date"):
-                logger.info(
-                    "[Pipeline] 模型声明 execution_delay=%s，重置 allocator 专属调度配置"
-                    "（skip_dates/selection_start_date）",
-                    delay,
-                )
-            clean["execution_delay"] = delay
-            return clean
-        return sched
+            else:
+                base = dict(sched or {})
+                # 模型显式声明执行延迟 = 该模型对执行口径有独立要求（如同模板
+                # 服务不同原型口径），allocator 自带的 skip_dates/
+                # selection_start_date 是为其他模型定制的配置，不得泄露给当前
+                # 模型，重建干净 schedule 只保留调仓频率
+                clean = {"rebalance_freq": base.get("rebalance_freq", "monthly")}
+                # natural_frequency 是频率语义而非模型专属配置：它表示
+                # daily/weekly 就是自然频率（监控侧据此走逐日/逐周映射，
+                # 而不是按月末推演），必须与 rebalance_freq 一起保留，
+                # 否则模型一填 execution_delay 就丢失该声明，回测与监控频率
+                # 不同源。
+                if base.get("natural_frequency"):
+                    clean["natural_frequency"] = base["natural_frequency"]
+                if base.get("skip_dates") or base.get("selection_start_date"):
+                    logger.info(
+                        "[Pipeline] 模型声明 execution_delay=%s，重置 allocator 专属调度配置"
+                        "（skip_dates/selection_start_date）",
+                        delay,
+                    )
+                clean["execution_delay"] = delay
+                sched = clean
+        # 面板驱动调仓：把注入的面板期日作为 event_dates（信号日=执行日=生效日）
+        return self._inject_panel_event_dates(sched)
+
+    def _inject_panel_event_dates(self, sched: Optional[dict]) -> Optional[dict]:
+        """allocator 声明 panel_event_dates 且已注入面板期日时，把期日集合作为
+        event_dates 注入调度声明。
+
+        期日来自数据加载层注入的面板（set_panels），策略类内不出现具体日期常量；
+        未注入面板或未声明 panel_event_dates 时原样返回，存量策略零影响。
+        """
+        if not self._panel_dates:
+            return sched
+        opts: Dict[str, Any] = {}
+        fn = getattr(self._allocator, "get_data_feed_options", None)
+        if callable(fn):
+            try:
+                opts = dict(fn() or {})
+            except Exception as exc:
+                logger.warning("[Pipeline] 读取 allocator 数据源选项失败：%s", exc)
+        if not opts.get("panel_event_dates"):
+            return sched
+        event_dates = sorted({d for dates in self._panel_dates.values() for d in dates})
+        if not event_dates:
+            return sched
+        merged = dict(sched or {})
+        merged["event_dates"] = event_dates
+        return merged
 
     def get_data_feed_options(self) -> Dict[str, Any]:
         """数据源选项声明（BacktestEngine 通过此方法选择信号计算价格源）.
@@ -305,11 +462,20 @@ class CompositionPipeline(IStrategy):
         的价格矩阵，对齐原型"品种缺日→收益率/动量窗口 NaN 传播、缺窗口
         品种退出候选"口径（如 GMSI 2.0 数据源存在品种零星缺日）。
         """
-        return {
-            "preserve_price_gaps": bool(
-                self._strategy_params.get("preserve_price_gaps", False)
-            ),
-        }
+        alloc_opts: Dict[str, Any] = {}
+        fn = getattr(self._allocator, "get_data_feed_options", None)
+        if callable(fn):
+            try:
+                alloc_opts = dict(fn() or {})
+            except Exception as exc:
+                logger.warning("[Pipeline] 读取 allocator 数据源选项失败：%s", exc)
+        opts = dict(alloc_opts)
+        # preserve_price_gaps：模型参数优先（用户可配），缺省取 allocator 静态声明
+        preserve = self._strategy_params.get("preserve_price_gaps")
+        if preserve is None:
+            preserve = alloc_opts.get("preserve_price_gaps", False)
+        opts["preserve_price_gaps"] = bool(preserve)
+        return opts
 
     def on_daily_settle(self, time, position, total_value, bar_extra=None):
         """每日结算钩子，委托到 allocator.
@@ -385,7 +551,21 @@ class CompositionPipeline(IStrategy):
 
         # selector 为 None：跳过选择
         if not selector_type_raw:
-            return list(self._thscodes), {}, False
+            # 候选池是策略配置的静态代码列表，未必都在当前回测窗口内有行情；
+            # 未过滤会让 allocate_prices 取列时抛 KeyError，故按窗口价格矩阵求交集。
+            available = [c for c in self._thscodes if c in history_prices.columns]
+            dropped = [c for c in self._thscodes if c not in history_prices.columns]
+            if dropped:
+                logger.warning(
+                    "[Pipeline] 候选池中 %d 只资产在当前回测窗口内无行情，已剔除：%s",
+                    len(dropped), dropped[:20],
+                )
+            if not available:
+                raise ValueError(
+                    f"候选池 {len(self._thscodes)} 只资产在当前回测窗口内均无行情数据，无法分配。"
+                    "请检查回测区间与行情入库情况"
+                )
+            return available, {}, False
 
         # 处理 selector_type 别名兼容
         selector_type = self._normalize_selector_type(selector_type_raw)
@@ -636,6 +816,7 @@ class CompositionPipeline(IStrategy):
         active_assets: List[str],
         asset_tags: Dict[str, str],
         use_full_matrix: bool,
+        as_of: Optional[pd.Timestamp] = None,
     ) -> Dict[str, Any]:
         """从选择结果和策略参数构建 allocator 的调用参数.
 
@@ -663,9 +844,10 @@ class CompositionPipeline(IStrategy):
             active_set = set(active_assets)
             selection_row = {code: (1 if code in active_set else 0) for code in self._thscodes}
 
-        # 合并策略参数（过滤选择器专属键）
+        # 合并策略参数（过滤选择层专属键；allocator 自己声明的键放行）
+        filtered_keys = _filtered_param_keys(self._allocator)
         for k, v in self._strategy_params.items():
-            if k in _SELECTION_PARAM_KEYS:
+            if k in filtered_keys:
                 continue
             params[k] = v
 
@@ -696,6 +878,16 @@ class CompositionPipeline(IStrategy):
         if controller:
             params.setdefault("vol_control_type", controller)
 
+        # 注入执行日 as_of：面板类策略据此定位当期截面（与 _selection_row 同为
+        # Pipeline 注入的运行时键，非用户配置，不进 _PIPELINE_CONTROL_KEYS 过滤）
+        if as_of is not None:
+            params["_as_of"] = as_of
+
+        # 注入非价格截面面板：整份按期字典，期匹配与滞后校验在策略包内完成
+        # （策略包用 prices.index 数滞后交易日，Pipeline 不感知 panel_max_lag_days）
+        for panel_name, periods in self._panels.items():
+            params[f"_panel_{panel_name}"] = periods
+
         return params
 
     # ------------------------------------------------------------------
@@ -708,7 +900,8 @@ class CompositionPipeline(IStrategy):
     ) -> Dict[str, float]:
         """后处理阶段：杠杆缩放 + 单资产权重上限.
 
-        从 strategy_params 读取 max_leverage/max_total_leverage 和 max_weight_dict。
+        从 strategy_params 读取 max_leverage/max_total_leverage 与资产权重约束
+        （取值口径见 :func:`app.allocation.runtime_params.resolve_weight_caps`）。
         已在内部处理杠杆的分配模型（schema.internal_leverage=True）跳过杠杆缩放。
 
         波动率定标不属于后处理：声明 vol_targeting_enabled 的策略由回测引擎
@@ -745,25 +938,21 @@ class CompositionPipeline(IStrategy):
         except Exception:
             pass
 
-        has_weight_caps = "weight_caps" in allocator_schema_names or "max_weight_dict" in allocator_schema_names
-        if has_weight_caps:
-            weight_caps = self._strategy_params.get("weight_caps", self._strategy_params.get("max_weight_dict"))
-            if isinstance(weight_caps, dict) and weight_caps:
-                for code in list(weights_dict.keys()):
-                    cap = weight_caps.get(code)
-                    if cap is None:
-                        continue
-                    try:
-                        cap_f = float(cap)
-                        if cap_f <= 0 and weights_dict.get(code, 0) > 0:
-                            logger.warning(
-                                "[Pipeline] 资产 %s 的权重上限为 %s，将权重置为0。",
-                                code, cap
-                            )
-                            weights_dict[code] = 0.0
-                        elif weights_dict[code] > cap_f:
-                            weights_dict[code] = cap_f
-                    except (TypeError, ValueError):
-                        pass
+        if allocator_schema_names.intersection(WEIGHT_CAPS_PARAM_NAMES):
+            # 现名 weight_caps 为空时回退历史名 max_weight_dict，与策略内实现、
+            # 回测门禁同一口径（各写一份会让空字典静默吃掉约束）
+            weight_caps = resolve_weight_caps(self._strategy_params)
+            for code, cap in weight_caps.items():
+                if code not in weights_dict:
+                    continue
+                if cap <= 0:
+                    if weights_dict[code] > 0:
+                        logger.warning(
+                            "[Pipeline] 资产 %s 的权重上限为 %s，将权重置为0。",
+                            code, cap
+                        )
+                        weights_dict[code] = 0.0
+                elif weights_dict[code] > cap:
+                    weights_dict[code] = cap
 
         return weights_dict

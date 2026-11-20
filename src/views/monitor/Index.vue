@@ -22,87 +22,16 @@
         <span class="period-range">{{ periodRangeLabel }}</span>
       </div>
 
-      <!-- 核心绩效指标 -->
-      <div class="metrics-grid">
-        <div class="metric-card">
-          <div class="metric-label">当前净值</div>
-          <div class="metric-value large">{{ formatNumber(currentNav, 4) }}</div>
-          <div class="metric-sub">{{ formatDate(monitorState && monitorState.date) }}</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">区间收益率</div>
-          <div class="metric-value" :style="{ color: getReturnColor(periodStats.periodReturn) }">
-            {{ formatPct(periodStats.periodReturn) }}
-          </div>
-          <div class="metric-sub">{{ periodStats.tradingDays }} 个交易日</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">年化收益率</div>
-          <div class="metric-value" :style="{ color: getReturnColor(periodStats.annualReturn) }">
-            {{ formatPct(periodStats.annualReturn) }}
-          </div>
-          <div class="metric-sub">历史年化</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">年化波动率</div>
-          <div class="metric-value">{{ formatPct(periodStats.annualVol) }}</div>
-          <div class="metric-sub">历史波动</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">夏普比率</div>
-          <div class="metric-value" :style="{ color: getSharpeColor(periodStats.sharpe) }">
-            {{ formatNum(periodStats.sharpe, 3) }}
-          </div>
-          <div class="metric-sub">风险调整</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">最大回撤</div>
-          <div class="metric-value" style="color: #67C23A;">
-            {{ formatPct(periodStats.maxDrawdown) }}
-          </div>
-          <div class="metric-sub">区间最大</div>
-        </div>
+      <!-- 核心指标：完全由 overview_metrics 配置驱动，指标增减只改配置 -->
+      <div class="metrics-grid" :style="gridStyle">
+        <MetricCard
+          v-for="metric in overviewMetrics"
+          :key="metric.key"
+          :metric="metric" />
       </div>
 
-      <!-- 实时状态指标 -->
-      <div class="metrics-grid metrics-grid--sub">
-        <div class="metric-card">
-          <div class="metric-label">当日收益</div>
-          <div class="metric-value" :style="{ color: getReturnColor(dailyReturnPct) }">
-            {{ dailyReturnPct !== null ? formatSignedPct(dailyReturnPct) : '-' }}
-          </div>
-          <div class="metric-sub">较前日</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">当前回撤</div>
-          <div class="metric-value" style="color: #67C23A;">
-            {{ formatPct(currentDrawdown) }}
-          </div>
-          <div class="metric-sub">距历史高点</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">总杠杆</div>
-          <div class="metric-value">{{ formatNum(totalLeverage, 2) }}</div>
-          <div class="metric-sub">权重绝对值之和</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">持仓资产数</div>
-          <div class="metric-value">{{ positionCount }}</div>
-          <div class="metric-sub">权重 &gt; 1%</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">距下次调仓</div>
-          <div class="metric-value">{{ daysToNextRebalance != null ? daysToNextRebalance + ' 天' : '-' }}</div>
-          <div class="metric-sub">{{ nextRebalanceDateLabel }}</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">监控波动率</div>
-          <div class="metric-value" :style="{ color: monitoredVolatilityColor }">
-            {{ formattedMonitoredVolatility }}
-          </div>
-          <div class="metric-sub">{{ isManualAllocationDashboard ? '主观策略无阈值' : '阈值: ' + formattedVolThreshold }}</div>
-        </div>
-      </div>
+      <!-- 策略自定义插槽：如期权希腊字母、因子暴露表等，未声明时不渲染 -->
+      <DynamicSlots v-if="overviewSlots.length" :slots="overviewSlots" class="overview-dynamic-slots" />
     </template>
   </div>
 </template>
@@ -110,10 +39,13 @@
 <script>
 import dayjs from 'dayjs';
 import { mapState, mapActions } from 'vuex';
+import MetricCard from '@/components/monitor/MetricCard.vue';
+import DynamicSlots from '@/components/monitor/DynamicSlots.vue';
+import { buildMetrics, resolveGridColumns, resolveCustomComponents } from '@/config/monitor';
 
 export default {
   name: 'MonitorIndex',
-  components: {},
+  components: { MetricCard, DynamicSlots },
   props: {
     strategyContext: {
       type: Object,
@@ -128,46 +60,25 @@ export default {
   },
   computed: {
     ...mapState('monitor', ['monitorState', 'navHistory', 'performance', 'signals']),
-    /** 按选定区间过滤后的净值序列 */
-    filteredNavHistory() {
-      if (!this.navHistory || !this.navHistory.length) return [];
-      if (this.selectedPeriod === 'all') return this.navHistory;
+    /** 区间基准日：取监控状态的当前日，避免历史实例按自然今天切出空区间 */
+    periodBaseDate() {
+      const d = this.monitorState && this.monitorState.date;
+      return d ? dayjs(d) : dayjs();
+    },
+    /** 区间起始日（YYYY-MM-DD），全部区间为 null */
+    periodStartDate() {
+      if (this.selectedPeriod === 'all') return null;
       const monthsMap = { '1m': 1, '3m': 3, '6m': 6, '1y': 12 };
       const months = monthsMap[this.selectedPeriod];
-      if (!months) return this.navHistory;
-      const cutoff = dayjs().subtract(months, 'month');
-      return this.navHistory.filter(h => dayjs(h.date).isAfter(cutoff));
+      if (!months) return null;
+      return this.periodBaseDate.subtract(months, 'month').format('YYYY-MM-DD');
     },
-    /** 区间绩效统计 */
-    periodStats() {
-      const data = this.filteredNavHistory;
-      const empty = { periodReturn: null, annualReturn: null, annualVol: null, sharpe: null, maxDrawdown: null, tradingDays: 0 };
-      if (data.length < 2) return empty;
-      const firstNav = data[0].nav || 1;
-      const lastNav = data[data.length - 1].nav || 1;
-      const periodReturn = (lastNav / firstNav) - 1;
-      const tradingDays = data.length;
-      const annualReturn = Math.pow(lastNav / firstNav, 252 / tradingDays) - 1;
-      const dailyReturns = [];
-      for (let i = 1; i < data.length; i++) {
-        if (data[i].nav && data[i - 1].nav) {
-          dailyReturns.push(data[i].nav / data[i - 1].nav - 1);
-        }
-      }
-      let annualVol = null, sharpe = null;
-      if (dailyReturns.length > 1) {
-        const mean = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length;
-        const variance = dailyReturns.reduce((s, r) => s + Math.pow(r - mean, 2), 0) / dailyReturns.length;
-        annualVol = Math.sqrt(variance * 252);
-        sharpe = annualVol > 0 ? annualReturn / annualVol : 0;
-      }
-      let maxDrawdown = 0, peak = firstNav;
-      for (const item of data) {
-        if (item.nav > peak) peak = item.nav;
-        const dd = (item.nav - peak) / peak;
-        if (dd < maxDrawdown) maxDrawdown = dd;
-      }
-      return { periodReturn, annualReturn, annualVol, sharpe, maxDrawdown, tradingDays };
+    /** 按选定区间过滤后的净值序列（仅用于展示区间边界标签） */
+    filteredNavHistory() {
+      if (!this.navHistory || !this.navHistory.length) return [];
+      const start = this.periodStartDate;
+      if (!start) return this.navHistory;
+      return this.navHistory.filter(h => dayjs(h.date).format('YYYY-MM-DD') >= start);
     },
     /** 区间标签 */
     periodRangeLabel() {
@@ -177,16 +88,15 @@ export default {
       const e = dayjs(data[data.length - 1].date).format('YYYY-MM-DD');
       return `${s} ~ ${e}`;
     },
-    /** 下次调仓日期文本 */
+    /** 下次调仓日期文本（后端无下次调仓日时返回 null，不再拼中文占位） */
     nextRebalanceDateLabel() {
       if (!this.signals) return '';
-      if (this.signals.pending_rebalance && this.signals.pending_rebalance.execute_date) {
-        return dayjs(this.signals.pending_rebalance.execute_date).format('YYYY-MM-DD');
-      }
-      if (this.signals.monthly_rebalance && this.signals.monthly_rebalance.next_date) {
-        return dayjs(this.signals.monthly_rebalance.next_date).format('YYYY-MM-DD');
-      }
-      return '';
+      const raw = (this.signals.pending_rebalance && this.signals.pending_rebalance.execute_date)
+        || (this.signals.monthly_rebalance && this.signals.monthly_rebalance.next_date)
+        || null;
+      if (!raw) return '';
+      const d = dayjs(raw);
+      return d.isValid() ? d.format('YYYY-MM-DD') : '';
     },
     /** 主观配置：仪表盘不展示「相对重置阈值」口径 */
     isManualAllocationDashboard() {
@@ -230,7 +140,7 @@ export default {
       }
       return null;
     },
-    // 当前回撤（百分点形式：负数表示回撤，如 -5 表示 -5%）
+    // 当前回撤（小数，与 formatPct 口径一致：-0.05 表示 -5%）
     currentDrawdown() {
       if (!this.navHistory || this.navHistory.length < 2) return null;
       const navValues = this.navHistory.map(h => h.nav);
@@ -239,12 +149,11 @@ export default {
       for (const nav of navValues) {
         if (nav > peak) peak = nav;
       }
-      return ((currentNav / peak) - 1) * 100;  // 转为百分点，与 formatPercentPoints 输入口径一致
+      return (currentNav / peak) - 1;
     },
-    // 持仓资产数（小数权重，|w|>0.01 视为有效持仓，约 1% 以上）
+    // 持仓资产数（后端 /monitor/performance 单源产出：非零权重计数，与绩效页持仓表同口径）
     positionCount() {
-      const weights = this.monitorState && this.monitorState.target_weights ? this.monitorState.target_weights : {};
-      return Object.values(weights).filter(w => Math.abs(w) > 0.01).length;
+      return (this.performance && this.performance.position_count) || 0;
     },
     // 波动率重置阈值（百分点，如 6 表示 6%）
     volResetThreshold() {
@@ -253,23 +162,49 @@ export default {
       }
       return 6;
     },
-    // 格式化的监控波动率
-    formattedMonitoredVolatility() {
-      if (this.currentVolatility === null) return '-';
-      return this.currentVolatility.toFixed(2) + '%';
+    // 指标卡上下文：只负责取数，展示规则全部在 @/config/monitor/metrics 中
+    metricContext() {
+      const perf = this.performance || {};
+      return {
+        nav: this.currentNav,
+        date: this.monitorState && this.monitorState.date
+          ? dayjs(this.monitorState.date).format('YYYY-MM-DD')
+          : '',
+        periodReturn: perf.cumulative_return,
+        tradingDays: perf.trading_days,
+        annualReturn: perf.annual_return,
+        annualReturn365: perf.annual_return_365,
+        annualVol: perf.annual_volatility,
+        annualVol365: perf.annual_volatility_365,
+        sharpe: perf.sharpe_ratio,
+        sharpe365: perf.sharpe_ratio_365,
+        maxDrawdown: perf.max_drawdown,
+        dailyReturn: this.dailyReturnPct === null ? null : this.dailyReturnPct * 100,
+        currentDrawdown: this.currentDrawdown === null ? null : this.currentDrawdown * 100,
+        leverage: this.totalLeverage,
+        positionCount: this.positionCount,
+        daysToRebalance: this.daysToNextRebalance,
+        nextRebalanceDate: this.nextRebalanceDateLabel,
+        volatility: this.currentVolatility,
+        volThreshold: this.volResetThreshold,
+        isManualAllocation: this.isManualAllocationDashboard
+      };
     },
-    // 格式化的波动率阈值
-    formattedVolThreshold() {
-      return this.volResetThreshold.toFixed(2) + '%';
+    /** 指标卡数组：由配置决定展示哪些指标、顺序与格式 */
+    overviewMetrics() {
+      return buildMetrics('overview', this.metricContext, this.strategyContext);
     },
-    // 监控波动率颜色
-    monitoredVolatilityColor() {
-      if (this.currentVolatility === null) return '#909399';
-      if (this.isManualAllocationDashboard) return '#303133';
-      if (this.currentVolatility >= this.volResetThreshold) {
-        return '#F56C6C';
-      }
-      return '#67C23A';
+    /** 栅格列数：由配置决定（默认 6 列，策略可覆盖） */
+    overviewColumns() {
+      return resolveGridColumns('overview', this.strategyContext);
+    },
+    gridStyle() {
+      // 用 CSS 变量而非内联列定义，保证窄屏媒体查询仍能覆盖列数
+      return { '--monitor-grid-cols': this.overviewColumns };
+    },
+    /** 策略自定义插槽：未声明时为空数组，页面不渲染 */
+    overviewSlots() {
+      return resolveCustomComponents('overview', this.strategyContext);
     },
     // 计算距下次调仓天数
     daysToNextRebalance() {
@@ -285,7 +220,8 @@ export default {
       }
       
       // 否则用月度调仓的 days_until（后端已计算好）
-      if (this.signals.monthly_rebalance && this.signals.monthly_rebalance.days_until !== undefined) {
+      if (this.signals.monthly_rebalance && this.signals.monthly_rebalance.days_until !== undefined
+        && this.signals.monthly_rebalance.days_until !== null) {
         return this.signals.monthly_rebalance.days_until;
       }
       
@@ -320,9 +256,10 @@ export default {
     async loadData() {
       this.loading = true;
       try {
+        // 先取监控状态：区间基准日依赖 monitorState.date
+        await this.fetchMonitorState();
         await Promise.all([
-          this.fetchMonitorState(),
-          this.fetchPerformance(),
+          this.fetchPerformance({ start: this.periodStartDate }),
           this.fetchSignals(),
           this.fetchNavHistory({})
         ]);
@@ -332,43 +269,13 @@ export default {
         this.loading = false;
       }
     },
-    formatSignedPct(num) {
-      if (num === null || num === undefined) return '-';
-      const pct = num * 100;
-      const sign = pct >= 0 ? '+' : '';
-      return sign + pct.toFixed(2) + '%';
-    },
-    formatNumber(num, decimals = 2) {
-      if (num === null || num === undefined) return '-';
-      return num.toFixed(decimals);
-    },
     formatDate(date) {
       return date ? dayjs(date).format('YYYY-MM-DD') : '-';
     },
-    onPeriodChange() {
-      // 计算属性自动响应，无需额外操作
-    },
-    formatPct(num) {
-      if (num === null || num === undefined || Number.isNaN(Number(num))) return '-';
-      return (Number(num) * 100).toFixed(2) + '%';
-    },
-    formatNum(num, decimals = 2) {
-      if (num === null || num === undefined || Number.isNaN(Number(num))) return '-';
-      return Number(num).toFixed(decimals);
-    },
-    getSharpeColor(value) {
-      if (value === null || value === undefined) return '#909399';
-      if (value >= 1) return '#F56C6C';
-      if (value >= 0.5) return '#E6A23C';
-      if (value >= 0) return '#303133';
-      return '#67C23A';
-    },
-    getReturnColor(value) {
-      if (value === null || value === undefined) return '#909399';
-      if (value > 0) return '#F56C6C';
-      if (value < 0) return '#67C23A';
-      return '#909399';
-    },
+    async onPeriodChange() {
+      // 指标由后端按区间重算，前端只切换请求参数
+      await this.fetchPerformance({ start: this.periodStartDate });
+    }
   }
 };
 </script>
@@ -383,10 +290,10 @@ export default {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 10px;
-  padding: 8px 12px;
-  background: #f8fafc;
-  border-radius: 6px;
+  margin-bottom: 12px;
+  padding: 10px 16px;
+  background: #fff;
+  border-radius: 8px;
   border: 1px solid #ebeef5;
 }
 
@@ -403,66 +310,29 @@ export default {
   margin-left: auto;
 }
 
-/* ── 绩效卡片网格 ── */
+/* ── 指标网格：列数由配置变量控制，各排等高、边缘对齐 ── */
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 10px;
-  margin-bottom: 10px;
+  grid-template-columns: repeat(var(--monitor-grid-cols, 6), minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
-.metrics-grid--sub {
-  margin-bottom: 0;
-}
-
-.metric-card {
-  text-align: center;
-  padding: 10px 8px;
-  background: #fff;
-  border: 1px solid #ebeef5;
-  border-radius: 6px;
-  transition: box-shadow 0.2s;
-}
-
-.metric-card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-.metric-label {
-  font-size: 12px;
-  color: #909399;
-  margin-bottom: 6px;
-  letter-spacing: 0.02em;
-}
-
-.metric-value {
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 4px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.3;
-}
-
-.metric-value.large {
-  font-size: 22px;
-}
-
-.metric-sub {
-  font-size: 11px;
-  color: #c0c4cc;
+.overview-dynamic-slots {
+  margin-top: 12px;
 }
 
 /* ── 窄屏自适应 ── */
 @media (max-width: 1400px) {
   .metrics-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 768px) {
   .metrics-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

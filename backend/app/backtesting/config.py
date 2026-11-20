@@ -29,8 +29,12 @@ class BacktestConfig:
     initial_nav: float = 1000.0
 
     # 交易成本参数（回测唯一的成本模型：手续费 + 滑点，均可设为 0 观察理想状态）
-    commission_rate: float = 0.0003  # 手续费率
-    slippage: float = 0.0005         # 滑点率
+    commission_rate: float = 0.0     # 手续费率（默认 0：指数口径，不计成本）
+    slippage: float = 0.0            # 滑点率（默认 0：指数口径，不计成本）
+    # 分资产手续费率（代码→单次费率）：非空时按 code 覆盖 commission_rate，
+    # 未列出的 code 仍用 commission_rate。供自带分资产费率表的策略声明，
+    # 缺省空字典，既有策略行为不变。
+    commission_by_code: Optional[Dict[str, float]] = None
 
     # 交互式权重调整（仅 manual_allocation 策略）：指定日期使用用户预设的权重
     # 格式: { "YYYYMMDD": {"weights": {code: w, ...}, "auto_normalize": bool}, ... }

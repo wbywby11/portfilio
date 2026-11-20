@@ -43,6 +43,12 @@ class PerformanceSummary:
     # 交易统计
     win_rate: float                  # 调仓周期胜率（净值上涨的调仓周期占比）
 
+    # 365 口径（自然日/年）——与 260 口径并存，累计收益/回撤/胜率不复制
+    annual_return_365: float = 0.0
+    annual_volatility_365: float = 0.0
+    sharpe_ratio_365: float = 0.0
+    calmar_ratio_365: float = 0.0
+
     # 交易成本统计（来自 trades，无成交记录时为 0）
     n_trades: int = 0                # 成交笔数
     total_commission: float = 0.0    # 累计手续费
@@ -69,6 +75,10 @@ def _summary_from_metrics(
         calmar_ratio=metrics.calmar_ratio,
         return_drawdown_ratio=metrics.return_drawdown_ratio,
         win_rate=metrics.win_rate,
+        annual_return_365=metrics.annual_return_365,
+        annual_volatility_365=metrics.annual_volatility_365,
+        sharpe_ratio_365=metrics.sharpe_ratio_365,
+        calmar_ratio_365=metrics.calmar_ratio_365,
         n_trades=int(stats.get("n_trades", 0)),
         total_commission=float(stats.get("total_commission", 0.0)),
         total_slippage=float(stats.get("total_slippage", 0.0)),
@@ -257,6 +267,10 @@ class PerformanceAnalyzer:
             sharpe_ratio=summary.sharpe_ratio,
             max_drawdown=summary.max_drawdown,
             calmar_ratio=summary.calmar_ratio,
+            annual_return_365=summary.annual_return_365,
+            annual_volatility_365=summary.annual_volatility_365,
+            sharpe_ratio_365=summary.sharpe_ratio_365,
+            calmar_ratio_365=summary.calmar_ratio_365,
             latest_unit_value=equity_curve[-1].unit_value if equity_curve else 1.0,
             win_rate=summary.win_rate,
             equity_curve=equity_curve,

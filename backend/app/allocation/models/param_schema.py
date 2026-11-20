@@ -164,6 +164,10 @@ def model_level_param_group() -> List[ParamSchema]:
     计算使用保留缺日 NaN 的价格矩阵（数据源层）；inception_weights 声明
     期初建仓权重（引擎 initial_weights）。需要暴露给前端配置的分配器在
     get_param_schema 的 params 里展开本组即可。
+
+    注：逐日推演日历口径不再作为可配置参数——系统策略恒用所选资产价格
+    日期并集（与回测轴同源）；Mongo trade_dates 仅研究员策略 sharpe_18/
+    hybrid_12 内部使用，不对系统策略暴露。
     """
     return [
         ParamSchema(

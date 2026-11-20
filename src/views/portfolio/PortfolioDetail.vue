@@ -2,18 +2,7 @@
   <div :class="{'page-container': !isDialog}">
     <div v-if="!isDialog" class="page-header">
       <h2 class="page-title">组合详情</h2>
-      <div>
-        <el-button
-          v-if="!linkedModelLive"
-          type="primary"
-          plain
-          icon="el-icon-upload2"
-          :loading="livePublishing"
-          @click="handleLivePublish"
-        >
-          实盘发布
-        </el-button>
-        <el-tag v-if="linkedModelLive" type="success" size="small" style="margin-right:12px;">已实盘发布</el-tag>
+      <div class="header-actions">
         <el-button
           v-if="linkedModelLive"
           type="danger"
@@ -23,6 +12,17 @@
           @click="handleLiveUnpublish"
         >
           取消实盘
+        </el-button>
+        <el-button
+          v-else
+          type="primary"
+          plain
+          icon="el-icon-upload2"
+          :disabled="!linkedModelId"
+          :loading="livePublishing"
+          @click="handleLivePublish"
+        >
+          实盘发布
         </el-button>
         <el-button @click="$router.back()">返回</el-button>
         <el-button type="primary" icon="el-icon-refresh" @click="loadData">刷新</el-button>
@@ -220,6 +220,28 @@
             <el-empty v-if="!paramVersions.length && (!portfolio.sub_strategies || !portfolio.sub_strategies.length)" description="暂无配置变更记录" :image-size="40"></el-empty>
           </el-card>
 
+          <!-- 调仓记录（组合创建建仓 / 子策略权重变更 / 组合再平衡） -->
+          <el-card shadow="never" class="info-card" v-if="rebalanceRecords.length > 0">
+            <div slot="header" class="card-header">
+              <span>调仓记录</span>
+              <span class="card-sub">共 {{ rebalanceRecords.length }} 条</span>
+            </div>
+            <el-table :data="rebalanceRecords" size="mini" max-height="320" stripe>
+              <el-table-column label="调仓日期" width="110">
+                <template slot-scope="scope">{{ fmtRebalanceDate(scope.row.rebalance_date) }}</template>
+              </el-table-column>
+              <el-table-column label="动作" width="90">
+                <template slot-scope="scope">
+                  <el-tag size="mini" :type="scope.row.action === '买入' ? 'success' : 'warning'">{{ scope.row.action }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="调整后权重" min-width="260">
+                <template slot-scope="scope">{{ fmtWeights(scope.row) }}</template>
+              </el-table-column>
+              <el-table-column prop="reason" label="原因" min-width="200"></el-table-column>
+            </el-table>
+          </el-card>
+
           <!-- 策略报告（预留，与策略详情一致） -->
           <el-card shadow="never" class="info-card" v-if="backtestHistory.length > 0">
             <div slot="header" class="card-header">
@@ -232,24 +254,27 @@
               <el-row :gutter="16" class="metrics-row">
                 <el-col :span="4">
                   <div class="metric-card">
-                    <div class="metric-label">年化收益</div>
+                    <div class="metric-label">年化收益（260日）</div>
                     <div class="metric-value" :style="{color: (portfolioReport.annual_return||0) >= 0 ? '#f56c6c' : '#67c23a', fontSize: '16px'}">
                       {{ ((portfolioReport.annual_return||0)*100).toFixed(2) }}%
                     </div>
+                    <div class="metric-sub">365日：{{ ((portfolioReport.annual_return_365||0)*100).toFixed(2) }}%</div>
                   </div>
                 </el-col>
                 <el-col :span="4">
                   <div class="metric-card">
-                    <div class="metric-label">年化波动</div>
+                    <div class="metric-label">年化波动（260日）</div>
                     <div class="metric-value" style="fontSize: 16px;">{{ ((portfolioReport.annual_vol||0)*100).toFixed(2) }}%</div>
+                    <div class="metric-sub">365日：{{ ((portfolioReport.annual_vol_365||0)*100).toFixed(2) }}%</div>
                   </div>
                 </el-col>
                 <el-col :span="4">
                   <div class="metric-card">
-                    <div class="metric-label">夏普比率</div>
+                    <div class="metric-label">夏普比率（260日）</div>
                     <div class="metric-value" :style="{color: (portfolioReport.sharpe||0) >= 1 ? '#f56c6c' : '#e6a23c', fontSize: '16px', fontWeight: 600}">
                       {{ (portfolioReport.sharpe||0).toFixed(2) }}
                     </div>
+                    <div class="metric-sub">365日：{{ (portfolioReport.sharpe_365||0).toFixed(2) }}</div>
                   </div>
                 </el-col>
                 <el-col :span="4">
@@ -267,16 +292,25 @@
                   <el-table-column prop="weight" label="权重" width="80" align="right">
                     <template slot-scope="{ row }">{{ (row.weight * 100).toFixed(0) }}%</template>
                   </el-table-column>
-                  <el-table-column label="年化收益" width="100" align="right">
+                  <el-table-column label="年化收益（260日）" width="130" align="right">
                     <template slot-scope="{ row }">
                       <span :style="{color: row.annual_return >= 0 ? '#f56c6c' : '#67c23a'}">{{ (row.annual_return * 100).toFixed(2) }}%</span>
                     </template>
                   </el-table-column>
-                  <el-table-column label="波动" width="90" align="right">
+                  <el-table-column label="年化收益（365日）" width="130" align="right">
+                    <template slot-scope="{ row }">{{ ((row.annual_return_365||0) * 100).toFixed(2) }}%</template>
+                  </el-table-column>
+                  <el-table-column label="波动（260日）" width="115" align="right">
                     <template slot-scope="{ row }">{{ (row.annual_vol * 100).toFixed(2) }}%</template>
                   </el-table-column>
-                  <el-table-column label="夏普" width="80" align="right">
+                  <el-table-column label="波动（365日）" width="115" align="right">
+                    <template slot-scope="{ row }">{{ ((row.annual_vol_365||0) * 100).toFixed(2) }}%</template>
+                  </el-table-column>
+                  <el-table-column label="夏普（260日）" width="105" align="right">
                     <template slot-scope="{ row }">{{ row.sharpe.toFixed(2) }}</template>
+                  </el-table-column>
+                  <el-table-column label="夏普（365日）" width="105" align="right">
+                    <template slot-scope="{ row }">{{ (row.sharpe_365||0).toFixed(2) }}</template>
                   </el-table-column>
                   <el-table-column label="回撤" width="90" align="right">
                     <template slot-scope="{ row }"><span style="color:#f56c6c">{{ (row.max_drawdown * 100).toFixed(2) }}%</span></template>
@@ -327,17 +361,22 @@
                     <div>总收益: <span :style="{ color: getReturnColor(record.result.total_return) }">
                       {{ (record.result.total_return * 100).toFixed(2) }}%
                     </span></div>
-                    <div>年化收益: <span :style="{ color: getReturnColor(record.result.annual_return) }">
+                    <div>年化收益（260日）: <span :style="{ color: getReturnColor(record.result.annual_return) }">
                       {{ (record.result.annual_return * 100).toFixed(2) }}%
                     </span></div>
-                    <div>年化波动: {{ record.result.annual_volatility ? (record.result.annual_volatility * 100).toFixed(2) + '%' : '-' }}</div>
-                    <div>夏普比率: {{ record.result.sharpe_ratio ? record.result.sharpe_ratio.toFixed(3) : '-' }}</div>
+                    <div>年化收益（365日）: <span :style="{ color: getReturnColor(record.result.annual_return_365) }">
+                      {{ record.result.annual_return_365 != null ? (record.result.annual_return_365 * 100).toFixed(2) + '%' : '-' }}
+                    </span></div>
+                    <div>年化波动（260日）: {{ record.result.annual_volatility ? (record.result.annual_volatility * 100).toFixed(2) + '%' : '-' }}</div>
+                    <div>年化波动（365日）: {{ record.result.annual_volatility_365 != null ? (record.result.annual_volatility_365 * 100).toFixed(2) + '%' : '-' }}</div>
+                    <div>夏普比率（260日）: {{ record.result.sharpe_ratio ? record.result.sharpe_ratio.toFixed(3) : '-' }}</div>
+                    <div>夏普比率（365日）: {{ record.result.sharpe_ratio_365 != null ? record.result.sharpe_ratio_365.toFixed(3) : '-' }}</div>
                     <div>最大回撤: <span style="color: #f56c6c;">
                       {{ (record.result.max_drawdown * 100).toFixed(2) }}%
                     </span></div>
                   </div>
                   <div style="margin-top: 10px;">
-                    <el-button type="text" size="small" @click="viewBacktestDetail(record)">查看详情</el-button>
+                    <el-button type="text" size="small" :loading="backtestDetailLoadingId === record.id" @click="viewBacktestDetail(record)">查看详情</el-button>
                     <el-button type="text" size="small" @click="editingRecordId = record.id; editingRemark = record.remark || ''">
                       {{ editingRecordId === record.id ? '' : '编辑备注' }}
                     </el-button>
@@ -370,7 +409,7 @@
 import dayjs from 'dayjs';
 import BacktestDetailDialog from '@/components/BacktestDetailDialog.vue';
 import * as portfolioApi from '@/api/portfolio';
-import { getStrategyModel, getParamVersions, generatePortfolioReport, updateBacktestRemark, livePublishModel, liveUnpublishModel } from '@/api/strategy';
+import { getStrategyModel, getParamVersions, generatePortfolioReport, updateBacktestRemark, getBacktestDetail, livePublishModel, liveUnpublishModel } from '@/api/strategy';
 
 export default {
   name: 'PortfolioDetail',
@@ -396,9 +435,12 @@ export default {
       paramVersions: [],
       paramHistoryExpanded: false,
       expandedVersionId: null,
+      // 调仓记录
+      rebalanceRecords: [],
       // 回测历史
       backtestHistory: [],
       backtestDetailVisible: false,
+      backtestDetailLoadingId: null,
       currentBacktestRecord: {
         id: '', start_date: '', end_date: '', initial_capital: 0, result: {}, created_at: ''
       },
@@ -453,6 +495,7 @@ export default {
           this.loadSubStrategyDetails(),
           this.loadParamVersions(),
           this.loadBacktestHistory(),
+          this.loadRebalanceRecords(),
           this.loadLinkedModelStatus()
         ]);
       } catch (error) {
@@ -464,9 +507,9 @@ export default {
 
     async loadLinkedModelStatus() {
       // 优先使用后端组合接口返回的实盘状态
-      if (this.portfolio.live_publish_enabled !== undefined) {
+      if (this.portfolio.portfolio_model_status !== undefined) {
         this.linkedModelLive = !!this.portfolio.live_publish_enabled;
-        if (this.linkedModelId) return; // 已有状态且有模型ID，无需再查
+        if (this.linkedModelId) return;
       }
       const mid = this.linkedModelId;
       if (!mid) return;
@@ -477,36 +520,24 @@ export default {
       } catch { /* ignore */ }
     },
 
-    getPublishTargetIds() {
-      // 优先组合模型ID，否则回退到子策略模型
-      const direct = this.linkedModelId;
-      if (direct) return [direct];
-      const subIds = (this.portfolio.sub_strategies || [])
-        .map(s => s.model_id)
-        .filter(Boolean);
-      return [...new Set(subIds)];
-    },
-
     async handleLivePublish() {
-      const ids = this.getPublishTargetIds();
-      if (!ids.length) {
-        this.$message.warning('该组合无关联策略模型且无子策略，无法实盘发布');
+      const mid = this.linkedModelId;
+      if (!mid) {
+        this.$message.warning('该组合尚未关联组合模型，无法实盘发布');
         return;
       }
       try {
         await this.$confirm(
-          `确认将组合「${this.portfolio.name}」实盘发布？发布后可在日常监控中跟踪。`,
+          `确认实盘发布组合「${this.portfolio.name}」？实盘后将进入日常监控，于次交易日生效；实盘期间配置冻结，取消实盘后可编辑。`,
           '实盘发布',
           { type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消' }
         );
       } catch { return; }
       this.livePublishing = true;
       try {
-        for (const mid of ids) {
-          await livePublishModel(mid, { source: 'portfolio_detail' });
-        }
-        this.$message.success('实盘发布成功，可在日常监控中添加该组合');
-        this.linkedModelLive = true;
+        await livePublishModel(mid, { source: 'portfolio_detail' });
+        this.$message.success('实盘发布成功，已进入日常监控');
+        await this.loadData();
       } catch (e) {
         this.$message.error('实盘发布失败：' + (e.response?.data?.detail || e.message));
       } finally {
@@ -515,22 +546,20 @@ export default {
     },
 
     async handleLiveUnpublish() {
-      const ids = this.getPublishTargetIds();
-      if (!ids.length) return;
+      const mid = this.linkedModelId;
+      if (!mid || !this.linkedModelLive) return;
       try {
         await this.$confirm(
-          `确认取消组合「${this.portfolio.name}」的实盘发布？取消后将不再出现在日常监控准入列表中。`,
-          '取消实盘发布',
+          `确认取消组合「${this.portfolio.name}」的实盘？取消后将从日常监控下架，历史数据与操作记录保留。`,
+          '取消实盘',
           { type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消' }
         );
       } catch { return; }
       this.liveUnpublishing = true;
       try {
-        for (const mid of ids) {
-          await liveUnpublishModel(mid, { source: 'portfolio_detail' });
-        }
-        this.$message.success('已取消实盘发布');
-        this.linkedModelLive = false;
+        await liveUnpublishModel(mid, { source: 'portfolio_detail' });
+        this.$message.success('已取消实盘发布，监控已下架');
+        await this.loadData();
       } catch (e) {
         this.$message.error('取消实盘失败：' + (e.response?.data?.detail || e.message));
       } finally {
@@ -559,6 +588,40 @@ export default {
       } finally {
         this.loadingSubDetails = false;
       }
+    },
+
+    async loadRebalanceRecords() {
+      try {
+        const res = await portfolioApi.getRebalanceRecords(this.portfolioId);
+        const list = Array.isArray(res) ? res : (res.data || []);
+        this.rebalanceRecords = list.slice().sort((a, b) =>
+          String(b.rebalance_date).localeCompare(String(a.rebalance_date))
+        );
+      } catch (e) {
+        console.error('加载调仓记录失败:', e);
+      }
+    },
+
+    fmtRebalanceDate(v) {
+      return v ? dayjs(v).format('YYYY-MM-DD') : '—';
+    },
+
+    subStrategyName(modelId) {
+      const hit = (this.portfolio.sub_strategies || []).find((s) => s.model_id === modelId);
+      return hit ? hit.name : modelId;
+    },
+
+    fmtWeights(row) {
+      const w = row.weights_after || {};
+      const keys = Object.keys(w);
+      if (keys.length) {
+        return keys.map((k) => `${this.subStrategyName(k)}: ${(w[k] * 100).toFixed(2)}%`).join(' / ');
+      }
+      const pos = row.positions_after || [];
+      if (pos.length) {
+        return pos.map((p) => `${p.asset_name || p.asset_code}: ${((p.weight || 0) * 100).toFixed(2)}%`).join(' / ');
+      }
+      return '—';
     },
 
     async loadParamVersions() {
@@ -591,8 +654,24 @@ export default {
       this.expandedVersionId = this.expandedVersionId === verId ? null : verId;
     },
 
-    viewBacktestDetail(record) {
-      this.currentBacktestRecord = record;
+    async viewBacktestDetail(record) {
+      if (this.backtestDetailLoadingId) return;
+      this.backtestDetailLoadingId = record.id;
+      try {
+        // 列表接口只返回指标摘要，打开弹窗前拉取完整明细（净值曲线/持仓/权重变化/相关性等）
+        const res = await getBacktestDetail(record.id);
+        const full = res.data || res;
+        this.currentBacktestRecord = {
+          ...record,
+          ...full,
+          result: { ...record.result, ...(full.result || {}) }
+        };
+      } catch (e) {
+        this.$message.warning('回测明细加载失败，仅展示指标摘要，请稍后重试');
+        this.currentBacktestRecord = record;
+      } finally {
+        this.backtestDetailLoadingId = null;
+      }
       this.backtestDetailVisible = true;
     },
 
@@ -715,10 +794,20 @@ export default {
 .page-header {
   display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;
 }
+.header-actions {
+  display: flex; align-items: center; gap: 10px;
+}
+.header-actions ::v-deep .el-button + .el-button {
+  margin-left: 0;
+}
 .page-title { font-size: 20px; font-weight: 500; color: #303133; margin: 0; }
 .info-card { margin-bottom: 20px; }
 .card-header {
   display: flex; justify-content: space-between; align-items: center; font-weight: 500;
+}
+
+.card-sub {
+  font-size: 12px; font-weight: 400; color: #909399;
 }
 
 /* 子策略块 */
@@ -752,6 +841,7 @@ export default {
 }
 .metric-label { font-size: 14px; color: #909399; margin-bottom: 10px; }
 .metric-value { font-size: 24px; font-weight: 600; color: #303133; }
+.metric-sub { margin-top: 6px; font-size: 12px; color: #909399; }
 
 /* 右栏回测历史 */
 .history-card {

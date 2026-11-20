@@ -350,7 +350,6 @@ class StrategyService:
                     TrendFollowingSelector,
                     CrossSectionalLongShortSelector,
                     ETFRotationSelector,
-                    ETFDiscountSelector,
                 )
 
                 selector_registry = {
@@ -360,7 +359,6 @@ class StrategyService:
                     "trend_following": TrendFollowingSelector,
                     "cross_sectional_long_short": CrossSectionalLongShortSelector,
                     "etf_rotation": ETFRotationSelector,
-                    "etf_discount": ETFDiscountSelector,
                 }
 
                 if selector_type in selector_registry:

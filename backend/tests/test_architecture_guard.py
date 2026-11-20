@@ -145,12 +145,32 @@ class TestPriceReadFunnel:
 class TestRouteSurface:
     """路由面契约：method + path 与基线一致（前端协同硬约束）."""
 
+    @staticmethod
+    def _iter_flat(routes, prefix=""):
+        """展开惰性 include 的路由对象。
+
+        FastAPI >=0.13x 把 include_router 变成惰性的 _IncludedRouter，
+        它没有 path/methods 属性，需经 original_router + include_context 递归展开。
+        """
+        for r in routes or []:
+            if hasattr(r, "path"):
+                yield prefix + r.path, sorted(getattr(r, "methods", []) or [])
+                continue
+            ctx = getattr(r, "include_context", None)
+            orig = getattr(r, "original_router", None)
+            sub_routes = getattr(orig, "routes", None) if orig is not None else None
+            if sub_routes is None:
+                continue
+            yield from TestRouteSurface._iter_flat(
+                sub_routes, prefix + (getattr(ctx, "prefix", "") or "")
+            )
+
     def test_route_surface_matches_baseline(self):
         from main import app
 
         current = sorted(
-            f"{','.join(sorted(getattr(r, 'methods', []) or []))}\t{r.path}"
-            for r in app.routes
+            f"{','.join(methods)}\t{path}"
+            for path, methods in self._iter_flat(app.routes)
         )
         baseline = ROUTES_BASELINE.read_text(encoding="utf-8").splitlines()
         if current != baseline:
@@ -165,6 +185,135 @@ class TestRouteSurface:
                 "路由面与基线不一致（端点变化必须与前端协同确认；合法变化时"
                 "重新生成 tests/_routes_baseline.txt）:\n" + "\n".join(parts)
             )
+
+
+def _iter_app_sources(root: Path):
+    """递归产出 (相对路径, AST)；读不出或语法错误的文件跳过."""
+    for path in sorted(root.rglob("*.py")):
+        source = _read_source(path)
+        if source is None:
+            continue
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        yield str(path.relative_to(APP_DIR)).replace("\\", "/"), tree
+
+
+def _calls_named(tree: ast.AST, name: str):
+    """找出名为 ``name`` 的调用（ obj.name(...) 与 name(...) 都算）."""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr == name:
+            yield node
+        elif isinstance(func, ast.Name) and func.id == name:
+            yield node
+
+
+def _dict_key_writes(tree: ast.AST, key: str):
+    """找出字面量字典写入（{"key": ...}）与属性赋值（obj.key = ...）."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            for k in node.keys:
+                if isinstance(k, ast.Constant) and k.value == key:
+                    yield node.lineno
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Attribute) and target.attr == key:
+                    yield node.lineno
+
+
+class TestVersionSingleWriter:
+    """版本正文单写：published_snapshot 只能由发布链路与版本服务写."""
+
+    ALLOWED = {
+        "services/live_publish_service.py",
+        "services/strategy_version_service.py",
+    }
+
+    def test_published_snapshot_single_writer(self):
+        violations = [
+            f"{rel}:{lineno}"
+            for rel, tree in _iter_app_sources(APP_DIR)
+            if rel not in self.ALLOWED
+            for lineno in _dict_key_writes(tree, "published_snapshot")
+        ]
+        assert not violations, (
+            "published_snapshot 出现新的写入点（版本链会断裂，新增入口必须经 "
+            "live_publish_service / strategy_version_service）:\n" + "\n".join(violations)
+        )
+
+
+class TestRunSinglePersistPath:
+    """回测记录单点收口：save_backtest_record 定义 1 处、调用 4 处."""
+
+    TARGET = "save_backtest_record"
+    EXPECTED_CALLS = 4
+
+    def test_single_definition_and_four_calls(self):
+        definitions, calls = [], []
+        for rel, tree in _iter_app_sources(APP_DIR):
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == self.TARGET:
+                    definitions.append(f"{rel}:{node.lineno}")
+            calls.extend(f"{rel}:{node.lineno}" for node in _calls_named(tree, self.TARGET))
+        assert len(definitions) == 1, (
+            "save_backtest_record 必须只有 1 处定义（单点收口）:\n" + "\n".join(definitions)
+        )
+        assert len(calls) == self.EXPECTED_CALLS, (
+            f"save_backtest_record 调用点应为 {self.EXPECTED_CALLS} 处（绕开它会丢运行台账）:\n"
+            + "\n".join(calls)
+        )
+
+
+class TestLifecycleSingleWriter:
+    """研发阶段单写：lifecycle_stage 只能经生命周期服务/档案服务落库."""
+
+    ALLOWED = {
+        "services/strategy_lifecycle_service.py",
+        "services/strategy_registry_service.py",
+    }
+
+    def test_lifecycle_stage_single_writer(self):
+        violations = [
+            f"{rel}:{lineno}"
+            for rel, tree in _iter_app_sources(APP_DIR)
+            if rel not in self.ALLOWED
+            for lineno in _dict_key_writes(tree, "lifecycle_stage")
+        ]
+        assert not violations, (
+            "lifecycle_stage 出现旁路写入（准入判定会失真）:\n" + "\n".join(violations)
+        )
+
+
+class TestNoRegistryBypass:
+    """档案单写：禁止直接往 strategy_registry 插入/覆盖文档."""
+
+    ALLOWED = {"services/strategy_registry_service.py"}
+    WRITE_METHODS = ("insert_one", "insert_many", "replace_one", "bulk_write")
+
+    def test_no_direct_registry_insert(self):
+        violations = []
+        for rel, tree in _iter_app_sources(APP_DIR):
+            if rel in self.ALLOWED:
+                continue
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                    continue
+                if node.func.attr not in self.WRITE_METHODS:
+                    continue
+                try:
+                    receiver = ast.unparse(node.func.value)
+                except Exception:  # noqa: BLE001
+                    continue
+                if "COL_STRATEGY_REGISTRY" in receiver or "strategy_registry" in receiver:
+                    violations.append(f"{rel}:{node.lineno} {receiver}.{node.func.attr}(...)")
+        assert not violations, (
+            "出现直接写 strategy_registry 的旁路（新增策略必须经 STRATEGY_MANIFEST，"
+            "档案由采集器 upsert）:\n" + "\n".join(violations)
+        )
 
 
 if __name__ == "__main__":

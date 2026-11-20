@@ -744,17 +744,18 @@ class OptionPricingService:
         return state_map
 
     async def _load_trade_dates(self, val_date: date) -> List[str]:
-        """加载交易日历（估值日期所在年 + 前后一年，覆盖产品存续期）
+        """加载观察日判定日历（估值日期所在年 + 前后一年，覆盖产品存续期）。
 
-        返回 YYYY-MM-DD 字符串列表。如果 trade_dates 集合为空则返回空列表，
-        由 ProductLifecycleManager 回退为自然日判定。
+        返回 YYYY-MM-DD 字符串列表。日历以资产行情日期为主：历史段用
+        asset_prices 实际日期，超出资产覆盖范围的未来段按资产星期模式外推
+        （time_norm.build_forward_calendar）。不再依赖 Mongo trade_dates 集合
+        （仅研究员策略 sharpe_18/hybrid_12 使用）。资产行情日历为空时返回空
+        列表，由 ProductLifecycleManager 回退为自然日判定。
         """
-        from app.services.trade_calendar_service import TradeCalendarService
-        cal_svc = TradeCalendarService()
-        # 加载估值日前后各一年的交易日历，确保覆盖产品存续期
-        years = {val_date.year - 1, val_date.year, val_date.year + 1}
-        all_dates: List[str] = []
-        for y in years:
-            dates = await cal_svc.get_dates_by_year(y)
-            all_dates.extend(dates)
-        return sorted(set(all_dates))
+        from app.monitor.data_provider import MongoDataProvider
+        from app.monitor.time_norm import build_forward_calendar
+
+        start = date(val_date.year - 1, 1, 1)
+        end = date(val_date.year + 1, 12, 31)
+        asset_dates = await MongoDataProvider().load_asset_price_dates()
+        return build_forward_calendar(asset_dates, start, end)

@@ -51,8 +51,10 @@ class ModelTemplateService:
         return None
     
     async def get_template_by_code(self, code: str) -> Optional[ModelTemplate]:
-        """根据代码获取模板"""
-        data = await self.collection.find_one({"code": code})
+        """根据代码获取模板（优先返回活跃文档，避免命中软删除的历史重复文档）"""
+        data = await self.collection.find_one({"code": code, "is_active": True})
+        if data is None:
+            data = await self.collection.find_one({"code": code})
         if data:
             data['_id'] = str(data['_id'])
             return ModelTemplate(**data)

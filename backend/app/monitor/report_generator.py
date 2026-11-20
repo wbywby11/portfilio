@@ -71,13 +71,20 @@ class ReportGenerator:
             realized_vol=realized_vol,
         )
     
-    def calc_performance(self, state: PortfolioState) -> PerformanceMetrics:
+    def calc_performance(self, state: PortfolioState,
+                         rebalance_dates: Optional[List] = None) -> PerformanceMetrics:
         """
         从 nav_history 计算绩效指标
 
         指标公式全部委托统一内核 `app.analysis.performance`（年化因子 260、CAGR、
         回撤基于净值本身、夏普为几何口径），确保监控与回测口径完全一致。
         起点取 nav_history 首条记录（而非配置中的指数起始日 BASE_DATE）。
+
+        Args:
+            state: 组合状态
+            rebalance_dates: 调仓执行日列表，作为胜率的周期边界。
+                None = 调用方未取到操作记录，回退到 state.event_log 推导；
+                显式空列表 = 确认无调仓记录，胜率按 0 返回。
 
         Returns:
             PerformanceMetrics: 绩效指标（百分点形式）
@@ -88,8 +95,15 @@ class ReportGenerator:
         nav_series = self._build_nav_series(state, nav_history)
 
         if len(nav_series) >= 2:
+            marks = (
+                rebalance_dates
+                if rebalance_dates is not None
+                else self._rebalance_dates_from_event_log(state)
+            )
             metrics = compute_performance(
-                nav_series, risk_free_rate=config.RISK_FREE_RATE
+                nav_series,
+                risk_free_rate=config.RISK_FREE_RATE,
+                rebalance_dates=marks,
             )
             return PerformanceMetrics(
                 cumulative_return=metrics.total_return * 100,
@@ -97,6 +111,11 @@ class ReportGenerator:
                 annual_vol=metrics.annual_volatility * 100,
                 max_drawdown=metrics.max_drawdown * 100,
                 sharpe_ratio=metrics.sharpe_ratio,
+                win_rate=metrics.win_rate,
+                annual_return_365=metrics.annual_return_365 * 100,
+                annual_vol_365=metrics.annual_volatility_365 * 100,
+                sharpe_365=metrics.sharpe_ratio_365,
+                trading_days=len(nav_series),
             )
 
         # 净值序列不足 2 点：无法年化波动/回撤，仅给出累计收益与日历年化估算
@@ -120,7 +139,17 @@ class ReportGenerator:
             annual_vol=0.0,
             max_drawdown=0.0,
             sharpe_ratio=0.0,
+            # 不足 2 个净值点时无日收益序列，两个口径同取日历年化估算值
+            annual_return_365=annual_return,
+            trading_days=len(nav_history),
         )
+
+    @staticmethod
+    def _rebalance_dates_from_event_log(state: PortfolioState) -> List[str]:
+        """从事件日志提取调仓执行日（与绩效页缓存共用同一判定）。"""
+        from app.monitor.rebalance_marks import rebalance_dates_from_event_log
+
+        return rebalance_dates_from_event_log(state.event_log)
 
     @staticmethod
     def _build_nav_series(state: PortfolioState, nav_history: List[Dict]) -> pd.Series:
@@ -147,33 +176,46 @@ class ReportGenerator:
         idx = pd.DatetimeIndex([r[0] for r in records])
         return pd.Series([r[1] for r in records], index=idx).sort_index()
     
-    def calc_performance_dict(self, state: PortfolioState) -> Dict:
+    def calc_performance_dict(self, state: PortfolioState,
+                              rebalance_dates: Optional[List] = None) -> Dict:
         """
         计算绩效指标并返回字典格式（兼容旧接口）
         
         Returns:
-            包含 cumulative_return, annual_return, annual_vol, max_drawdown, sharpe_ratio 的字典
+            包含 cumulative_return, annual_return, annual_vol, max_drawdown,
+            sharpe_ratio, win_rate 的字典
         """
-        perf = self.calc_performance(state)
+        perf = self.calc_performance(state, rebalance_dates=rebalance_dates)
         return {
             'cumulative_return': perf.cumulative_return,
             'annual_return': perf.annual_return,
             'annual_vol': perf.annual_vol,
             'max_drawdown': perf.max_drawdown,
             'sharpe_ratio': perf.sharpe_ratio,
+            'win_rate': perf.win_rate,
+            'annual_return_365': perf.annual_return_365,
+            'annual_vol_365': perf.annual_vol_365,
+            'sharpe_365': perf.sharpe_365,
         }
     
-    def calc_performance_api_dict(self, state: PortfolioState) -> Dict:
+    def calc_performance_api_dict(self, state: PortfolioState,
+                                  rebalance_dates: Optional[List] = None) -> Dict:
         """
         绩效指标 API 字典（含 calmar_ratio），监控绩效查询与暂停快照共用。
         
         Returns:
             包含 cumulative_return, annual_return, annual_volatility,
-            max_drawdown, sharpe_ratio, calmar_ratio 的字典（百分点形式）
+            max_drawdown, sharpe_ratio, calmar_ratio, win_rate, trading_days
+            的字典（收益率/波动/回撤为百分点形式）
         """
-        perf = self.calc_performance(state)
+        perf = self.calc_performance(state, rebalance_dates=rebalance_dates)
         calmar = (
             perf.annual_return / abs(perf.max_drawdown)
+            if perf.max_drawdown != 0
+            else 0.0
+        )
+        calmar_365 = (
+            perf.annual_return_365 / abs(perf.max_drawdown)
             if perf.max_drawdown != 0
             else 0.0
         )
@@ -184,6 +226,12 @@ class ReportGenerator:
             'max_drawdown': perf.max_drawdown,
             'sharpe_ratio': perf.sharpe_ratio,
             'calmar_ratio': calmar,
+            'win_rate': perf.win_rate,
+            'trading_days': perf.trading_days,
+            'annual_return_365': perf.annual_return_365,
+            'annual_volatility_365': perf.annual_vol_365,
+            'sharpe_ratio_365': perf.sharpe_365,
+            'calmar_ratio_365': calmar_365,
         }
     
     def calc_daily_attribution(self,
@@ -294,6 +342,9 @@ class ReportGenerator:
                 'annual_vol': round(perf.annual_vol, 2),
                 'max_drawdown': round(perf.max_drawdown, 2),
                 'sharpe_ratio': round(perf.sharpe_ratio, 2),
+                'annual_return_365': round(perf.annual_return_365, 2),
+                'annual_vol_365': round(perf.annual_vol_365, 2),
+                'sharpe_365': round(perf.sharpe_365, 2),
             },
             'costs': {
                 'trading': round(state.total_trading_cost, 2),
